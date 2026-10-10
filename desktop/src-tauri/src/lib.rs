@@ -580,6 +580,11 @@ pub fn run() {
             commands::agent::save_agent_settings,
             commands::agent::get_agent_status,
             commands::agent::retry_peer_mesh,
+            commands::session::start_room_session,
+            commands::session::stop_room_session,
+            commands::session::start_game_tunnel,
+            commands::session::set_overlay_roster,
+            commands::session::update_room_helper,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Warlay LAN Launcher application");
