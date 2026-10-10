@@ -5,7 +5,11 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: build
+      prefix: chore
+    ignore:
+      # Must stay on the version Tauri uses (desktop links both); upgraded
+      # together with Tauri by hand.
+      - dependency-name: windows
     groups:
       cargo-minor:
         update-types: [minor, patch]
@@ -15,7 +19,12 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: build
+      prefix: chore
+    ignore:
+      # vue-tsc still relies on the TypeScript 5 compiler API; the native
+      # TypeScript 7 compiler does not expose it yet.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor:
         update-types: [minor, patch]
@@ -25,11 +34,11 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: ci
+      prefix: chore
 
   - package-ecosystem: docker
     directory: /server
     schedule:
       interval: weekly
     commit-message:
-      prefix: build
+      prefix: chore

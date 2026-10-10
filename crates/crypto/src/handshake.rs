@@ -1,5 +1,4 @@
 use hkdf::Hkdf;
-use rand_core::OsRng;
 use sha2::Sha256;
 use thiserror::Error;
 use x25519_dalek::{PublicKey, StaticSecret};
@@ -33,7 +32,11 @@ pub struct DirectionalKeys {
 
 impl EphemeralKeypair {
     pub fn generate() -> Self {
-        let secret = StaticSecret::random_from_rng(OsRng);
+        // Raw OS entropy keeps this independent of rand_core's API churn;
+        // x25519-dalek clamps the scalar itself.
+        let mut seed = [0_u8; 32];
+        getrandom::fill(&mut seed).expect("the OS random number generator is unavailable");
+        let secret = StaticSecret::from(seed);
         let public_bytes = PublicKey::from(&secret).to_bytes();
         Self { secret, public_bytes }
     }
