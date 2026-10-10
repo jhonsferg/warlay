@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 warlay-protocol = { workspace = true }
+warlay-crypto = { workspace = true }
 warlay-transport = { workspace = true }
 warlay-matchmaking = { workspace = true }
 tokio = { workspace = true }
