@@ -130,7 +130,7 @@ jobs:
             tar -czf "$name.tar.gz" "$name"
           fi
           rm -rf "$name"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: server-${{ matrix.target }}
           path: dist/*
@@ -180,7 +180,7 @@ jobs:
           cp target/release/wnetd.exe LICENSE "dist/$daemon/"
           cp daemon/README.md "dist/$daemon/README.md"
           (cd dist && 7z a -tzip "$daemon.zip" "$daemon" > /dev/null && rm -rf "$daemon")
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: desktop-windows-x64
           path: dist/*
