@@ -34,25 +34,29 @@ named pipe and ships as a Tauri sidecar.
 
 ## Architecture
 
-```
-desktop/
-├── src/                        Vue 3 frontend
-│   ├── api.ts                  typed wrappers over Tauri invoke/listen
-│   ├── types.ts                DTO mirrors and address parsing
-│   ├── store/                  Pinia stores (servers, rooms, chat, settings, agent, lanMesh, ...)
-│   ├── components/             UI by feature (rail, rooms, servers, chat, lan, settings, console, base)
-│   ├── composables/, utils/    shared helpers, zod validation schemas
-│   └── assets/                 fonts, sounds, SCSS design tokens
-├── src-tauri/                  Rust backend (crate `desktop`, binary `warlay`)
-│   ├── src/commands/           #[tauri::command] handlers, the only layer touching AppHandle/State
-│   ├── src/daemon_ipc.rs       named-pipe client for the daemon (wnetd)
-│   ├── src/storage/            local SQLite: client identity, registered servers and their keys, settings
-│   ├── src/voice/              audio capture/playback (cpal), Opus codec, jitter buffer
-│   ├── src/network/            lan-mesh discovery and relay client
-│   ├── src/launcher/           starts and tracks the game process
-│   ├── src/overlay.rs          click-through in-game overlay window
-│   └── tauri.conf.json         window, bundle (NSIS) and sidecar configuration
-└── scripts/                    build helpers: daemon sidecar, portable zip
+```mermaid
+flowchart LR
+    root["desktop/"]
+
+    root --> frontend["src/<br/>Vue 3 frontend"]
+    frontend --> api["api.ts<br/>typed wrappers over<br/>Tauri invoke and listen"]
+    frontend --> types["types.ts<br/>DTO mirrors and<br/>address parsing"]
+    frontend --> store["store/<br/>Pinia stores: servers, rooms,<br/>chat, settings, agent, lanMesh"]
+    frontend --> components["components/<br/>UI by feature: rail, rooms, servers,<br/>chat, lan, settings, console, base"]
+    frontend --> helpers["composables/ and utils/<br/>shared helpers,<br/>zod validation schemas"]
+    frontend --> assets["assets/<br/>sounds and SCSS design tokens"]
+
+    root --> backend["src-tauri/<br/>Rust backend: crate desktop,<br/>binary warlay"]
+    backend --> commands["src/commands/<br/>Tauri command handlers, the only<br/>layer touching AppHandle and State"]
+    backend --> ipc["src/daemon_ipc.rs<br/>named pipe client for the daemon"]
+    backend --> clientStorage["src/storage/<br/>SQLite: client identity,<br/>servers and keys, settings"]
+    backend --> voice["src/voice/<br/>audio capture and playback,<br/>Opus codec, jitter buffer"]
+    backend --> network["src/network/<br/>lan-mesh discovery<br/>and relay client"]
+    backend --> launcher["src/launcher/<br/>starts and tracks<br/>the game process"]
+    backend --> overlay["src/overlay.rs<br/>click-through in-game<br/>overlay window"]
+    backend --> tauriConf["tauri.conf.json<br/>window, NSIS bundle<br/>and sidecar configuration"]
+
+    root --> scripts["scripts/<br/>build helpers: daemon sidecar,<br/>portable zip"]
 ```
 
 The backend never opens hub connections or tunnels itself: commands such as
