@@ -6,6 +6,8 @@ use std::sync::Arc;
 use std::thread::JoinHandle as ThreadHandle;
 use thiserror::Error;
 use tracing::{debug, info, warn};
+
+use crate::subnet::local_ipv4_addrs;
 use windows::Win32::Networking::WinSock::{
     bind, closesocket, recv, setsockopt, WSAGetLastError, WSAIoctl, WSASocketW, WSAStartup, AF_INET, IPPROTO_IP,
     RCVALL_ON, SEND_RECV_FLAGS, SIO_RCVALL, SOCKADDR, SOCKADDR_IN, SOCKET, SOCK_RAW, SOL_SOCKET, SO_RCVTIMEO, WSADATA,
@@ -288,20 +290,6 @@ fn classify_packet(ip_packet: &[u8], game_port: u16, local_ips: &[Ipv4Addr]) -> 
         return CaptureOutcome::WrongPort(udp.destination_port());
     }
     CaptureOutcome::Relayed(udp.payload().to_vec())
-}
-
-pub fn local_ipv4_addrs() -> Vec<Ipv4Addr> {
-    if_addrs::get_if_addrs()
-        .map(|interfaces| {
-            interfaces
-                .into_iter()
-                .filter_map(|iface| match iface.addr {
-                    if_addrs::IfAddr::V4(v4) if !iface.is_loopback() => Some(v4.ip),
-                    _ => None,
-                })
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
