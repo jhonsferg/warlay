@@ -1,0 +1,285 @@
+name: Release
+
+# Every merge into the protected `main` branch publishes a new version:
+#   1. compute the next semantic version from Conventional Commits since the
+#      last `v*` tag (feat -> minor, breaking -> major, anything else -> patch),
+#   2. build the server for Linux/macOS/Windows and the desktop client +
+#      daemon for Windows, stamping that version into every manifest,
+#   3. push the server image to GHCR,
+#   4. tag the commit and publish a GitHub Release with notes and checksums.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Next version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      skip: ${{ steps.next.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compute next version
+        id: next
+        run: |
+          set -euo pipefail
+          last_tag=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n1)
+
+          if [ -z "$last_tag" ]; then
+            version=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml | tr -d '\r')
+            echo "No previous release, starting at the workspace version $version."
+          else
+            if [ -z "$(git rev-list "$last_tag..HEAD")" ]; then
+              echo "Nothing new since $last_tag, skipping."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            log=$(git log --format='%s%n%b' "$last_tag..HEAD")
+            IFS=. read -r major minor patch <<< "${last_tag#v}"
+            if grep -Eq '^[a-z]+(\([^)]*\))?!:|^BREAKING[ -]CHANGE:' <<< "$log"; then
+              # Pre-1.0, breaking changes bump the minor version (SemVer 0.x).
+              if [ "$major" -eq 0 ]; then minor=$((minor + 1)); else major=$((major + 1)); minor=0; fi
+              patch=0
+            elif grep -Eq '^feat(\([^)]*\))?:' <<< "$log"; then
+              minor=$((minor + 1)); patch=0
+            else
+              patch=$((patch + 1))
+            fi
+            version="$major.$minor.$patch"
+            echo "Bumping $last_tag -> v$version."
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::error::Tag v$version already exists."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+  server:
+    name: Server (${{ matrix.target }})
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # musl builds are fully static: they run on any Linux distribution.
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, cross: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-latest, cross: true }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ env.VERSION }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: Build
+        shell: bash
+        run: |
+          builder=cargo
+          if [ "${{ matrix.cross }}" = "true" ]; then builder=cross; fi
+          $builder build --release -p server --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=${{ matrix.target }}
+          ext=""; [[ "$target" == *windows* ]] && ext=".exe"
+          name="warlay-server-v${VERSION}-${target}"
+
+          mkdir -p "dist/$name/config"
+          cp "target/$target/release/warlay-server$ext" "dist/$name/"
+          cp server/config/*.toml "dist/$name/config/"
+          cp LICENSE "dist/$name/"
+          cp server/README.md "dist/$name/README.md"
+
+          cd dist
+          if [[ "$target" == *windows* ]]; then
+            7z a -tzip "$name.zip" "$name" > /dev/null
+          else
+            tar -czf "$name.tar.gz" "$name"
+          fi
+          rm -rf "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop client and daemon (Windows x64)
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+      # After `npm ci`, so package.json still matches the lockfile while installing.
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ env.VERSION }}
+      - name: Build client, daemon sidecar and installer
+        # beforeBuildCommand runs `npm run build && npm run prepare-daemon-sidecar`.
+        working-directory: desktop
+        run: npx tauri build
+      - name: Build portable zip
+        working-directory: desktop
+        run: npm run build-portable-zip
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle=target/release/bundle/nsis
+          mkdir -p dist
+          cp "$bundle/Warlay_${VERSION}_x64-setup.exe" "dist/warlay-desktop-v${VERSION}-windows-x64-setup.exe"
+          cp "$bundle/Warlay_${VERSION}_x64-portable.zip" "dist/warlay-desktop-v${VERSION}-windows-x64-portable.zip"
+
+          daemon="warlay-daemon-v${VERSION}-windows-x64"
+          mkdir -p "dist/$daemon"
+          cp target/release/wnetd.exe LICENSE "dist/$daemon/"
+          cp daemon/README.md "dist/$daemon/README.md"
+          (cd dist && 7z a -tzip "$daemon.zip" "$daemon" > /dev/null && rm -rf "$daemon")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-x64
+          path: dist/*
+          if-no-files-found: error
+
+  docker:
+    name: Server image (GHCR)
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ env.VERSION }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/warlay-server
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Publish release
+    needs: [version, server, desktop, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS.txt
+      - name: Generate changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .github/cliff.toml
+          args: --unreleased --tag v${{ env.VERSION }} --strip header
+        env:
+          OUTPUT: CHANGES.md
+      - name: Compose release notes
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/warlay-server
+        run: |
+          image=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "## Downloads"
+            echo
+            echo "| Component | Platform | File |"
+            echo "|-----------|----------|------|"
+            echo "| Desktop client + daemon (installer) | Windows x64 | \`warlay-desktop-v${VERSION}-windows-x64-setup.exe\` |"
+            echo "| Desktop client + daemon (portable) | Windows x64 | \`warlay-desktop-v${VERSION}-windows-x64-portable.zip\` |"
+            echo "| Daemon only | Windows x64 | \`warlay-daemon-v${VERSION}-windows-x64.zip\` |"
+            echo "| Server | Linux x64 / ARM64 (static) | \`warlay-server-v${VERSION}-{x86_64,aarch64}-unknown-linux-musl.tar.gz\` |"
+            echo "| Server | macOS Intel / Apple Silicon | \`warlay-server-v${VERSION}-{x86_64,aarch64}-apple-darwin.tar.gz\` |"
+            echo "| Server | Windows x64 | \`warlay-server-v${VERSION}-x86_64-pc-windows-msvc.zip\` |"
+            echo
+            echo "Docker: \`docker pull ${image}:${VERSION}\`"
+            echo
+            echo "Verify downloads with \`SHA256SUMS.txt\`."
+            echo
+            echo "## Changes"
+            cat CHANGES.md
+          } > RELEASE_NOTES.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Warlay v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          body_path: RELEASE_NOTES.md
+          files: dist/*
+          fail_on_unmatched_files: true
+          make_latest: true
