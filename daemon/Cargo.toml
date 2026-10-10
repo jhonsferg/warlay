@@ -24,6 +24,7 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 rusqlite = { workspace = true }
 warlay = { workspace = true, features = ["protocol", "engine"] }
+base64 = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true }
