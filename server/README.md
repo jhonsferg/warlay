@@ -175,12 +175,13 @@ up the new certificate without dropping active games.
 
 ## Architecture
 
-```
-server/src/
-  main.rs        bootstrap and wiring for both modes
-  cli.rs         clap subcommands (hub, lan-mesh)
-  ws_server.rs   axum WebSocket glue: adapts sockets to matchmaking's ClientSink
-  logging.rs     tracing setup
+```mermaid
+flowchart LR
+    src["server/src/"]
+    src --> main["main.rs<br/>bootstrap and wiring<br/>for both modes"]
+    src --> cli["cli.rs<br/>clap subcommands:<br/>hub, lan-mesh"]
+    src --> ws["ws_server.rs<br/>axum WebSocket glue: adapts<br/>sockets to matchmaking's ClientSink"]
+    src --> logging["logging.rs<br/>tracing setup"]
 ```
 
 Everything else lives in the shared crates (see the
