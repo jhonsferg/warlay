@@ -1,0 +1,31 @@
+[package]
+name = "warlay"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Facade crate: re-exports the other 8 crates under short module names, so
+# consumers depend on one crate and write `warlay::protocol::ipc`,
+# `warlay::engine::...`, etc. instead of pulling in each crate individually
+# under its `warlay_x` extern name. Mirrors the feature-gated-module pattern
+# already used in the root workspace for the `windows` crate.
+[dependencies]
+protocol = { path = "../protocol", optional = true }
+warlay_core = { path = "../core", package = "core", optional = true }
+crypto = { path = "../crypto", optional = true }
+engine = { path = "../engine", optional = true }
+matchmaking = { path = "../matchmaking", optional = true }
+storage = { path = "../storage", optional = true }
+transport = { path = "../transport", optional = true }
+config = { path = "../config", optional = true }
+
+[features]
+protocol = ["dep:protocol"]
+core = ["dep:warlay_core"]
+crypto = ["dep:crypto"]
+engine = ["dep:engine"]
+matchmaking = ["dep:matchmaking"]
+storage = ["dep:storage"]
+transport = ["dep:transport"]
+config = ["dep:config"]
