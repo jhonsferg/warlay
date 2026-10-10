@@ -45,17 +45,40 @@ screen, then carries the real game session either directly between players
 
 ## How it works
 
-```
-  Player A (host)                    Warlay server (VPS)                 Player B (joiner)
- +------------------+            +-------------------------+          +------------------+
- | Warcraft III     |            |  matchmaking  :7777 tcp |          | Warcraft III     |
- |   ^   LAN bcast  |            |  game tunnel  :7778 tcp |          |   ^              |
- |   |              |  wss/ws    |  rendezvous   :7779 udp |  wss/ws  |   |              |
- | desktop client <-+----------->|  LAN relay    :6112 udp |<---------+-> desktop client |
- |   |  named pipe  |            +-------------------------+          |   |  named pipe  |
- | daemon (wnetd)  -+-------------- TCP relay (fallback) --------------+- daemon (wnetd) |
- |                 -+============== P2P QUIC (preferred) ==============+-                |
- +------------------+                                                 +------------------+
+```mermaid
+flowchart LR
+    subgraph host["Player A (host)"]
+        hostGame["Warcraft III"]
+        hostUi["Desktop client<br/>warlay.exe"]
+        hostDaemon["Daemon<br/>wnetd.exe"]
+    end
+
+    subgraph hub["Warlay server (VPS)"]
+        matchmaking["Matchmaking<br/>7777/tcp"]
+        tunnel["Game tunnel<br/>7778/tcp"]
+        rendezvous["P2P rendezvous<br/>7779/udp"]
+        lanRelay["LAN relay<br/>6112/udp"]
+    end
+
+    subgraph joiner["Player B (joiner)"]
+        joinerGame["Warcraft III"]
+        joinerUi["Desktop client<br/>warlay.exe"]
+        joinerDaemon["Daemon<br/>wnetd.exe"]
+    end
+
+    hostUi <-->|named pipe| hostDaemon
+    joinerUi <-->|named pipe| joinerDaemon
+    hostGame <-->|LAN broadcast and game TCP| hostDaemon
+    joinerGame <-->|LAN broadcast and game TCP| joinerDaemon
+
+    hostDaemon <-->|ws / wss| matchmaking
+    joinerDaemon <-->|ws / wss| matchmaking
+    hostDaemon -.->|signaling| rendezvous
+    joinerDaemon -.->|signaling| rendezvous
+
+    hostDaemon <==>|P2P QUIC, preferred| joinerDaemon
+    hostDaemon <-->|TCP relay, fallback| tunnel
+    tunnel <-->|TCP relay, fallback| joinerDaemon
 ```
 
 | Component                       | Runs on                             | Role                                                    |
@@ -126,22 +149,25 @@ Configuration, TLS and deployment details are in [server/README.md](server/READM
 
 ## Repository layout
 
-```
-warlay/
-├── crates/                 shared Rust libraries (one Cargo workspace)
-│   ├── protocol/           wire formats: control plane, tunnel handshake, daemon IPC
-│   ├── crypto/             X25519 handshake, ChaCha20-Poly1305 framing, PSK proofs
-│   ├── transport/          async UDP socket wrapper
-│   ├── matchmaking/        rooms, client sessions and the matchmaking hub (framework-agnostic)
-│   ├── core/               relay engines: UDP relay, TCP tunnel hub, UDP rendezvous
-│   ├── storage/            SQLite persistence (server identity, issued client keys)
-│   ├── config/             TOML settings shared by every server mode
-│   ├── engine/             client-side networking: hub connection, tunnels, P2P mesh, LAN capture
-│   └── warlay/             facade crate re-exporting the above as `warlay::*` (feature-gated)
-├── server/                 hub binary (warlay-server), Dockerfile, sample configs
-├── daemon/                 Windows background agent (wnetd.exe)
-├── desktop/                Windows client: Vue 3 frontend + Tauri 2 backend (src-tauri/)
-└── .github/                CI, release pipeline, issue/PR templates
+```mermaid
+flowchart LR
+    root["warlay/"]
+
+    root --> crates["crates/<br/>shared Rust libraries"]
+    crates --> protocol["protocol<br/>wire formats: control plane,<br/>tunnel handshake, daemon IPC"]
+    crates --> crypto["crypto<br/>X25519 handshake, ChaCha20-Poly1305<br/>framing, PSK proofs"]
+    crates --> transport["transport<br/>async UDP socket wrapper"]
+    crates --> matchmaking["matchmaking<br/>rooms, client sessions,<br/>matchmaking hub"]
+    crates --> core["core<br/>UDP relay, TCP tunnel hub,<br/>UDP rendezvous"]
+    crates --> storage["storage<br/>SQLite: server identity,<br/>issued client keys"]
+    crates --> config["config<br/>TOML settings"]
+    crates --> engine["engine<br/>client networking: hub connection,<br/>tunnels, P2P mesh, LAN capture"]
+    crates --> facade["warlay<br/>facade re-exporting the crates<br/>as warlay::*, feature-gated"]
+
+    root --> server["server/<br/>hub binary warlay-server,<br/>Dockerfile, sample configs"]
+    root --> daemon["daemon/<br/>Windows background agent wnetd.exe"]
+    root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend"]
+    root --> github[".github/<br/>CI, release pipeline,<br/>issue and PR templates"]
 ```
 
 The binaries (`server`, `daemon`, `desktop/src-tauri`) stay thin: protocol,
