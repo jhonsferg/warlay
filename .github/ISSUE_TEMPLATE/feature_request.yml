@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest a new feature or a change to existing behavior.
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work from the player's or operator's point of view?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: compat
+    attributes:
+      label: Compatibility
+      options:
+        - label: This would change the wire protocol between client and server.
