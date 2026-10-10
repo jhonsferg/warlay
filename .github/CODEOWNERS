@@ -1,0 +1,11 @@
+# Default owners for everything in the repository.
+*                       @jhonsferg
+
+# Release pipeline and repository settings.
+/.github/               @jhonsferg
+
+# Components.
+/server/                @jhonsferg
+/daemon/                @jhonsferg
+/desktop/               @jhonsferg
+/crates/                @jhonsferg
