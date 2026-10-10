@@ -1,0 +1,141 @@
+// Design tokens shared by main.scss AND every component's own scoped
+// <style lang="scss"> block (auto-injected via vite.config.ts's
+// css.preprocessorOptions.scss.additionalData) -- this file must stay
+// declarations-only (no selectors), since it gets prepended into every
+// single stylesheet the build compiles.
+//
+// Palette direction: macOS in dark mode -- layered neutral grays, thin
+// flat hairlines (no carved-bevel light/dark edge pairs), translucent
+// vibrancy surfaces, and systemBlue as the one reserved accent for
+// primary actions/selection/focus. The rest of Apple's system semantic
+// colors (green/red/yellow/purple) carry status, same restraint rule as
+// before: color signals meaning, it doesn't decorate everything blue the
+// way the previous theme painted every hover gold. Inter stands in for San
+// Francisco, vibrancy is approximated with backdrop-filter instead of a
+// real compositor blur, and the window chrome doesn't change.
+//
+// Variable *names* are kept stable on purpose across this whole redesign
+// (only values changed) -- almost every component already consumes these
+// by name rather than hardcoded hex, so this file alone recolors most of
+// the app before any component-level work happens.
+$font-heading:
+  "Inter",
+  -apple-system,
+  BlinkMacSystemFont,
+  "Segoe UI",
+  Roboto,
+  Helvetica,
+  Arial,
+  sans-serif;
+$font-body:
+  "Inter",
+  -apple-system,
+  BlinkMacSystemFont,
+  "Segoe UI",
+  Roboto,
+  Helvetica,
+  Arial,
+  sans-serif;
+
+// Installed (self-hosted via @fontsource, see main.ts) but not assigned to
+// $font-heading/$font-body or used by any component yet -- available here
+// as ready-to-use variables for whoever picks up the next pass on the type
+// system, instead of everyone having to remember exact family-name spelling
+// and a sane fallback stack.
+$font-lato: "Lato", Arial, sans-serif;
+$font-nunito: "Nunito", Arial, sans-serif;
+$font-roboto: "Roboto", Arial, sans-serif;
+$font-ubuntu: "Ubuntu", Arial, sans-serif;
+
+// Core Colors -- macOS dark-mode window/surface layers, from deepest to
+// most elevated.
+$bg-void: #1e1e1e;
+$bg-stone: rgba(36, 36, 38, 0.78);
+$bg-parchment: rgba(255, 255, 255, 0.08);
+$bg-panel: rgba(44, 44, 46, 0.94);
+
+// Borders -- macOS separators are flat, low-opacity hairlines, not a
+// carved/bevelled frame with a light-catching edge and a shadowed one.
+$border-bronze: rgba(255, 255, 255, 0.12);
+$border-bronze-light: rgba(255, 255, 255, 0.18);
+$border-bronze-dark: rgba(0, 0, 0, 0.3);
+$border-gold: rgba(10, 132, 255, 0.6);
+$border-glow: rgba(10, 132, 255, 0.35);
+
+// Text -- labelColor / secondaryLabelColor / tertiaryLabelColor.
+$text: rgba(255, 255, 255, 0.92);
+$text-dim: rgba(255, 255, 255, 0.55);
+$text-muted: rgba(255, 255, 255, 0.32);
+
+// Primary accent -- systemBlue. Reserved for primary buttons, the active
+// nav item, "you are here" -- not every hover state and every badge, same
+// restraint as before, just a different hue. $gold-bright carries the
+// confident, saturated punch; $gold itself stays a touch duller.
+$gold: #0a84ff;
+$gold-bright: #409cff;
+$gold-dim: rgba(10, 132, 255, 0.16);
+
+// Status / semantic colors -- Apple's own system palette in dark mode,
+// genuinely different hues, not blue at different opacities.
+$steel: #98989d;
+$steel-glow: rgba(152, 152, 157, 0.16);
+$success: #32d74b;
+$success-glow: rgba(50, 215, 75, 0.16);
+$danger: #ff453a;
+$danger-glow: rgba(255, 69, 58, 0.16);
+$amber: #ffd60a;
+$amber-glow: rgba(255, 214, 10, 0.16);
+$arcane: #bf5af2;
+$arcane-glow: rgba(191, 90, 242, 0.16);
+
+// Effects
+$glass-blur: blur(20px) saturate(180%);
+$shadow-lg: 0 20px 40px -12px rgba(0, 0, 0, 0.45);
+$shadow-panel: 0 8px 24px -6px rgba(0, 0, 0, 0.4);
+// macOS's own standard easing curve -- quick, no overshoot. Exposed on its
+// own (not just baked into $transition below) because the `animation`
+// shorthand can't take "all" as a property token the way `transition` can,
+// so keyframe-driven appearances (sheets, modals) need the bare curve.
+$ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+// $transition covers ordinary hover/focus/press; $transition-slow is for
+// anything that appears/disappears as a whole (sheets, modals), which
+// reads better a touch slower than a hover color change.
+$transition: all 0.18s #{$ease-standard};
+$transition-slow: all 0.25s #{$ease-standard};
+// The blue focus ring every native macOS control shows on
+// keyboard/VoiceOver focus -- meant for :focus-visible, not :hover.
+$focus-ring: 0 0 0 3px rgba(10, 132, 255, 0.5);
+
+// Type scale -- deliberately spaced steps rather than everything hovering
+// around 0.85-1rem. A single family (Inter) carries every size via weight,
+// the way San Francisco does on real Apple platforms -- no separate
+// display/body face pairing needed here.
+$text-display: 1.75rem; // page-level h1 (rare)
+$text-xl: 1.375rem; // h2 section titles
+$text-lg: 1.0625rem; // card/subsection titles, list item primary text
+$text-md: 0.9375rem; // body default -- macOS's own control/body text size
+$text-sm: 0.8125rem; // secondary text, meta
+$text-xs: 0.6875rem; // badges, timestamps, fine print
+
+// Spacing / radii -- generous, consistent rounding (Apple's control/card
+// language) instead of the previous theme's small "eased corner on an
+// otherwise square panel" look. $radius-full is new: pills, toggle
+// tracks, segmented controls.
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$radius-sm: 6px;
+$radius-md: 10px;
+$radius-lg: 14px;
+$radius-full: 999px;
+
+// Breakpoints -- the window's hard floor is 780x540 (tauri.conf.json's
+// minWidth/minHeight), but plenty of real small-monitor setups run this
+// app well above that floor and still cramped: a 280px fixed sidebar plus
+// a two-column body grid designed against a spacious window stops working
+// gracefully well before 780px. `$breakpoint-md` is where multi-column
+// layouts collapse to one column; `$breakpoint-sm` is where the sidebar
+// itself gives up its text labels for an icon-only rail (same idea as
+// Finder/Mail's own sidebar collapsing in a narrow window).
+$breakpoint-md: 960px;
+$breakpoint-sm: 700px;
