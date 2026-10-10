@@ -19,6 +19,7 @@ matchmaking = { path = "../matchmaking", optional = true }
 storage = { path = "../storage", optional = true }
 transport = { path = "../transport", optional = true }
 config = { path = "../config", optional = true }
+social = { path = "../social", optional = true }
 
 [features]
 protocol = ["dep:protocol"]
@@ -29,3 +30,4 @@ matchmaking = ["dep:matchmaking"]
 storage = ["dep:storage"]
 transport = ["dep:transport"]
 config = ["dep:config"]
+social = ["dep:social"]
