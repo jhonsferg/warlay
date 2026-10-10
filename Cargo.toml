@@ -30,7 +30,7 @@ warlay-social = { path = "crates/social", package = "social" }
 # Async runtime and networking
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "time", "sync", "io-util", "process"] }
 futures-util = "0.3"
-socket2 = { version = "0.5", features = ["all"] }
+socket2 = { version = "0.6", features = ["all"] }
 if-addrs = "0.13"
 url = "2.5"
 axum = { version = "0.8", features = ["ws"] }
