@@ -63,7 +63,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Errors, CLI and observability
 anyhow = "1"
-thiserror = "1"
+thiserror = "2"
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

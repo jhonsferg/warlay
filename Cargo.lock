@@ -810,7 +810,7 @@ name = "config"
 version = "0.1.0"
 dependencies = [
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "toml 0.8.2",
 ]
 
@@ -836,7 +836,7 @@ version = "0.1.0"
 dependencies = [
  "matchmaking",
  "protocol",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "tokio",
  "tracing",
  "transport",
@@ -978,7 +978,7 @@ dependencies = [
  "hmac",
  "rand_core 0.6.4",
  "sha2",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "x25519-dalek",
 ]
 
@@ -1180,7 +1180,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "time",
  "tokio",
  "tracing",
@@ -1386,7 +1386,7 @@ dependencies = [
  "serde",
  "serde_json",
  "socket2 0.5.10",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite 0.24.0",
@@ -3513,7 +3513,7 @@ dependencies = [
  "bincode",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "uuid",
 ]
 
@@ -4477,7 +4477,7 @@ name = "storage"
 version = "0.1.0"
 dependencies = [
  "rusqlite",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "uuid",
 ]
 
@@ -5421,7 +5421,7 @@ name = "transport"
 version = "0.1.0"
 dependencies = [
  "socket2 0.5.10",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "tokio",
  "tracing",
 ]
