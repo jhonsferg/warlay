@@ -1,0 +1,31 @@
+# Example configuration for `warlay-server main` -- the social backend
+# (accounts, friends, communities, rooms, chat, notifications). It needs
+# PostgreSQL and Redis; game traffic never goes through it.
+#
+# Secrets can come from the environment instead of this file:
+# WARLAY_DATABASE_URL, WARLAY_REDIS_URL, WARLAY_HELPER_SECRET.
+
+[main]
+http_addr = "0.0.0.0:8080"
+database_url = "postgres://warlay:CHANGE_ME@postgres:5432/warlay"
+redis_url = "redis://redis:6379"
+# Shared with every helper server. Generate with: openssl rand -hex 32
+helper_secret = ""
+access_token_ttl_secs = 900
+refresh_token_ttl_days = 30
+room_ticket_ttl_secs = 43200
+# Leave empty to accept any origin (the desktop app's webview).
+cors_origins = []
+disconnect_grace_secs = 45
+
+# Uncomment to also run a helper inside the main server (single-VPS setup).
+# [embedded_helper]
+# name = "main-vps"
+# region = "us-east"
+# rendezvous_bind = "0.0.0.0:7779"
+# relay_bind = "0.0.0.0:7780"
+# public_rendezvous_addr = "warlay.example.com:7779"
+# public_relay_addr = "warlay.example.com:7780"
+
+[observability]
+log_level = "info"
