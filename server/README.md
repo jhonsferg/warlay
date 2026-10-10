@@ -131,7 +131,6 @@ Example with nginx and a Let's Encrypt certificate:
 # /etc/nginx/sites-enabled/hub.example.com.conf  (http context)
 server {
     listen 443 ssl;
-    http2 on;
     server_name hub.example.com;
 
     ssl_certificate     /etc/letsencrypt/live/hub.example.com/fullchain.pem;
