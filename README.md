@@ -1,11 +1,30 @@
+<div align="center">
+
 # Warlay
 
-[![CI](https://github.com/jhonsferg/warlay/actions/workflows/ci.yml/badge.svg)](https://github.com/jhonsferg/warlay/actions/workflows/ci.yml)
-[![Release](https://github.com/jhonsferg/warlay/actions/workflows/release.yml/badge.svg)](https://github.com/jhonsferg/warlay/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**Play Warcraft III LAN games with people who are not on your network**<br/>
+No third-party VPN, no port forwarding on the players' side.
 
-**Play Warcraft III LAN games with people who are not on your network** -
-no third-party VPN, no port forwarding on the players' side.
+[![CI](https://img.shields.io/github/actions/workflow/status/jhonsferg/warlay/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/jhonsferg/warlay/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jhonsferg/warlay?style=for-the-badge&logo=github&logoColor=white&label=Release)](https://github.com/jhonsferg/warlay/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](LICENSE)
+
+[![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org)
+[![Tokio](https://img.shields.io/badge/Tokio-000000?style=for-the-badge&logo=tokio&logoColor=white)](https://tokio.rs)
+[![Tauri 2](https://img.shields.io/badge/Tauri_2-24C8DB?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app)
+[![Vue 3](https://img.shields.io/badge/Vue_3-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)](https://vuejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev)
+[![Pinia](https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=black)](https://pinia.vuejs.org)
+[![Sass](https://img.shields.io/badge/Sass-CC6699?style=for-the-badge&logo=sass&logoColor=white)](https://sass-lang.com)
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/features/actions)
+
+[![Client: Windows](https://img.shields.io/badge/Client-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMS40djExLjRIMHpNMTIuNiAwSDI0djExLjRIMTIuNnpNMCAxMi42aDExLjRWMjRIMHpNMTIuNiAxMi42SDI0VjI0SDEyLjZ6Ii8%2BPC9zdmc%2B)](#downloads)
+[![Server: Linux, macOS, Windows](https://img.shields.io/badge/Server-Linux_%7C_macOS_%7C_Windows-FCC624?style=for-the-badge&logo=linux&logoColor=black)](#downloads)
+
+</div>
 
 Warlay pairs a small server you run on a VPS with a Windows desktop client.
 Players register the server, create or join rooms in real time, and Warlay
