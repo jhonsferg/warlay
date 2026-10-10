@@ -1,0 +1,94 @@
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+target/
+dist/
+/release/
+
+# Tauri
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/
+
+# ---------------------------------------------------------------------------
+# Local tooling, helper scripts and end-to-end test scripts
+# ---------------------------------------------------------------------------
+/tools/
+/scripts/
+desktop/e2e/
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+node_modules/
+
+# ---------------------------------------------------------------------------
+# Logs, caches and local test leftovers
+# ---------------------------------------------------------------------------
+*.log
+panic_log.txt
+/*.png
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Local research and design references (not part of the product)
+# ---------------------------------------------------------------------------
+.w3gs-research/
+pinterest/
+
+# ---------------------------------------------------------------------------
+# AI assistants and coding agents
+# ---------------------------------------------------------------------------
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+AGENTS.md
+GEMINI.md
+.gemini/
+.codex/
+.cursor/
+.cursorrules
+.cursorignore
+.windsurf/
+.windsurfrules
+.codeium/
+.continue/
+.aider*
+.cline/
+.clinerules
+.roo/
+.roomodes
+.kiro/
+.junie/
+.agent/
+.agents/
+.antigravity/
+.augment/
+.tabnine/
+.github/copilot-instructions.md
+.copilot/
+.sourcegraph/
+.qodo/
+.specstory/
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
