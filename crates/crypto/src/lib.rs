@@ -18,8 +18,7 @@ pub use proof::{compute_proof, verify_proof, PROOF_LEN};
 /// Generates a fresh 32-byte pre-shared key for a newly authenticated
 /// client, using the OS CSPRNG.
 pub fn generate_psk() -> [u8; KEY_LEN] {
-    use rand_core::RngCore;
     let mut psk = [0_u8; KEY_LEN];
-    rand_core::OsRng.fill_bytes(&mut psk);
+    getrandom::fill(&mut psk).expect("the OS random number generator is unavailable");
     psk
 }
