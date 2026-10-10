@@ -27,17 +27,18 @@ wires it to the IPC protocol defined in
 
 ## Source layout
 
-```
-daemon/src/
-  main.rs          entry point, --install / --uninstall, pipe server bootstrap
-  ipc_server.rs    named-pipe server: JSON request/response and pushed events
-  handlers.rs      one handler per DaemonRequest
-  lan.rs           starts LAN capture/replay for the active room
-  state.rs         shared daemon state (connections, tunnel, mesh)
-  security.rs      pipe ACL and connecting-process verification
-  storage.rs       daemon settings (SQLite)
-  autostart.rs     logon Scheduled Task registration
-  logging.rs, log_control.rs   rotating file logs and runtime log levels
+```mermaid
+flowchart LR
+    src["daemon/src/"]
+    src --> main["main.rs<br/>entry point, --install and --uninstall,<br/>pipe server bootstrap"]
+    src --> ipc["ipc_server.rs<br/>named pipe server: JSON requests,<br/>responses and pushed events"]
+    src --> handlers["handlers.rs<br/>one handler per DaemonRequest"]
+    src --> lan["lan.rs<br/>LAN capture and replay<br/>for the active room"]
+    src --> state["state.rs<br/>shared state: connections,<br/>tunnel, mesh"]
+    src --> security["security.rs<br/>pipe ACL and connecting<br/>process verification"]
+    src --> storage["storage.rs<br/>daemon settings in SQLite"]
+    src --> autostart["autostart.rs<br/>logon Scheduled Task registration"]
+    src --> logging["logging.rs and log_control.rs<br/>rotating file logs and<br/>runtime log levels"]
 ```
 
 ## Usage
