@@ -20,6 +20,11 @@ updates:
       interval: weekly
     commit-message:
       prefix: chore
+    ignore:
+      # vue-tsc still relies on the TypeScript 5 compiler API; the native
+      # TypeScript 7 compiler does not expose it yet.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor:
         update-types: [minor, patch]
