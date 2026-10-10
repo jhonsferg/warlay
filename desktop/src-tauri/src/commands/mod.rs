@@ -6,6 +6,7 @@ pub mod matchmaking;
 pub mod overlay;
 pub mod relay;
 pub mod servers;
+pub mod session;
 pub mod settings;
 pub mod system_info;
 pub mod voice;

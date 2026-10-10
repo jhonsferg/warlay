@@ -151,6 +151,36 @@ pub enum DaemonRequest {
     /// `NotAttempted` so the mesh's own retry loop (already running every
     /// 3s) picks it up again, without leaving/rejoining the room.
     RetryPeerMesh,
+
+    /// Joins a room's P2P mesh through the helper the main server assigned
+    /// (`rendezvous_addr`), proving membership with `ticket` (the base64
+    /// room ticket from the main server's room session). Replaces any
+    /// previous session. No game server is involved from here on.
+    StartRoomSession {
+        room_id: String,
+        user_id: String,
+        is_host: bool,
+        rendezvous_addr: String,
+        relay_addr: String,
+        ticket: String,
+    },
+
+    /// Leaves the room's mesh and tears down its game tunnel.
+    StopRoomSession,
+
+    /// Starts carrying the game over the active room session: the host
+    /// bridges peers to its local game, a joiner exposes a local port its
+    /// game connects to; LAN announcements travel over the mesh.
+    StartGameTunnel {
+        game_port: u16,
+    },
+
+    /// The room moved to another helper (the old one died): keep the mesh
+    /// and its links, just register and relay through the new one.
+    UpdateRoomHelper {
+        rendezvous_addr: String,
+        relay_addr: String,
+    },
 }
 
 impl DaemonRequest {
@@ -179,6 +209,10 @@ impl DaemonRequest {
             DaemonRequest::SetAgentSettings { .. } => "SetAgentSettings",
             DaemonRequest::GetAgentStatus => "GetAgentStatus",
             DaemonRequest::RetryPeerMesh => "RetryPeerMesh",
+            DaemonRequest::StartRoomSession { .. } => "StartRoomSession",
+            DaemonRequest::StopRoomSession => "StopRoomSession",
+            DaemonRequest::StartGameTunnel { .. } => "StartGameTunnel",
+            DaemonRequest::UpdateRoomHelper { .. } => "UpdateRoomHelper",
         }
     }
 }
@@ -221,7 +255,7 @@ pub struct PeerLinkStatus {
     pub client_id: String,
     pub is_host: bool,
     pub p2p_addr: Option<String>,
-    /// `"not_attempted" | "connecting" | "connected" | "failed"`.
+    /// `"not_attempted" | "connecting" | "connected" | "relayed" | "failed"`.
     pub state: String,
 }
 
@@ -314,4 +348,12 @@ pub enum DaemonResponse {
     AgentStatus {
         status: AgentStatusSnapshot,
     },
+
+    /// The host's game started the match (`COUNTDOWN_START` seen): the UI
+    /// marks the room in game on the main server.
+    GameStarted,
+
+    /// The host's game announced a new game after a match (`CREATEGAME`
+    /// seen): the previous match is over.
+    GameEnded,
 }

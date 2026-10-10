@@ -1,0 +1,18 @@
+# Example configuration for `warlay-server helper` -- a matchmaking helper:
+# UDP rendezvous for direct P2P links and the last-resort UDP relay. It has
+# no database and no social logic; it reports to the main server.
+
+[helper]
+# Keep the name stable: the helper's identity is derived from it.
+name = "helper-sa-1"
+region = "sa-east"
+rendezvous_bind = "0.0.0.0:7779"
+relay_bind = "0.0.0.0:7780"
+public_rendezvous_addr = "helper1.example.com:7779"
+public_relay_addr = "helper1.example.com:7780"
+main_url = "https://warlay.example.com"
+# Must equal the main server's main.helper_secret (or set WARLAY_HELPER_SECRET).
+helper_secret = ""
+
+[observability]
+log_level = "info"

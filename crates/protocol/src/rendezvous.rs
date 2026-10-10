@@ -29,6 +29,27 @@ pub enum RendezvousMessage {
     PeerJoined { peer: PeerInfo },
     /// Broadcast by the hub when a peer explicitly leaves or times out.
     PeerLeft { client_id: Uuid },
+    /// Sent by a peer from the UDP socket it is about to hole-punch with,
+    /// to learn the public address the hub sees that socket as (STUN-like).
+    /// Behind a NAT that rewrites ports, the socket's local port says
+    /// nothing about where peers must send to reach it.
+    Probe,
+    /// The hub's answer to `Probe`: the source address the probe came from.
+    ProbeReply { observed: SocketAddr },
+    /// Sent by a peer for the hub to forward verbatim to another member of
+    /// the same room, which receives this same message. Carries P2P link
+    /// offers when the peers can't reach each other's registration socket
+    /// directly (e.g. two players behind one router without hairpinning).
+    Signal {
+        room_token: Uuid,
+        from: Uuid,
+        to: Uuid,
+        payload: Vec<u8>,
+    },
+    /// `Register` for helpers that only admit ticket holders: the room,
+    /// identity and host flag all come from a `RoomTicket` signed by the
+    /// main server instead of being taken on the sender's word.
+    RegisterWithTicket { ticket: Vec<u8> },
 }
 
 impl RendezvousMessage {
@@ -102,6 +123,26 @@ mod tests {
         let encoded = msg.encode().expect("encode should succeed");
         let decoded = RendezvousMessage::decode(&encoded).expect("decode should succeed");
         assert_eq!(msg, decoded);
+    }
+
+    #[test]
+    fn probe_messages_roundtrip_through_encode_decode() {
+        let observed: SocketAddr = "203.0.113.7:50123".parse().expect("valid address");
+        let signal = RendezvousMessage::Signal {
+            room_token: Uuid::new_v4(),
+            from: Uuid::new_v4(),
+            to: Uuid::new_v4(),
+            payload: vec![1, 2, 3],
+        };
+        for msg in [
+            RendezvousMessage::Probe,
+            RendezvousMessage::ProbeReply { observed },
+            signal,
+        ] {
+            let encoded = msg.encode().expect("encode should succeed");
+            let decoded = RendezvousMessage::decode(&encoded).expect("decode should succeed");
+            assert_eq!(msg, decoded);
+        }
     }
 
     #[test]

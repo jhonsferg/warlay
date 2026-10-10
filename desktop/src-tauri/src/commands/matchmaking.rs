@@ -13,7 +13,7 @@ fn invalid(field: &str, value: &str) -> AppError {
 /// Every command below needs a live daemon connection to do anything at
 /// all; silently no-op'ing when there isn't one (the previous behavior)
 /// hides real failures from the user instead of surfacing them.
-fn require_client(state: &State<'_, AppState>) -> Result<DaemonClient, AppError> {
+pub(crate) fn require_client(state: &State<'_, AppState>) -> Result<DaemonClient, AppError> {
     state
         .daemon_client
         .lock()
@@ -23,7 +23,7 @@ fn require_client(state: &State<'_, AppState>) -> Result<DaemonClient, AppError>
 }
 
 /// Maps the daemon's generic Success/Error reply to a Tauri command result.
-fn success_or_err(resp: DaemonResponse) -> Result<(), AppError> {
+pub(crate) fn success_or_err(resp: DaemonResponse) -> Result<(), AppError> {
     match resp {
         DaemonResponse::Success { .. } => Ok(()),
         DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow::anyhow!(message))),

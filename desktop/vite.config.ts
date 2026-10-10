@@ -8,6 +8,9 @@ import { defineConfig } from "vite";
 // hardcoding a color that then drifts from the rest of the app. Prepending
 // this import via additionalData makes it automatic and uniform instead.
 const tokensPath = fileURLToPath(new URL("./src/assets/scss/_tokens.scss", import.meta.url)).replace(/\\/g, "/");
+// The design system's own SCSS helpers (its tokens are CSS custom
+// properties in src/styles/theme.scss).
+const mixinsPath = fileURLToPath(new URL("./src/styles/_mixins.scss", import.meta.url)).replace(/\\/g, "/");
 
 // Tauri expects a fixed, predictable dev server port and no automatic
 // browser opening; it drives the webview itself.
@@ -17,7 +20,7 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
-        additionalData: `@use "${tokensPath}" as *;\n`,
+        additionalData: `@use "${tokensPath}" as *;\n@use "${mixinsPath}" as *;\n`,
       },
     },
   },

@@ -25,3 +25,6 @@ pub use transport;
 
 #[cfg(feature = "config")]
 pub use config;
+
+#[cfg(feature = "social")]
+pub use social;

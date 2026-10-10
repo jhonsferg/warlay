@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Mic, MicOff } from "@lucide/vue";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   getMutedPeers,
@@ -65,6 +65,12 @@ onMounted(async () => {
     selfMuted.value = muted;
   });
   unlisteners.push(unSelfMute);
+
+  // Room sessions (main server + helpers) push the roster directly.
+  const unRoster = await listen<RoomMember[]>("overlay://roster", (event) => {
+    members.value = event.payload;
+  });
+  unlisteners.push(unRoster);
 
   const unMsg = await onMatchmakingMessage((event: ServerMessageEvent) => {
     if (event.message.type === "roomMembersChanged") {

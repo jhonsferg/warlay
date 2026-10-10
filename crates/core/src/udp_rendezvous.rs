@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use warlay_protocol::{PeerInfo, RendezvousMessage};
+use warlay_protocol::{PeerInfo, RendezvousMessage, RoomTicket};
 
 #[derive(Debug)]
 struct PeerState {
@@ -29,10 +29,24 @@ pub struct UdpRendezvous {
     socket: Arc<UdpSocket>,
     rooms: Arc<Mutex<HashMap<Uuid, HashMap<Uuid, PeerState>>>>,
     ttl: Duration,
+    /// When set, only `RegisterWithTicket` carrying a ticket signed with this
+    /// secret is admitted (helper servers); plain `Register` is ignored.
+    ticket_secret: Option<Vec<u8>>,
 }
 
 pub struct UdpRendezvousHandle {
     pub task: JoinHandle<()>,
+}
+
+/// Checks a signed `RoomTicket` and that it hasn't expired.
+pub fn verify_ticket(secret: &[u8], token: &[u8]) -> Option<RoomTicket> {
+    let payload = warlay_crypto::verify_token(secret, token)?;
+    let ticket = RoomTicket::decode(payload).ok()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    (!ticket.is_expired(now)).then_some(ticket)
 }
 
 impl UdpRendezvous {
@@ -45,7 +59,19 @@ impl UdpRendezvous {
             socket: Arc::new(socket),
             rooms: Arc::new(Mutex::new(HashMap::new())),
             ttl,
+            ticket_secret: None,
         }
+    }
+
+    /// Admits only players holding a `RoomTicket` signed with `secret`.
+    pub fn with_ticket_secret(mut self, secret: impl Into<Vec<u8>>) -> Self {
+        self.ticket_secret = Some(secret.into());
+        self
+    }
+
+    /// Rooms with at least one registered player, for load reporting.
+    pub async fn active_rooms(&self) -> usize {
+        self.rooms.lock().await.len()
     }
 
     pub fn spawn(self: Arc<Self>) -> UdpRendezvousHandle {
@@ -93,14 +119,42 @@ impl UdpRendezvous {
                 client_id,
                 is_host,
             } => {
+                if self.ticket_secret.is_some() {
+                    debug!(%peer_addr, "ignoring ticketless registration");
+                    return;
+                }
                 self.handle_register(room_token, client_id, is_host, peer_addr).await;
+            }
+            RendezvousMessage::RegisterWithTicket { ticket } => {
+                let Some(secret) = &self.ticket_secret else {
+                    debug!(%peer_addr, "ticket registration on an open rendezvous, ignoring");
+                    return;
+                };
+                match verify_ticket(secret, &ticket) {
+                    Some(t) => self.handle_register(t.room_id, t.user_id, t.is_host, peer_addr).await,
+                    None => debug!(%peer_addr, "rejected registration with an invalid or expired ticket"),
+                }
             }
             RendezvousMessage::Heartbeat { room_token, client_id } => {
                 self.handle_heartbeat(room_token, client_id, peer_addr).await;
             }
+            RendezvousMessage::Signal {
+                room_token, from, to, ..
+            } => {
+                self.handle_signal(room_token, from, to, data, peer_addr).await;
+            }
+            RendezvousMessage::Probe => {
+                let reply = RendezvousMessage::ProbeReply { observed: peer_addr };
+                if let Ok(bytes) = reply.encode() {
+                    if let Err(error) = self.socket.send_to(&bytes, peer_addr).await {
+                        debug!(%error, %peer_addr, "failed to send ProbeReply");
+                    }
+                }
+            }
             RendezvousMessage::PeerList { .. }
             | RendezvousMessage::PeerJoined { .. }
-            | RendezvousMessage::PeerLeft { .. } => {
+            | RendezvousMessage::PeerLeft { .. }
+            | RendezvousMessage::ProbeReply { .. } => {
                 debug!(%peer_addr, "received client-bound message on server, ignoring");
             }
         }
@@ -165,10 +219,39 @@ impl UdpRendezvous {
         }
     }
 
+    /// Forwards a `Signal` (passed through as its raw encoded bytes) to `to`,
+    /// only when both ends are registered in the room and the sender really
+    /// is `from`'s registered address -- the hub must not become an open
+    /// UDP reflector.
+    async fn handle_signal(&self, room_token: Uuid, from: Uuid, to: Uuid, raw: &[u8], peer_addr: SocketAddr) {
+        let target = {
+            let rooms = self.rooms.lock().await;
+            let Some(room) = rooms.get(&room_token) else {
+                return;
+            };
+            match (room.get(&from), room.get(&to)) {
+                (Some(sender), Some(target)) if sender.addr == peer_addr => target.addr,
+                _ => {
+                    debug!(%room_token, %from, %to, %peer_addr, "dropping signal from or to an unregistered peer");
+                    return;
+                }
+            }
+        };
+        if let Err(error) = self.socket.send_to(raw, target).await {
+            debug!(%error, %room_token, %target, "failed to forward signal");
+        }
+    }
+
     async fn handle_heartbeat(&self, room_token: Uuid, client_id: Uuid, peer_addr: SocketAddr) {
         let mut rooms = self.rooms.lock().await;
         if let Some(room) = rooms.get_mut(&room_token) {
             if let Some(peer) = room.get_mut(&client_id) {
+                // With tickets, identity was proven at registration from that
+                // address; a heartbeat from anywhere else could be a hijack.
+                if self.ticket_secret.is_some() && peer.addr != peer_addr {
+                    debug!(%room_token, %client_id, %peer_addr, "heartbeat from an unregistered address, ignoring");
+                    return;
+                }
                 peer.last_seen = Instant::now();
                 peer.addr = peer_addr;
                 debug!(%room_token, %client_id, %peer_addr, "updated heartbeat last_seen");
@@ -376,6 +459,64 @@ mod tests {
                 }
             }
         );
+    }
+
+    #[tokio::test]
+    async fn probe_is_answered_with_the_observed_source_address() {
+        let server_socket = UdpSocket::bind("127.0.0.1:0").await.expect("bind server");
+        let server_addr = server_socket.local_addr().expect("server addr");
+        Arc::new(UdpRendezvous::new(server_socket)).spawn();
+
+        let client = UdpSocket::bind("127.0.0.1:0").await.expect("bind client");
+        let client_addr = client.local_addr().expect("client addr");
+        let probe = RendezvousMessage::Probe.encode().expect("encode probe");
+        client.send_to(&probe, server_addr).await.expect("send probe");
+
+        assert_eq!(
+            recv_msg(&client).await,
+            RendezvousMessage::ProbeReply { observed: client_addr }
+        );
+    }
+
+    #[tokio::test]
+    async fn signal_is_forwarded_only_between_registered_room_members() {
+        let server_socket = UdpSocket::bind("127.0.0.1:0").await.expect("bind server");
+        let server_addr = server_socket.local_addr().expect("server addr");
+        Arc::new(UdpRendezvous::new(server_socket)).spawn();
+
+        let room_token = Uuid::new_v4();
+        let (a_id, b_id) = (Uuid::new_v4(), Uuid::new_v4());
+        let a = UdpSocket::bind("127.0.0.1:0").await.expect("bind a");
+        let b = UdpSocket::bind("127.0.0.1:0").await.expect("bind b");
+        for (socket, client_id) in [(&a, a_id), (&b, b_id)] {
+            let reg = RendezvousMessage::Register {
+                room_token,
+                client_id,
+                is_host: false,
+            }
+            .encode()
+            .unwrap();
+            socket.send_to(&reg, server_addr).await.unwrap();
+            assert!(matches!(recv_msg(socket).await, RendezvousMessage::PeerList { .. }));
+        }
+        assert!(matches!(recv_msg(&a).await, RendezvousMessage::PeerJoined { .. }));
+
+        let signal = RendezvousMessage::Signal {
+            room_token,
+            from: a_id,
+            to: b_id,
+            payload: b"offer".to_vec(),
+        };
+        a.send_to(&signal.encode().unwrap(), server_addr).await.unwrap();
+        assert_eq!(recv_msg(&b).await, signal);
+
+        // Claiming to be `a` from another socket is dropped.
+        let intruder = UdpSocket::bind("127.0.0.1:0").await.expect("bind intruder");
+        intruder.send_to(&signal.encode().unwrap(), server_addr).await.unwrap();
+        let mut buf = [0_u8; 512];
+        assert!(timeout(Duration::from_millis(200), b.recv_from(&mut buf))
+            .await
+            .is_err());
     }
 
     #[tokio::test]

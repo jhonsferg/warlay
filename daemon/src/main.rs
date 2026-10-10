@@ -15,6 +15,7 @@ mod lan;
 mod log_control;
 mod logging;
 mod security;
+mod session;
 mod state;
 mod storage;
 
@@ -60,6 +61,7 @@ async fn main() -> Result<(), Error> {
         connections: HashMap::new(),
         game_tunnel: None,
         peer_mesh: None,
+        room_session: None,
         voice_poll_task: None,
         lan_capture: None,
         lan_rebroadcast: None,

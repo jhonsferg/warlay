@@ -21,6 +21,23 @@ pub enum Mode {
     /// Broadcast-reflection peer mesh between isolated LAN subnets
     /// (e.g. a Termux bridge on a phone hotspot).
     LanMesh(LanMeshArgs),
+    /// Main server: accounts, friends, communities, rooms, chat and
+    /// notifications (PostgreSQL + Redis). Carries no game traffic.
+    Main(ConfigArgs),
+    /// Helper (matchmaking) server: ticket-gated UDP rendezvous for direct
+    /// P2P links plus the last-resort UDP relay. No social logic.
+    Helper(ConfigArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ConfigArgs {
+    /// Path to the TOML configuration file.
+    #[arg(short, long)]
+    pub config: PathBuf,
+
+    /// Overrides the configured tracing log level (e.g. "debug", "warn").
+    #[arg(long)]
+    pub log_level: Option<String>,
 }
 
 #[derive(Debug, ClapArgs)]
