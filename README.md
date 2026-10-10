@@ -1293,6 +1293,70 @@ systemctl daemon-reload
 systemctl start nginx        # back to the host binary
 ```
 
+#### Removing the host installation
+
+Once the container has proven stable, remove the host nginx so only one
+nginx exists on the server. Do **not** use `apt purge nginx nginx-common`
+directly on Debian:
+
+| Package script                 | What it would do now                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `nginx-common` postrm, purge   | `rm -rf /etc/nginx /var/log/nginx /var/lib/nginx`: deletes the configuration the container mounts |
+| `nginx` / `nginx-common` prerm | stops `nginx.service`, which is now the container                                                 |
+| `nginx-common` postrm, purge   | `deb-systemd-helper purge nginx.service`: disables the container at boot                          |
+| apt dependency resolution      | removes `python3-certbot-nginx`, which depends on `nginx`, breaking renewals                      |
+
+A safe sequence:
+
+```sh
+B=/var/backups/nginx-host-$(date +%F); mkdir -p "$B"
+# 1. back up the host build and keep a live copy of the configuration
+tar -C / -czpf "$B/nginx-host.tar.gz" usr/sbin/nginx usr/lib/nginx etc/nginx \
+  var/lib/dpkg/info/nginx.* var/lib/dpkg/info/nginx-common.*
+cp -a /etc/nginx "$B/etc-nginx-live"
+cp -a /etc/logrotate.d/nginx "$B/logrotate-nginx"
+
+# 2. neutralize the package scripts, then purge without touching dependents
+for f in nginx.prerm nginx-common.prerm nginx-common.postrm; do
+  printf '#!/bin/sh\nexit 0\n' > "/var/lib/dpkg/info/$f"
+done
+apt-mark unhold nginx nginx-common
+dpkg --purge --force-depends nginx nginx-common
+
+# 3. dpkg removed the files it owned in /etc/nginx (nginx.conf, mime.types, ...):
+#    put the whole tree back and check it is identical
+cp -a "$B/etc-nginx-live/." /etc/nginx/
+diff -r --no-dereference "$B/etc-nginx-live" /etc/nginx && echo identical
+cp -a "$B/logrotate-nginx" /etc/logrotate.d/nginx   # if it was a package conffile
+
+# 4. satisfy packages that depend on nginx with an empty package
+mkdir -p /tmp/shim/DEBIAN
+cat > /tmp/shim/DEBIAN/control <<'EOF'
+Package: nginx-container-shim
+Version: 1.0
+Architecture: all
+Maintainer: root <root@localhost>
+Provides: nginx, nginx-common
+Conflicts: nginx, nginx-common
+Replaces: nginx, nginx-common
+Description: nginx runs as a container on this host
+EOF
+dpkg-deb --build --root-owner-group /tmp/shim /tmp/nginx-container-shim.deb
+dpkg -i /tmp/nginx-container-shim.deb
+apt-get check && dpkg --audit
+
+# 5. remove what only the host nginx used (never the mounted directories)
+rm -rf /usr/lib/nginx /usr/share/nginx /var/lib/nginx
+systemctl daemon-reload
+nginx -t && systemctl restart nginx   # proves a cold start without the host build
+```
+
+Keep every directory the container mounts (`/etc/nginx`, `/etc/letsencrypt`,
+`/etc/modsecurity`, the CRS checkout, `/var/www`, `/var/log/nginx` and the
+ModSecurity audit log). If libmodsecurity was also built on the host, check
+that nothing else links it (`ldd`) before removing its prefix. From here on,
+going back to a host nginx means restoring the backup from step 1.
+
 #### Updating
 
 Change the version `ARG`s in the Dockerfile, build and transfer the image,
@@ -1325,6 +1389,10 @@ is the same edit in reverse.
 - **Rate-limited SSH.** If the server limits SSH connections (ufw `LIMIT`,
   fail2ban), run deployment steps through one session or a script instead of
   one connection per command.
+- **certbot without a terminal sleeps first.** `certbot renew` run from a
+  script waits a random delay of up to about eight minutes before renewing;
+  add `--no-random-sleep-on-renew` for manual checks, and run it with
+  `</dev/null` when commands are piped into a shell, or it consumes them.
 
 ## Operating the server
 
