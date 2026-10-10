@@ -10,10 +10,12 @@
 mod aead;
 mod handshake;
 mod proof;
+mod token;
 
 pub use aead::{CipherError, Opener, Sealer, KEY_LEN};
 pub use handshake::{DirectionalKeys, EphemeralKeypair, HandshakeError, PUBLIC_KEY_LEN};
 pub use proof::{compute_proof, verify_proof, PROOF_LEN};
+pub use token::{sign_token, verify_token};
 
 /// Generates a fresh 32-byte pre-shared key for a newly authenticated
 /// client, using the OS CSPRNG.
