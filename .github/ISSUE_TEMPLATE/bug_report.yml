@@ -1,0 +1,59 @@
+name: Bug report
+description: Something does not work as expected.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Security issues must **not** be reported here,
+        see SECURITY.md instead.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Desktop client
+        - Daemon (wnetd)
+        - Server (hub)
+        - Release / installer
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the client's About dialog, or the release you downloaded.
+      placeholder: v0.3.1
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Register the server as wss://...
+        2. Create a room
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Client/daemon logs live in `%APPDATA%\com.warlay.lanlauncher\logs\`;
+        server logs are on stdout (`docker logs warlay-hub`). Remove anything private.
+      render: text
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Windows 11 23H2, Warcraft III 1.26a, server on Debian 12 + Docker
