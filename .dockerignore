@@ -1,0 +1,19 @@
+# Build context for server/Dockerfile. The server only needs crates/, server/
+# and the workspace manifests; the other workspace members just need their
+# Cargo.toml present for workspace resolution. Everything below is excluded
+# for speed and to keep local files out of the image.
+**/target
+**/node_modules
+*.log
+.git
+.github
+dist
+scripts
+
+desktop/dist
+desktop/src-tauri/gen
+desktop/src-tauri/binaries
+desktop/e2e
+tools
+pinterest
+.w3gs-research
