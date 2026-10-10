@@ -113,6 +113,21 @@ pub fn list_local_subnets() -> Result<Vec<DetectedSubnet>, NetworkError> {
         .collect())
 }
 
+/// Every non-loopback IPv4 address assigned to this machine.
+pub fn local_ipv4_addrs() -> Vec<Ipv4Addr> {
+    if_addrs::get_if_addrs()
+        .map(|interfaces| {
+            interfaces
+                .into_iter()
+                .filter_map(|iface| match iface.addr {
+                    if_addrs::IfAddr::V4(v4) if !iface.is_loopback() => Some(v4.ip),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
