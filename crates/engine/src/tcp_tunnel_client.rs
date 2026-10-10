@@ -238,7 +238,7 @@ pub async fn start_hosting_with_p2p(
 
 async fn connect_local_game(local_game_port: u16) -> Option<TcpStream> {
     let mut addrs_to_try = vec![std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))];
-    for ipv4 in super::lan_capture::local_ipv4_addrs() {
+    for ipv4 in super::subnet::local_ipv4_addrs() {
         let ip = std::net::IpAddr::V4(ipv4);
         if !addrs_to_try.contains(&ip) {
             addrs_to_try.push(ip);
@@ -263,10 +263,13 @@ async fn run_host_mesh_loop(
     local_game_port: u16,
     on_game_started: Arc<dyn Fn() + Send + Sync + 'static>,
 ) {
-    let mut bridged_peers = std::collections::HashSet::new();
+    // Keyed by the link itself, not just the peer: a peer whose link dropped
+    // and was re-punched comes back with a new handle that needs bridging.
+    let mut bridged_links: std::collections::HashMap<Uuid, Arc<p2p_tunnel::P2pTunnelHandle>> =
+        std::collections::HashMap::new();
     let mut bridge_tasks = tokio::task::JoinSet::new();
 
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    let mut interval = tokio::time::interval(Duration::from_millis(250));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
@@ -274,7 +277,11 @@ async fn run_host_mesh_loop(
 
         let connected = mesh_handle.connected_peers();
         for (peer_id, handle) in connected {
-            if bridged_peers.insert(peer_id) {
+            let is_new = bridged_links
+                .get(&peer_id)
+                .is_none_or(|bridged| !Arc::ptr_eq(bridged, &handle));
+            if is_new {
+                bridged_links.insert(peer_id, handle.clone());
                 let cb = on_game_started.clone();
                 bridge_tasks.spawn(async move {
                     run_host_peer_bridge(handle, local_game_port, cb).await;
@@ -452,7 +459,7 @@ async fn open_host_backend(
 
     let mut local_game = None;
     let mut addrs_to_try = vec![std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))];
-    for ipv4 in super::lan_capture::local_ipv4_addrs() {
+    for ipv4 in super::subnet::local_ipv4_addrs() {
         let ip = std::net::IpAddr::V4(ipv4);
         if !addrs_to_try.contains(&ip) {
             addrs_to_try.push(ip);
@@ -573,7 +580,7 @@ pub async fn start_joining(
                 }
             };
             debug!(%peer_addr, %room_token, "local game client connected, bridging to hub");
-            tokio::spawn(bridge_joiner_stream(hub_tcp_addr.clone(), room_token, local_game));
+            tokio::spawn(bridge_joiner_stream(hub_tcp_addr.clone(), room_token, local_game, &[]));
         }
     });
 
@@ -589,7 +596,40 @@ pub async fn start_joining_with_p2p(
     local_listen_addr: SocketAddr,
     mesh: Option<Arc<p2p_mesh::PeerMeshHandle>>,
 ) -> Result<(TunnelHandle, u16), TunnelError> {
-    let hub_tcp_addr = hub_tcp_addr.into();
+    spawn_joiner_listener(Some(hub_tcp_addr.into()), room_token, local_listen_addr, mesh).await
+}
+
+/// Runs on a joiner with no game server at all: every connection the local
+/// game makes is carried to the host over the room's P2P mesh (directly,
+/// or through the helper relay when the mesh had to fall back to it).
+pub async fn start_joining_mesh(
+    room_token: Uuid,
+    local_listen_addr: SocketAddr,
+    mesh: Arc<p2p_mesh::PeerMeshHandle>,
+) -> Result<(TunnelHandle, u16), TunnelError> {
+    spawn_joiner_listener(None, room_token, local_listen_addr, Some(mesh)).await
+}
+
+/// Runs on the host with no game server: bridges every stream peers open
+/// over the mesh to the local game.
+pub fn start_hosting_mesh(
+    local_game_port: u16,
+    mesh: Arc<p2p_mesh::PeerMeshHandle>,
+    on_game_started: impl Fn() + Send + Sync + 'static,
+) -> TunnelHandle {
+    let on_game_started: Arc<dyn Fn() + Send + Sync + 'static> = Arc::new(on_game_started);
+    let task = tokio::spawn(async move {
+        run_host_mesh_loop(mesh, local_game_port, on_game_started).await;
+    });
+    TunnelHandle { tasks: vec![task] }
+}
+
+async fn spawn_joiner_listener(
+    hub_tcp_addr: Option<HubTunnelEndpoint>,
+    room_token: Uuid,
+    local_listen_addr: SocketAddr,
+    mesh: Option<Arc<p2p_mesh::PeerMeshHandle>>,
+) -> Result<(TunnelHandle, u16), TunnelError> {
     let listener = TcpListener::bind(local_listen_addr)
         .await
         .map_err(|source| TunnelError::Bind {
@@ -601,7 +641,7 @@ pub async fn start_joining_with_p2p(
         .local_addr()
         .map(|a| a.port())
         .unwrap_or(local_listen_addr.port());
-    info!(%local_listen_addr, actual_port, %room_token, "joiner tunnel listening for local game client with P2P support");
+    info!(%local_listen_addr, actual_port, %room_token, relay_server = hub_tcp_addr.is_some(), "joiner tunnel listening for the local game client");
 
     let task = tokio::spawn(async move {
         loop {
@@ -627,71 +667,118 @@ pub async fn start_joining_with_p2p(
     Ok((TunnelHandle { tasks: vec![task] }, actual_port))
 }
 
+/// How long a fresh game connection waits for a P2P link that is still
+/// being negotiated before settling for the relay.
+const P2P_PATH_WAIT: Duration = Duration::from_secs(4);
+/// Without a game server to fall back to, wait long enough for the mesh's
+/// own fallback (the helper relay) to come up.
+const MESH_ONLY_PATH_WAIT: Duration = Duration::from_secs(25);
+
 async fn bridge_joiner_connection(
-    hub_tcp_addr: HubTunnelEndpoint,
+    hub_tcp_addr: Option<HubTunnelEndpoint>,
     room_token: Uuid,
-    local_game: TcpStream,
+    mut local_game: TcpStream,
     mesh: Option<Arc<p2p_mesh::PeerMeshHandle>>,
 ) {
+    let mut already_sent = Vec::new();
     if let Some(mesh_handle) = mesh {
         let start = tokio::time::Instant::now();
-        let mut path_handle = None;
-
-        while start.elapsed() < Duration::from_secs(4) {
-            if let Some(path) = mesh_handle.best_path_to_host() {
-                let handle = match path {
-                    p2p_mesh::PathToHost::Direct(h) => h,
-                    p2p_mesh::PathToHost::ViaPeer(_, h) => h,
+        loop {
+            let mut path = mesh_handle.best_path_to_host();
+            while path.is_none() {
+                // With a relay server, only wait while a first attempt is
+                // still in flight; mesh-only waits for its relay fallback.
+                let keep_waiting = match hub_tcp_addr {
+                    Some(_) => mesh_handle.has_pending_links() && start.elapsed() < P2P_PATH_WAIT,
+                    None => start.elapsed() < MESH_ONLY_PATH_WAIT,
                 };
-                path_handle = Some(handle);
-                break;
+                if !keep_waiting {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                path = mesh_handle.best_path_to_host();
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
 
-        if let Some(mut handle) = path_handle {
-            info!(%room_token, "bridging joiner stream over P2P mesh");
-            let mut local_game = local_game;
-            loop {
-                if pump_joiner_p2p(&mut local_game, &handle).await.is_ok() {
-                    return;
-                }
-                warn!(%room_token, "P2P joiner stream interrupted, searching for alternative path");
-                if handle.connection.close_reason().is_some() {
-                    if let Some(new_path) = mesh_handle.best_path_to_host() {
-                        let new_handle = match new_path {
-                            p2p_mesh::PathToHost::Direct(h) => h,
-                            p2p_mesh::PathToHost::ViaPeer(_, h) => h,
-                        };
-                        handle = new_handle;
-                        info!(%room_token, "switched joiner stream to alternative P2P path");
-                        continue;
-                    }
-                }
+            let Some(path) = path else {
+                warn!(%room_token, "no P2P path to host");
                 break;
+            };
+            let (route, handle) = match path {
+                p2p_mesh::PathToHost::Direct(h) => ("direct", h),
+                p2p_mesh::PathToHost::ViaPeer(_, h) => ("via peer", h),
+            };
+            let remote = handle.connection.remote_address();
+            info!(%room_token, route, relayed = handle.relayed, %remote, "bridging joiner stream over P2P mesh");
+            match pump_joiner_p2p(&mut local_game, &handle, &already_sent).await {
+                P2pPump::Finished => return,
+                P2pPump::FailedBeforeReply(sent) => {
+                    warn!(%room_token, route, %remote, "P2P stream failed before the host answered");
+                    already_sent = sent;
+                    // With a relay server, fall back to it right away;
+                    // otherwise try whatever path the mesh repairs to.
+                    if hub_tcp_addr.is_some() || start.elapsed() >= MESH_ONLY_PATH_WAIT {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
             }
-            return;
-        } else {
-            warn!(%room_token, "no P2P path to host found within 4s timeout, falling back to server TCP relay");
         }
     }
 
-    bridge_joiner_stream(hub_tcp_addr, room_token, local_game).await;
+    match hub_tcp_addr {
+        Some(hub) => {
+            info!(%room_token, "falling back to server TCP relay");
+            bridge_joiner_stream(hub, room_token, local_game, &already_sent).await;
+        }
+        None => warn!(%room_token, "dropping the game connection: the host is unreachable"),
+    }
 }
 
-async fn pump_joiner_p2p(local_game: &mut TcpStream, handle: &Arc<p2p_tunnel::P2pTunnelHandle>) -> Result<(), ()> {
+enum P2pPump {
+    /// The session ran and ended (either side closed).
+    Finished,
+    /// The P2P stream broke before the host sent a single byte; carries
+    /// what the game had already sent so the relay can replay it.
+    FailedBeforeReply(Vec<u8>),
+}
+
+/// Carries one game connection over its own QUIC stream on `handle`
+/// (tagged `0x01`, the same framing the host and bridges accept), so every
+/// connection WC3 opens gets a fresh session on the host side.
+/// `already_sent`: what the game sent on a previous path that broke before
+/// the host answered; replayed first so the host sees the whole session.
+async fn pump_joiner_p2p(
+    local_game: &mut TcpStream,
+    handle: &Arc<p2p_tunnel::P2pTunnelHandle>,
+    already_sent: &[u8],
+) -> P2pPump {
+    let (mut p2p_send, mut p2p_recv) = match handle.connection.open_bi().await {
+        Ok(streams) => streams,
+        Err(_) => return P2pPump::FailedBeforeReply(already_sent.to_vec()),
+    };
+    if p2p_send.write_all(&[0x01]).await.is_err() || p2p_send.write_all(already_sent).await.is_err() {
+        return P2pPump::FailedBeforeReply(already_sent.to_vec());
+    }
+
     let (mut game_read, mut game_write) = local_game.split();
+    let got_reply = std::sync::atomic::AtomicBool::new(false);
+    let sent_before_reply = std::sync::Mutex::new(already_sent.to_vec());
 
     let game_to_p2p = async {
         let mut buf = [0_u8; 8192];
         loop {
             let n = match game_read.read(&mut buf).await {
-                Ok(0) => break Ok(()),
+                Ok(0) | Err(_) => {
+                    let _ = p2p_send.finish();
+                    return true;
+                }
                 Ok(n) => n,
-                Err(_) => break Err(()),
             };
-            if handle.send.lock().await.write_all(&buf[..n]).await.is_err() {
-                break Err(());
+            if !got_reply.load(std::sync::atomic::Ordering::Relaxed) {
+                sent_before_reply.lock().unwrap().extend_from_slice(&buf[..n]);
+            }
+            if p2p_send.write_all(&buf[..n]).await.is_err() {
+                return false;
             }
         }
     };
@@ -699,24 +786,36 @@ async fn pump_joiner_p2p(local_game: &mut TcpStream, handle: &Arc<p2p_tunnel::P2
     let p2p_to_game = async {
         let mut buf = [0_u8; 8192];
         loop {
-            let n = match handle.recv.lock().await.read(&mut buf).await {
+            let n = match p2p_recv.read(&mut buf).await {
                 Ok(Some(n)) if n > 0 => n,
                 Ok(Some(_)) => continue,
-                _ => break Err(()),
+                _ => return false,
             };
+            got_reply.store(true, std::sync::atomic::Ordering::Relaxed);
             if game_write.write_all(&buf[..n]).await.is_err() {
-                break Err(());
+                return true;
             }
         }
     };
 
-    tokio::select! {
-        res1 = game_to_p2p => res1,
-        res2 = p2p_to_game => res2,
+    // `true` means the game side ended the session.
+    let game_ended = tokio::select! {
+        ended = game_to_p2p => ended,
+        ended = p2p_to_game => ended,
+    };
+    if game_ended || got_reply.load(std::sync::atomic::Ordering::Relaxed) {
+        P2pPump::Finished
+    } else {
+        P2pPump::FailedBeforeReply(sent_before_reply.into_inner().unwrap())
     }
 }
 
-async fn bridge_joiner_stream(hub_tcp_addr: HubTunnelEndpoint, room_token: Uuid, mut local_game: TcpStream) {
+async fn bridge_joiner_stream(
+    hub_tcp_addr: HubTunnelEndpoint,
+    room_token: Uuid,
+    mut local_game: TcpStream,
+    already_sent: &[u8],
+) {
     let mut hub_stream = match hub_tcp_addr.connect().await {
         Ok(stream) => stream,
         Err(error) => {
@@ -727,6 +826,12 @@ async fn bridge_joiner_stream(hub_tcp_addr: HubTunnelEndpoint, room_token: Uuid,
     if let Err(error) = send_hello(&mut hub_stream, &TunnelHello::JoinerStream { room_token }).await {
         warn!(%error, "failed to send JoinerStream hello");
         return;
+    }
+    if !already_sent.is_empty() {
+        if let Err(error) = hub_stream.write_all(already_sent).await {
+            warn!(%error, "failed to replay game bytes onto the relay stream");
+            return;
+        }
     }
 
     match tokio::io::copy_bidirectional(&mut local_game, &mut hub_stream).await {
@@ -919,6 +1024,53 @@ mod tests {
             .unwrap();
         assert_eq!(&reply_buf, b"p2p-reply-payload");
 
+        host_mesh.abort();
+        joiner_mesh.abort();
+    }
+
+    /// No game server anywhere: two game sessions in a row go host <-> joiner
+    /// purely over the mesh, each on its own stream.
+    #[tokio::test]
+    async fn mesh_only_hosting_and_joining_two_sessions() {
+        use tokio::net::UdpSocket;
+        use warlay_core::UdpRendezvous;
+
+        let rv_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let rv_addr = rv_socket.local_addr().unwrap();
+        Arc::new(UdpRendezvous::new(rv_socket)).spawn();
+        let room_token = Uuid::new_v4();
+        let host_mesh = Arc::new(p2p_mesh::PeerMesh::spawn(rv_addr, room_token, Uuid::new_v4(), true));
+        let joiner_mesh = Arc::new(p2p_mesh::PeerMesh::spawn(rv_addr, room_token, Uuid::new_v4(), false));
+
+        // Fake game host: answers each connection with its own number.
+        let game = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let game_port = game.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            for n in 1_u8.. {
+                let (mut socket, _) = game.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let mut buf = [0_u8; 4];
+                    socket.read_exact(&mut buf).await.unwrap();
+                    socket.write_all(&[n]).await.unwrap();
+                });
+            }
+        });
+
+        let _host = start_hosting_mesh(game_port, host_mesh.clone(), || {});
+        let (_joiner, port) = start_joining_mesh(room_token, "127.0.0.1:0".parse().unwrap(), joiner_mesh.clone())
+            .await
+            .unwrap();
+
+        for expected in [1_u8, 2] {
+            let mut client = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            client.write_all(b"join").await.unwrap();
+            let mut reply = [0_u8; 1];
+            timeout(Duration::from_secs(10), client.read_exact(&mut reply))
+                .await
+                .expect("reply over the mesh")
+                .unwrap();
+            assert_eq!(reply[0], expected, "each session needs its own host connection");
+        }
         host_mesh.abort();
         joiner_mesh.abort();
     }
