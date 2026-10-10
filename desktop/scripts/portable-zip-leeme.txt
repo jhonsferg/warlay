@@ -1,0 +1,53 @@
+Warlay - version portable
+==========================
+
+Este ZIP contiene la version portable de Warlay: no necesita instalador,
+pero requiere que ambos archivos permanezcan en la MISMA carpeta:
+
+  warlay.exe   -> Cliente de escritorio (interfaz grafica)
+  wnetd.exe    -> Warlay Network Agent (el daemon que corre en segundo
+                  plano con privilegios elevados, necesario para detectar
+                  partidas LAN y tunelizar el trafico del juego)
+
+Como usarla
+-----------
+1. Extrae TODO el contenido de este ZIP a una carpeta de tu eleccion
+   (ambos .exe deben quedar juntos, no los separes).
+2. Ejecuta warlay.exe.
+3. Windows pedira permiso de administrador para iniciar wnetd.exe -- acepta
+   el aviso de Control de Cuentas de Usuario (UAC). Esto es necesario
+   porque capturar trafico en la red local requiere privilegios elevados;
+   Warlay no usa esos privilegios para nada mas.
+4. Listo. La app se conecta automaticamente al agente y ya puedes
+   registrar servidores, crear o unirte a salas, y jugar.
+
+Inicio automatico con Windows (opcional)
+-----------------------------------------
+Warlay inicia el agente por su cuenta cada vez que abris warlay.exe. Si
+preferis que arranque solo al iniciar sesion en Windows, sin abrir la app,
+podes activarlo vos mismo (sirve igual para la version instalada):
+
+1. Abri una terminal (cmd o PowerShell) EN LA CARPETA donde extrajiste
+   este ZIP.
+2. Ejecuta como administrador:  wnetd.exe --install
+3. Para desactivarlo mas adelante:  wnetd.exe --uninstall
+
+Diferencias con el instalador
+------------------------------
+- El instalador copia los archivos a Archivos de Programa, crea accesos
+  directos y un desinstalador que detiene el agente antes de borrarlo.
+- La version portable no modifica el sistema: solo usa la carpeta donde
+  la extrajiste. Podes moverla, copiarla a un USB, o borrarla sin dejar
+  rastro (salvo que hayas ejecutado wnetd.exe --install, en cuyo caso
+  desinstalalo primero con wnetd.exe --uninstall).
+
+Datos de la aplicacion
+-----------------------
+Tanto la version instalada como la portable guardan su configuracion y
+sus logs en la misma ubicacion:
+  %APPDATA%\com.warlay.lanlauncher\
+
+Soporte
+-------
+Si algo no funciona, revisa la pestaña "Consola" dentro de la app -- ahi
+se ve el registro en vivo de lo que esta haciendo Warlay.
