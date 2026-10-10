@@ -215,6 +215,8 @@ jobs:
             type=raw,value=${{ env.VERSION }}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: server/Dockerfile
@@ -236,8 +238,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Download only our own artifacts: other jobs' actions can upload
+      # extra ones (e.g. Docker build records) that are not release assets.
       - uses: actions/download-artifact@v4
         with:
+          pattern: server-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
           path: dist
           merge-multiple: true
       - name: Checksums
