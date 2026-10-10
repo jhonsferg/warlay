@@ -1,0 +1,45 @@
+# Example configuration for `warlay-server hub` — the centralized
+# matchmaking + room-scoped relay mode meant to run on a public VPS.
+# Deployed by default at /app/config/hub.toml inside the Docker image.
+
+server_name = "Warlay VPS #1"
+
+[hub]
+# Bind to all interfaces inside the container; the host firewall decides
+# which of these ports are actually public (see server/README.md).
+ws_addr = "0.0.0.0:7777"
+relay_addr = "0.0.0.0:6112"
+tcp_tunnel_addr = "0.0.0.0:7778"
+rendezvous_udp_addr = "0.0.0.0:7779"
+
+# How long a client's UDP endpoint is kept as a room member without a fresh
+# relay frame from it before being pruned (handles disconnects that never
+# sent an explicit LeaveRoom).
+membership_ttl_secs = 30
+
+# Where warlay.db (server identity + issued client keys) lives. Inside the
+# Docker image this is a VOLUME — mount it to a named volume or bind mount
+# so it survives `docker rm`/recreation; see the README's Docker section.
+data_dir = "/app/data"
+
+# A client that hasn't reconnected in this many days has its issued key
+# purged and must authenticate as new the next time it connects.
+client_inactivity_purge_days = 30
+
+# A room with zero connected participants (host disconnected, everyone
+# left) for this many minutes gets purged to free resources. Doesn't affect
+# rooms that still have anyone in them, no matter how idle.
+room_inactivity_purge_minutes = 15
+
+[security]
+# Uncomment to require a password on first connection from each new client
+# (sent only over the already-encrypted handshake channel — see the
+# Launcher client's README for the crypto details). Leave commented for an
+# open server.
+# password = "changeme"
+
+[observability]
+# "debug" while actively verifying things end to end (tunnel pairing,
+# individual LAN packet relays, byte counts) — drop back to "info" for
+# quieter logs once everything's confirmed working, "debug" is chatty.
+log_level = "info"
