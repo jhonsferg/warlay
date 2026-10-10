@@ -1,0 +1,12 @@
+[package]
+name = "transport"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+socket2 = { workspace = true }
+
+
