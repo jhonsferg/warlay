@@ -1,5 +1,7 @@
 mod discovery_service;
 mod hub_address;
+// Raw-socket LAN capture is WinSock-only; everything else builds anywhere.
+#[cfg(windows)]
 mod lan_capture;
 mod lan_rebroadcast;
 mod matchmaking_client;
@@ -13,15 +15,17 @@ mod w3gs_sniff;
 
 pub use discovery_service::{query_games, spawn_discovery, RelayInfo};
 pub use hub_address::HubAddress;
+#[cfg(windows)]
 pub use lan_capture::{spawn as spawn_lan_capture, LanCaptureHandle};
 pub use lan_rebroadcast::{spawn as spawn_lan_rebroadcast, LanRebroadcastHandle};
 pub use matchmaking_client::MatchmakingConnection;
-pub use p2p_mesh::{PathToHost, PeerLinkState, PeerMesh, PeerMeshHandle};
-pub use p2p_tunnel::{punch_and_connect, P2pTunnelHandle};
+pub use p2p_mesh::{MeshConfig, PathToHost, PeerLinkState, PeerMesh, PeerMeshHandle};
+pub use p2p_tunnel::{connect_via_relay, punch_and_connect, P2pTunnelHandle};
 pub use relay_client::{RelayClient, RelayClientHandle};
 pub use subnet::{list_local_subnets, DetectedSubnet, Ipv4Cidr};
 pub use tcp_tunnel_client::{
-    start_hosting, start_hosting_with_p2p, start_joining, start_joining_with_p2p, HubTunnelEndpoint, TunnelHandle,
+    start_hosting, start_hosting_mesh, start_hosting_with_p2p, start_joining, start_joining_mesh,
+    start_joining_with_p2p, HubTunnelEndpoint, TunnelHandle,
 };
 pub use w3gs_sniff::contains_create_game;
 pub use warlay_core::LoopGuard;
