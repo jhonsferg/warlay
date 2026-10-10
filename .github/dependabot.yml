@@ -5,7 +5,11 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: build
+      prefix: chore
+    ignore:
+      # Must stay on the version Tauri uses (desktop links both); upgraded
+      # together with Tauri by hand.
+      - dependency-name: windows
     groups:
       cargo-minor:
         update-types: [minor, patch]
@@ -15,7 +19,7 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: build
+      prefix: chore
     groups:
       npm-minor:
         update-types: [minor, patch]
@@ -25,11 +29,11 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: ci
+      prefix: chore
 
   - package-ecosystem: docker
     directory: /server
     schedule:
       interval: weekly
     commit-message:
-      prefix: build
+      prefix: chore
