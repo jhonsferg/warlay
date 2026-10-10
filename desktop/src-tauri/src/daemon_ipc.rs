@@ -136,6 +136,12 @@ impl DaemonClient {
                                 let _ = app_handle
                                     .emit("matchmaking://message", &ServerMessageEvent { server_id, message });
                             }
+                            DaemonResponse::GameStarted => {
+                                let _ = app_handle.emit("session://game-started", ());
+                            }
+                            DaemonResponse::GameEnded => {
+                                let _ = app_handle.emit("session://game-ended", ());
+                            }
                             DaemonResponse::TunnelStatusChanged { running } => {
                                 let _ = app_handle.emit("hubTunnel://status-changed", running);
                             }
