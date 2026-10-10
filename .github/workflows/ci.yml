@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  pr-title:
+    name: PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a Conventional Commits title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|docs|style|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if ! grep -Eq "$pattern" <<< "$TITLE"; then
+            echo "::error::PR title must follow Conventional Commits, e.g. 'feat: add room filters'."
+            exit 1
+          fi
+
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Prettier
+        run: npx --yes prettier@3.3.3 --check .
+
+  server:
+    name: Server and shared crates (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: >
+          cargo test --locked
+          -p server -p protocol -p crypto -p matchmaking -p core -p storage -p config -p transport
+
+  windows:
+    name: Workspace (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Type-check and bundle frontend
+        working-directory: desktop
+        run: npm run build
+      - name: Stub the daemon sidecar
+        # tauri-build only checks that the externalBin exists; the real
+        # daemon is built and bundled by the release workflow.
+        shell: bash
+        run: |
+          mkdir -p desktop/src-tauri/binaries
+          touch desktop/src-tauri/binaries/wnetd-x86_64-pc-windows-msvc.exe
+      - name: Test
+        run: cargo test --workspace --locked
+
+  docker:
+    name: Server image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
