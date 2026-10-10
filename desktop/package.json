@@ -1,0 +1,40 @@
+{
+  "name": "warlay-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "prepare-daemon-sidecar": "node scripts/prepare-daemon-sidecar.mjs",
+    "build-portable-zip": "node scripts/build-portable-zip.mjs",
+    "dist": "tauri build && npm run build-portable-zip"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/lato": "^5.3.0",
+    "@fontsource/nunito": "^5.3.0",
+    "@fontsource/roboto": "^5.3.0",
+    "@fontsource/ubuntu": "^5.3.0",
+    "@lucide/vue": "^1.27.0",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-global-shortcut": "^2.2.0",
+    "@tauri-apps/plugin-notification": "^2.3.3",
+    "@vee-validate/zod": "^4.15.1",
+    "pinia": "^4.0.2",
+    "vee-validate": "^4.15.1",
+    "vue": "^3.5.40",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "sass": "^1.102.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vue-tsc": "^2.2.12"
+  }
+}
