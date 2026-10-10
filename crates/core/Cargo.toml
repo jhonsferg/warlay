@@ -1,0 +1,20 @@
+[package]
+name = "core"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+# The crate is named `core`, which shadows the standard library's `core` in
+# rustdoc's generated doctest crates and breaks every derive there.
+doctest = false
+
+[dependencies]
+warlay-protocol = { workspace = true }
+warlay-transport = { workspace = true }
+warlay-matchmaking = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+
