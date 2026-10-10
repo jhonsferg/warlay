@@ -1,0 +1,19 @@
+// Dedicated global reset for the overlay window ONLY -- deliberately does
+// NOT import main.scss, which paints an opaque $bg-void on <body> for the
+// main app window. That opaque body was leaking into the overlay (it's a
+// separate <html>/<body> document, `overlay.html`, but both entry points
+// used to share the same global stylesheet), defeating the whole point of
+// a see-through HUD: the overlay rendered as a solid dark box instead of
+// transparent, even though the Tauri window itself was correctly configured
+// as transparent. See OverlayApp.vue.
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
