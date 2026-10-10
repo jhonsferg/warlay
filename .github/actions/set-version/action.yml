@@ -1,0 +1,36 @@
+name: Set version
+description: >
+  Stamps a release version into the workspace Cargo.toml, desktop/package.json
+  and tauri.conf.json inside the CI checkout. Nothing is committed back:
+  `main` is protected and the git tag is the source of truth for versions.
+
+inputs:
+  version:
+    description: Semantic version without the leading "v" (e.g. 1.4.0).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Stamp version ${{ inputs.version }}
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        node --input-type=module -e '
+          import fs from "node:fs";
+          const version = process.env.VERSION;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`invalid version: ${version}`);
+
+          const cargo = fs.readFileSync("Cargo.toml", "utf8");
+          const pattern = /(\[workspace\.package\][^\[]*?\nversion = ")[^"]*(")/;
+          if (!pattern.test(cargo)) throw new Error("version not found in [workspace.package]");
+          fs.writeFileSync("Cargo.toml", cargo.replace(pattern, `$1${version}$2`));
+
+          for (const file of ["desktop/package.json", "desktop/src-tauri/tauri.conf.json"]) {
+            const json = JSON.parse(fs.readFileSync(file, "utf8"));
+            json.version = version;
+            fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+          }
+          console.log(`Stamped version ${version}`);
+        '
