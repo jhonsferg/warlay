@@ -736,5 +736,26 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                 ),
             }
         }
+
+        DaemonRequest::StartRoomSession {
+            room_id,
+            user_id,
+            is_host,
+            rendezvous_addr,
+            relay_addr,
+            ticket,
+        } => {
+            crate::session::start_room_session(_state, room_id, user_id, is_host, rendezvous_addr, relay_addr, ticket)
+                .await
+        }
+
+        DaemonRequest::StopRoomSession => crate::session::stop_room_session(_state).await,
+
+        DaemonRequest::StartGameTunnel { game_port } => crate::session::start_game_tunnel(_state, game_port).await,
+
+        DaemonRequest::UpdateRoomHelper {
+            rendezvous_addr,
+            relay_addr,
+        } => crate::session::update_room_helper(_state, rendezvous_addr, relay_addr).await,
     }
 }
