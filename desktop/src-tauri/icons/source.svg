@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient: Dark magical aura -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+      <stop offset="0%" stop-color="#2a2316" />
+      <stop offset="70%" stop-color="#14110b" />
+      <stop offset="100%" stop-color="#090805" />
+    </radialGradient>
+    
+    <!-- Gold Gradient for the 'W' -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe699" />
+      <stop offset="40%" stop-color="#d4a94a" />
+      <stop offset="60%" stop-color="#aa7f2a" />
+      <stop offset="100%" stop-color="#664a10" />
+    </linearGradient>
+
+    <!-- Outer Glow for the W -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="15" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Drop Shadow for depth -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.8" />
+    </filter>
+  </defs>
+
+  <!-- Background Base (Rounded square for standard app icon style) -->
+  <rect x="20" y="20" width="472" height="472" rx="100" fill="url(#bgGrad)" filter="url(#shadow)" />
+  
+  <!-- Outer metallic border -->
+  <rect x="20" y="20" width="472" height="472" rx="100" fill="none" stroke="url(#goldGrad)" stroke-width="6" opacity="0.4" />
+  <rect x="30" y="30" width="452" height="452" rx="90" fill="none" stroke="url(#goldGrad)" stroke-width="2" opacity="0.2" />
+
+  <!-- Inner glowing network ring -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#d4a94a" stroke-width="2" stroke-dasharray="10 15" opacity="0.3" />
+
+  <!-- The stylized 'W' -->
+  <!-- We'll draw it with a thick geometric path that resembles both a W and twin swords/axes -->
+  <g filter="url(#glow)">
+    <path 
+      d="M 120,180 
+         L 190,360 
+         L 256,260 
+         L 322,360 
+         L 392,180 
+         L 340,160 
+         L 286,300 
+         L 256,220 
+         L 226,300 
+         L 172,160 
+         Z" 
+      fill="url(#goldGrad)" 
+      filter="url(#shadow)"
+    />
+  </g>
+
+  <!-- Glowing core (LAN node) in the center of the W -->
+  <circle cx="256" cy="220" r="12" fill="#fff" opacity="0.9" />
+  <circle cx="256" cy="220" r="24" fill="#d4a94a" opacity="0.5" filter="url(#glow)" />
+  
+  <!-- Subtle network dots at the peaks -->
+  <circle cx="146" cy="170" r="8" fill="#d4a94a" opacity="0.8" />
+  <circle cx="366" cy="170" r="8" fill="#d4a94a" opacity="0.8" />
+  <circle cx="208" cy="330" r="8" fill="#d4a94a" opacity="0.8" />
+  <circle cx="304" cy="330" r="8" fill="#d4a94a" opacity="0.8" />
+
+</svg>
