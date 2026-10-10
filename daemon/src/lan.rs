@@ -65,7 +65,13 @@ pub async fn spawn_lan_mesh(
     tokio::spawn(async move {
         while game_ended_rx.recv().await.is_some() {
             let s = state_for_game_ended.lock().await;
-            if let Some(active_id) = &s.active_room_server {
+            if s.room_session.is_some() {
+                // The UI owns the room on the main server.
+                drop(s);
+                info!("CREATEGAME detectado: partida anterior terminó");
+                crate::ipc_server::push_event(&state_for_game_ended, warlay::protocol::ipc::DaemonResponse::GameEnded)
+                    .await;
+            } else if let Some(active_id) = &s.active_room_server {
                 if let Some(conn) = s.connections.get(active_id) {
                     info!(server_id = %active_id, "CREATEGAME detectado: partida anterior terminó, marcando sala disponible");
                     conn.send(warlay::protocol::ClientMessage::SetRoomAvailable);
@@ -99,7 +105,13 @@ pub async fn spawn_lan_mesh(
             tokio::select! {
                 Some(payload) = cap_rx.recv() => {
                     let s_guard = state_for_task.lock().await;
-                    if let Some(active) = &active_id {
+                    // Room sessions carry LAN broadcasts straight to the
+                    // other players over the mesh, never through a server.
+                    if s_guard.room_session.is_some() {
+                        if let Some(mesh) = &s_guard.peer_mesh {
+                            mesh.broadcast_lan_packet(&payload);
+                        }
+                    } else if let Some(active) = &active_id {
                         if let Some(conn) = s_guard.connections.get(active) {
                             conn.send(warlay::protocol::ClientMessage::RelayLanPacket { bytes: payload });
                         }
