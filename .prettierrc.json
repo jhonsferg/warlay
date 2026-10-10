@@ -1,0 +1,13 @@
+{
+  "printWidth": 120,
+  "proseWrap": "preserve",
+  "endOfLine": "auto",
+  "overrides": [
+    {
+      "files": "*.md",
+      "options": {
+        "printWidth": 80
+      }
+    }
+  ]
+}
