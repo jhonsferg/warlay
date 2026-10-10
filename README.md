@@ -480,8 +480,9 @@ sudo apt install -y nginx libnginx-mod-stream certbot
 ```
 
 `libnginx-mod-stream` adds TCP proxying, needed for the TLS game tunnel. If
-your nginx is built from source, make sure it was compiled with
-`--with-stream --with-stream_ssl_module`. Add a `stream` block at the end of
+you build nginx from source instead, follow
+[Alternative: nginx in a container built from source](#alternative-nginx-in-a-container-built-from-source),
+which already includes the stream module, and come back here. Add a `stream` block at the end of
 `/etc/nginx/nginx.conf`, outside the `http` block:
 
 ```nginx
@@ -667,6 +668,663 @@ journalctl -u warlay -f
 ```
 
 The nginx, certificate and firewall steps are the same as above.
+
+### Alternative: nginx in a container built from source
+
+When nginx on the VPS is the shared entry point for several services, as in
+the deployment this guide is based on (other APIs, MinIO, a Git server and
+Warlay behind one nginx with ModSecurity, Brotli and GeoIP2), it can run as a
+container built entirely from upstream sources with Clang. The container
+keeps the host's configuration, certificates, logs and tooling untouched, can
+be replaced or removed in seconds, and nothing in it comes from a package
+manager at runtime.
+
+```mermaid
+flowchart LR
+    subgraph build["Build machine"]
+        dockerfile["Dockerfile<br/>Clang 23 + sources"] --> image["nginx-clang image<br/>~23 MB, no shell"]
+    end
+    image -->|docker save / load| unit
+
+    subgraph vps["VPS (host network)"]
+        unit["systemd: nginx.service"] --> container["nginx container"]
+        wrapper["/usr/local/sbin/nginx<br/>wrapper"] -->|docker exec| container
+        certbot["certbot --nginx,<br/>logrotate, scripts"] --> wrapper
+        container -->|reads| config["/etc/nginx, /etc/letsencrypt,<br/>/etc/modsecurity, CRS, /var/www"]
+        container -->|writes| logs["/var/log/nginx,<br/>ModSecurity audit logs"]
+        fail2ban["fail2ban"] -->|reads| logs
+        container -->|127.0.0.1:*| apps["Other containers<br/>and services"]
+    end
+```
+
+#### Why host networking
+
+The container runs with `--network host`, not with published ports:
+
+| Concern                           | Published ports (`-p 80:80 ...`)                                      | `--network host`               |
+| --------------------------------- | --------------------------------------------------------------------- | ------------------------------ |
+| Upstreams on `127.0.0.1:<port>`   | Unreachable: inside the container `127.0.0.1` is the container itself | Work unchanged                 |
+| Real client IP (GeoIP, logs, WAF) | Can be replaced by the Docker gateway (userland proxy, IPv6)          | Always preserved               |
+| fail2ban / ufw bans               | Bypassed: traffic goes through Docker's `FORWARD` chain, not `INPUT`  | Applied as before              |
+| Performance                       | NAT and conntrack on every connection                                 | Same network stack as the host |
+
+Containers share the host kernel, so CPU, memory and system calls run at
+native speed; with host networking there is no extra network layer either.
+
+#### Build the image
+
+Build on a workstation, not on a small VPS: the image compiles LLVM-built
+OpenSSL, libmodsecurity (C++) and nginx with LTO. The Dockerfile is a
+multi-stage build:
+
+| Stage       | Content                                                                                                                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `toolchain` | Clang/LLVM, `lld` and LLVM's binutils from the official LLVM release (GPG verified), CMake from Kitware (SHA-256 verified), pkgconf |
+| `deps`      | OpenSSL, PCRE2, zlib, libmaxminddb, yajl, libxml2, brotli and libmodsecurity compiled from their upstream sources                   |
+| `nginx`     | nginx and its dynamic modules, ThinLTO, stripped                                                                                    |
+| `rootfs`    | the only shared libraries the binaries load (glibc, libcrypt, libstdc++, libgcc) from fully patched Debian 12 packages              |
+| `runtime`   | `FROM scratch`: rootfs + nginx, no shell, no package manager                                                                        |
+
+| Component         | Version     | Source and verification                           |
+| ----------------- | ----------- | ------------------------------------------------- |
+| Clang/LLVM        | 23.1.3      | github.com/llvm/llvm-project release, GPG         |
+| CMake             | 4.4.4       | github.com/Kitware/CMake release, SHA-256         |
+| pkgconf           | 3.0.8       | distfiles.ariadne.space                           |
+| nginx             | 1.31.6      | nginx.org, GPG (developer keys)                   |
+| OpenSSL           | 3.5.9 (LTS) | github.com/openssl/openssl, SHA-256               |
+| PCRE2             | 10.49       | github.com/PCRE2Project/pcre2                     |
+| zlib              | 1.3.2       | github.com/madler/zlib                            |
+| libmaxminddb      | 1.14.1      | github.com/maxmind/libmaxminddb                   |
+| brotli            | 1.2.0       | github.com/google/brotli                          |
+| yajl              | 2.1.0       | github.com/lloyd/yajl                             |
+| libxml2           | 2.15.4      | download.gnome.org, SHA-256                       |
+| libmodsecurity    | 3.0.17      | github.com/owasp-modsecurity/ModSecurity, SHA-256 |
+| ModSecurity-nginx | 1.0.4       | github.com/owasp-modsecurity/ModSecurity-nginx    |
+| headers-more      | 0.40        | github.com/openresty/headers-more-nginx-module    |
+| ngx_brotli        | `a71f931`   | github.com/google/ngx_brotli                      |
+| geoip2 module     | 3.4         | github.com/leev/ngx_http_geoip2_module            |
+
+Build decisions worth knowing before changing the Dockerfile:
+
+- **No `-march=native`.** Many VPS expose a generic virtual CPU (for example
+  "QEMU Virtual CPU" without SSE4.2); a binary tuned for the build machine
+  dies with an illegal instruction there. Check `/proc/cpuinfo` on the
+  target before raising the baseline.
+- **LLVM all the way.** The build uses `lld`, `llvm-ar`, `llvm-ranlib` and
+  friends exposed under their classic names, so no GNU binutils are needed.
+  apt is used once, in the toolchain stage, for the glibc and libstdc++
+  development headers, which define the target system's ABI.
+- **Static dependencies.** OpenSSL, PCRE2 and zlib are compiled into nginx;
+  libmaxminddb and brotli into their modules; yajl, libxml2 and PCRE2 into
+  libmodsecurity. At runtime nginx needs only `libc` and `libcrypt`, and
+  libmodsecurity only `libstdc++`.
+- **OpenSSL hardening.** `no-ssl3 no-weak-ssl-ciphers`; TLS compression is
+  not enabled (CRIME).
+- **yajl** is compiled directly with Clang because its 2014 CMake files no
+  longer configure with CMake 4, and gets a `yajl.pc` so libmodsecurity's
+  `configure` finds the static library (its manual search only looks for
+  shared ones). libmodsecurity is configured with `pkg-config --static` so
+  private dependencies such as `-lm` are linked too.
+- **Only the modules in use.** Perl, XSLT, image filter, legacy GeoIP and
+  mail modules are not built, which also drops their dependencies.
+
+<details>
+<summary>Dockerfile</summary>
+
+```dockerfile
+# syntax=docker/dockerfile:1
+#
+# nginx built with Clang/LLVM from upstream sources: the compiler, CMake,
+# OpenSSL, PCRE2, zlib, brotli, libmaxminddb, yajl, libxml2 and
+# libmodsecurity all come from their original projects, not from apt.
+# apt is used once, in the toolchain stage, for the glibc and libstdc++
+# development headers -- those define the system ABI and cannot be swapped.
+#
+# Target: Debian 12 hosts (glibc 2.36), generic x86-64 CPUs (no -march).
+#   docker build -t nginx-clang:1.31.6 .
+
+ARG DEBIAN=debian:12
+
+# ---------------------------------------------------------------------------
+FROM ${DEBIAN} AS toolchain
+ARG LLVM_VERSION=23.1.3
+ARG CMAKE_VERSION=4.4.4
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libc6-dev libgcc-12-dev libstdc++-12-dev make perl xz-utils curl ca-certificates gnupg \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN set -eux; \
+    tar=LLVM-${LLVM_VERSION}-Linux-X64.tar.xz; \
+    base=https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}; \
+    curl -fsSLO "$base/$tar"; curl -fsSLO "$base/$tar.sig"; \
+    curl -fsSL https://releases.llvm.org/release-keys.asc | gpg -q --import; \
+    gpg -q --verify "$tar.sig" "$tar"; \
+    tar -xJf "$tar" -C /opt; rm -f "$tar" "$tar.sig"; \
+    ln -s /opt/LLVM-${LLVM_VERSION}-Linux-X64 /opt/llvm; \
+    mkdir -p /opt/llvm-toolchain/bin; \
+    for t in ld:ld.lld ar:llvm-ar ranlib:llvm-ranlib nm:llvm-nm strip:llvm-strip objcopy:llvm-objcopy readelf:llvm-readelf; do \
+      ln -s "/opt/llvm/bin/${t#*:}" "/opt/llvm-toolchain/bin/${t%%:*}"; \
+    done
+
+RUN set -eux; \
+    tar=cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz; \
+    base=https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}; \
+    curl -fsSLO "$base/$tar"; curl -fsSL -o cmake.sha256 "$base/cmake-${CMAKE_VERSION}-SHA-256.txt"; \
+    sha256sum --ignore-missing -c cmake.sha256; \
+    tar -xzf "$tar" -C /opt; rm -f "$tar" cmake.sha256; \
+    ln -s /opt/cmake-${CMAKE_VERSION}-linux-x86_64 /opt/cmake
+
+ENV PATH=/opt/llvm-toolchain/bin:/opt/llvm/bin:/opt/cmake/bin:/opt/pkgconf/bin:$PATH \
+    CC=clang CXX=clang++ AR=llvm-ar NM=llvm-nm RANLIB=llvm-ranlib \
+    CFLAGS="-O2 -fPIC -fstack-protector-strong" \
+    CXXFLAGS="-O2 -fPIC -fstack-protector-strong" \
+    PKG_CONFIG_PATH=/opt/nginx-deps/lib/pkgconfig:/opt/nginx-deps/lib64/pkgconfig
+
+# pkgconf (pkg-config implementation), needed by libmodsecurity's configure.
+ARG PKGCONF_VERSION=3.0.8
+RUN set -eux; \
+    curl -fsSLO https://distfiles.ariadne.space/pkgconf/pkgconf-${PKGCONF_VERSION}.tar.xz; \
+    tar -xJf pkgconf-${PKGCONF_VERSION}.tar.xz; \
+    cd pkgconf-${PKGCONF_VERSION}; \
+    LDFLAGS="-fuse-ld=lld" ./configure --prefix=/opt/pkgconf --disable-shared; \
+    make -j"$(nproc)"; make install; \
+    ln -s pkgconf /opt/pkgconf/bin/pkg-config; \
+    cd /src; rm -rf pkgconf-${PKGCONF_VERSION}*; \
+    pkg-config --version
+
+# ---------------------------------------------------------------------------
+FROM toolchain AS deps
+ARG OPENSSL_VERSION=3.5.9
+ARG PCRE2_VERSION=10.49
+ARG ZLIB_VERSION=1.3.2
+ARG MAXMINDDB_VERSION=1.14.1
+ARG BROTLI_VERSION=1.2.0
+ARG YAJL_VERSION=2.1.0
+ARG LIBXML2_VERSION=2.15.4
+ARG MODSECURITY_VERSION=3.0.17
+ENV DEPS=/opt/nginx-deps
+WORKDIR /src
+
+# Sources consumed directly by nginx's configure (built static into nginx).
+RUN set -eux; \
+    curl -fsSLO https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz; \
+    curl -fsSLO https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz.sha256; \
+    echo "$(cut -d' ' -f1 openssl-${OPENSSL_VERSION}.tar.gz.sha256)  openssl-${OPENSSL_VERSION}.tar.gz" | sha256sum -c; \
+    curl -fsSLO https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz; \
+    curl -fsSLO https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}/zlib-${ZLIB_VERSION}.tar.gz; \
+    for t in openssl-${OPENSSL_VERSION} pcre2-${PCRE2_VERSION} zlib-${ZLIB_VERSION}; do tar -xzf $t.tar.gz; done
+
+# PCRE2 again as a static PIC library, for libmodsecurity.
+RUN set -eux; \
+    cmake -S pcre2-${PCRE2_VERSION} -B build-pcre2 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$DEPS \
+      -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DPCRE2_SUPPORT_JIT=ON \
+      -DPCRE2_BUILD_PCRE2GREP=OFF -DPCRE2_BUILD_TESTS=OFF; \
+    cmake --build build-pcre2 -j"$(nproc)"; cmake --install build-pcre2; rm -rf build-pcre2
+
+RUN set -eux; \
+    curl -fsSLO https://github.com/maxmind/libmaxminddb/releases/download/${MAXMINDDB_VERSION}/libmaxminddb-${MAXMINDDB_VERSION}.tar.gz; \
+    tar -xzf libmaxminddb-${MAXMINDDB_VERSION}.tar.gz; \
+    cmake -S libmaxminddb-${MAXMINDDB_VERSION} -B build-mmdb -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$DEPS \
+      -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_TESTING=OFF; \
+    cmake --build build-mmdb -j"$(nproc)"; cmake --install build-mmdb; rm -rf build-mmdb
+
+# yajl's 2014-era CMakeLists no longer configures with CMake 4, and the
+# library is a handful of C files: compile it directly.
+RUN set -eux; \
+    curl -fsSL -o yajl.tar.gz https://github.com/lloyd/yajl/archive/refs/tags/${YAJL_VERSION}.tar.gz; \
+    tar -xzf yajl.tar.gz; \
+    mkdir -p $DEPS/include/yajl $DEPS/lib build-yajl; \
+    cp yajl-${YAJL_VERSION}/src/api/*.h $DEPS/include/yajl/; \
+    major=${YAJL_VERSION%%.*}; rest=${YAJL_VERSION#*.}; minor=${rest%%.*}; micro=${rest#*.}; \
+    sed -e "s/\${YAJL_MAJOR}/$major/" -e "s/\${YAJL_MINOR}/$minor/" -e "s/\${YAJL_MICRO}/$micro/" \
+      yajl-${YAJL_VERSION}/src/api/yajl_version.h.cmake > $DEPS/include/yajl/yajl_version.h; \
+    for f in yajl-${YAJL_VERSION}/src/*.c; do \
+      clang $CFLAGS -I$DEPS/include -c "$f" -o "build-yajl/$(basename "$f" .c).o"; \
+    done; \
+    llvm-ar rcs $DEPS/lib/libyajl.a build-yajl/*.o; \
+    rm -rf build-yajl; \
+    mkdir -p $DEPS/lib/pkgconfig; \
+    printf '%s\n' "prefix=$DEPS" 'libdir=${prefix}/lib' 'includedir=${prefix}/include' '' \
+      'Name: yajl' 'Description: Yet Another JSON Library' "Version: ${YAJL_VERSION}" \
+      'Cflags: -I${includedir}' 'Libs: -L${libdir} -lyajl' > $DEPS/lib/pkgconfig/yajl.pc; \
+    pkg-config --modversion yajl
+
+RUN set -eux; \
+    minor=${LIBXML2_VERSION%.*}; \
+    curl -fsSLO https://download.gnome.org/sources/libxml2/$minor/libxml2-${LIBXML2_VERSION}.tar.xz; \
+    curl -fsSLO https://download.gnome.org/sources/libxml2/$minor/libxml2-${LIBXML2_VERSION}.sha256sum; \
+    sha256sum --ignore-missing -c libxml2-${LIBXML2_VERSION}.sha256sum; \
+    tar -xJf libxml2-${LIBXML2_VERSION}.tar.xz; \
+    cmake -S libxml2-${LIBXML2_VERSION} -B build-xml2 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$DEPS \
+      -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+      -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ZLIB=OFF -DLIBXML2_WITH_LZMA=OFF -DLIBXML2_WITH_ICU=OFF \
+      -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DLIBXML2_WITH_DOCS=OFF; \
+    cmake --build build-xml2 -j"$(nproc)"; cmake --install build-xml2; rm -rf build-xml2
+
+RUN set -eux; \
+    curl -fsSL -o brotli.tar.gz https://github.com/google/brotli/archive/refs/tags/v${BROTLI_VERSION}.tar.gz; \
+    tar -xzf brotli.tar.gz
+
+# libmodsecurity as a shared library with its dependencies linked in
+# statically: the runtime image needs nothing but libstdc++.
+RUN set -eux; \
+    base=https://github.com/owasp-modsecurity/ModSecurity/releases/download/v${MODSECURITY_VERSION}; \
+    curl -fsSLO "$base/modsecurity-v${MODSECURITY_VERSION}.tar.gz"; \
+    curl -fsSLO "$base/modsecurity-v${MODSECURITY_VERSION}.tar.gz.sha256"; \
+    echo "$(cut -d' ' -f1 modsecurity-v${MODSECURITY_VERSION}.tar.gz.sha256)  modsecurity-v${MODSECURITY_VERSION}.tar.gz" | sha256sum -c; \
+    tar -xzf modsecurity-v${MODSECURITY_VERSION}.tar.gz; \
+    cd modsecurity-v${MODSECURITY_VERSION}; \
+    pkg-config --modversion libpcre2-8 libxml-2.0 yajl; \
+    PKG_CONFIG="pkg-config --static" \
+    LDFLAGS="-fuse-ld=lld -L$DEPS/lib" CPPFLAGS="-I$DEPS/include -I$DEPS/include/libxml2" \
+    ./configure --prefix=/opt/modsecurity \
+      --with-pcre2=$DEPS --with-yajl=$DEPS --with-libxml=$DEPS \
+      --without-lua --without-curl --without-geoip --without-maxmind --without-lmdb --without-ssdeep \
+      --disable-doxygen-doc --disable-examples --disable-dependency-tracking; \
+    make -j"$(nproc)"; make install; \
+    rm -f /opt/modsecurity/lib/*.la /opt/modsecurity/lib/*.a
+
+# ---------------------------------------------------------------------------
+FROM deps AS nginx
+ARG NGINX_VERSION=1.31.6
+ARG OPENSSL_VERSION=3.5.9
+ARG PCRE2_VERSION=10.49
+ARG ZLIB_VERSION=1.3.2
+ARG BROTLI_VERSION=1.2.0
+ARG MODSEC_NGINX_VERSION=1.0.4
+ARG HEADERS_MORE_VERSION=0.40
+ARG GEOIP2_MODULE_VERSION=3.4
+ARG NGX_BROTLI_COMMIT=a71f931
+ARG MODSECURITY_VERSION=3.0.17
+WORKDIR /src
+
+RUN set -eux; \
+    curl -fsSLO https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz; \
+    curl -fsSLO https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz.asc; \
+    for key in arut pluknet sb thresh; do curl -fsSL https://nginx.org/keys/$key.key | gpg -q --import; done; \
+    gpg -q --verify nginx-${NGINX_VERSION}.tar.gz.asc nginx-${NGINX_VERSION}.tar.gz; \
+    tar -xzf nginx-${NGINX_VERSION}.tar.gz; \
+    curl -fsSLO https://github.com/owasp-modsecurity/ModSecurity-nginx/releases/download/v${MODSEC_NGINX_VERSION}/ModSecurity-nginx-v${MODSEC_NGINX_VERSION}.tar.gz; \
+    tar -xzf ModSecurity-nginx-v${MODSEC_NGINX_VERSION}.tar.gz; \
+    curl -fsSL -o headers-more.tar.gz https://github.com/openresty/headers-more-nginx-module/archive/refs/tags/v${HEADERS_MORE_VERSION}.tar.gz; \
+    tar -xzf headers-more.tar.gz; \
+    curl -fsSL -o geoip2.tar.gz https://github.com/leev/ngx_http_geoip2_module/archive/refs/tags/${GEOIP2_MODULE_VERSION}.tar.gz; \
+    tar -xzf geoip2.tar.gz; \
+    curl -fsSL -o ngx_brotli.tar.gz https://github.com/google/ngx_brotli/archive/${NGX_BROTLI_COMMIT}.tar.gz; \
+    mkdir ngx_brotli && tar -xzf ngx_brotli.tar.gz -C ngx_brotli --strip-components=1; \
+    rm -rf ngx_brotli/deps/brotli && cp -a brotli-${BROTLI_VERSION} ngx_brotli/deps/brotli; \
+    cmake -S ngx_brotli/deps/brotli -B ngx_brotli/deps/brotli/out -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBROTLI_DISABLE_TESTS=ON; \
+    cmake --build ngx_brotli/deps/brotli/out --target brotlienc brotlicommon -j"$(nproc)"
+
+RUN set -eux; \
+    cd nginx-${NGINX_VERSION}; \
+    MODSECURITY_INC=/opt/modsecurity/include MODSECURITY_LIB=/opt/modsecurity/lib \
+    ./configure \
+      --with-cc=clang \
+      --with-cc-opt="-O2 -flto=thin -fstack-protector-strong -D_FORTIFY_SOURCE=3 -fPIC -Wformat -Werror=format-security -I$DEPS/include" \
+      --with-ld-opt="-fuse-ld=lld -flto=thin -Wl,-z,relro -Wl,-z,now -fPIC -L$DEPS/lib -Wl,-rpath,/opt/modsecurity/lib" \
+      --with-openssl=/src/openssl-${OPENSSL_VERSION} \
+      --with-openssl-opt="no-tests no-docs no-ssl3 no-weak-ssl-ciphers" \
+      --with-pcre=/src/pcre2-${PCRE2_VERSION} \
+      --with-pcre-jit \
+      --with-zlib=/src/zlib-${ZLIB_VERSION} \
+      --prefix=/usr/share/nginx \
+      --conf-path=/etc/nginx/nginx.conf \
+      --http-log-path=/var/log/nginx/access.log \
+      --error-log-path=stderr \
+      --lock-path=/var/lock/nginx.lock \
+      --pid-path=/run/nginx.pid \
+      --modules-path=/usr/lib/nginx/modules \
+      --http-client-body-temp-path=/var/lib/nginx/body \
+      --http-fastcgi-temp-path=/var/lib/nginx/fastcgi \
+      --http-proxy-temp-path=/var/lib/nginx/proxy \
+      --http-scgi-temp-path=/var/lib/nginx/scgi \
+      --http-uwsgi-temp-path=/var/lib/nginx/uwsgi \
+      --with-compat \
+      --with-threads \
+      --with-file-aio \
+      --with-http_ssl_module \
+      --with-http_v2_module \
+      --with-http_realip_module \
+      --with-http_stub_status_module \
+      --with-http_auth_request_module \
+      --with-http_gzip_static_module \
+      --with-http_gunzip_module \
+      --with-http_sub_module \
+      --with-http_slice_module \
+      --with-http_secure_link_module \
+      --with-http_dav_module \
+      --with-http_addition_module \
+      --with-http_flv_module \
+      --with-http_mp4_module \
+      --with-http_random_index_module \
+      --with-stream=dynamic \
+      --with-stream_ssl_module \
+      --with-stream_ssl_preread_module \
+      --with-stream_realip_module \
+      --add-dynamic-module=/src/ModSecurity-nginx-v${MODSEC_NGINX_VERSION} \
+      --add-dynamic-module=/src/headers-more-nginx-module-${HEADERS_MORE_VERSION} \
+      --add-dynamic-module=/src/ngx_brotli \
+      --add-dynamic-module=/src/ngx_http_geoip2_module-${GEOIP2_MODULE_VERSION}; \
+    make -j"$(nproc)"; \
+    llvm-strip --strip-unneeded objs/nginx objs/*.so; \
+    install -D -m 755 objs/nginx /out/usr/sbin/nginx; \
+    install -D -m 755 -t /out/usr/lib/nginx/modules objs/*.so; \
+    mkdir -p /out/opt/modsecurity/lib; \
+    cp -a /opt/modsecurity/lib/libmodsecurity.so* /out/opt/modsecurity/lib/; \
+    llvm-strip --strip-unneeded /out/opt/modsecurity/lib/libmodsecurity.so.3.*; \
+    install -D -m 644 /src/modsecurity-v${MODSECURITY_VERSION}/unicode.mapping /out/opt/modsecurity/unicode.mapping
+
+# ---------------------------------------------------------------------------
+# Minimal distroless-style root filesystem: only the shared libraries the
+# binaries actually load (glibc + libcrypt for nginx, libstdc++/libgcc for
+# libmodsecurity), taken from fully patched Debian 12 packages. Each package
+# is recorded in /var/lib/dpkg/status.d/ the way distroless does it, so
+# vulnerability scanners still see and report them. No shell, no package
+# manager, no system OpenSSL, no tzdata (the host's /etc/localtime is mounted).
+# glibc gconv modules are left out on purpose: libxml2 handles UTF-8/16,
+# Latin-1 and ASCII natively, and dropping them removes the attacker-reachable
+# iconv DoS paths (exotic encodings declared in XML request bodies).
+FROM ${DEBIAN} AS rootfs
+ENV DEBIAN_FRONTEND=noninteractive
+RUN set -eux; \
+    apt-get update; apt-get upgrade -y; \
+    mkdir -p /rootfs/var/lib/dpkg/status.d /rootfs/usr/lib /rootfs/usr/lib64 /rootfs/usr/bin /rootfs/usr/sbin; \
+    for d in lib lib64 bin sbin; do ln -s "usr/$d" "/rootfs/$d"; done; \
+    for pkg in libc6 libcrypt1 libgcc-s1 libstdc++6 gcc-12-base; do \
+      dpkg -L "$pkg" | while read -r path; do \
+        case "$path" in /usr/share/doc/*/changelog*|/usr/share/lintian/*|/usr/share/man/*|/usr/share/locale/*|*/gconv/*) continue;; esac; \
+        [ -d "$path" ] && [ ! -L "$path" ] && continue; \
+        [ -e "$path" ] || [ -L "$path" ] || continue; \
+        real="$(readlink -f "$(dirname "$path")")/$(basename "$path")"; \
+        cp -a --parents "$real" /rootfs; \
+      done; \
+      dpkg-query -s "$pkg" > "/rootfs/var/lib/dpkg/status.d/$pkg"; \
+    done; \
+    cp -a --parents /etc/os-release /usr/lib/os-release /etc/debian_version /rootfs; \
+    printf '%s\n' 'root:x:0:0:root:/root:/sbin/nologin' 'www-data:x:33:33:www-data:/var/www:/sbin/nologin' \
+      'nobody:x:65534:65534:nobody:/nonexistent:/sbin/nologin' > /rootfs/etc/passwd; \
+    printf '%s\n' 'root:x:0:' 'adm:x:4:' 'www-data:x:33:' 'nogroup:x:65534:' > /rootfs/etc/group; \
+    printf '%s\n' 'passwd: files' 'group: files' 'hosts: files dns' > /rootfs/etc/nsswitch.conf; \
+    install -d -m 1777 /rootfs/tmp; \
+    install -d /rootfs/run /rootfs/var/lock /rootfs/var/log/nginx /rootfs/etc/nginx /rootfs/usr/share/nginx; \
+    install -d -o 33 -g 0 /rootfs/var/lib/nginx/body /rootfs/var/lib/nginx/proxy /rootfs/var/lib/nginx/fastcgi \
+      /rootfs/var/lib/nginx/uwsgi /rootfs/var/lib/nginx/scgi; \
+    ln -s /usr/lib/nginx/modules /rootfs/usr/share/nginx/modules; \
+    rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+FROM scratch AS runtime
+COPY --from=rootfs /rootfs/ /
+COPY --from=nginx /out/ /
+STOPSIGNAL SIGQUIT
+CMD ["/usr/sbin/nginx", "-g", "daemon off;"]
+```
+
+</details>
+
+```sh
+docker build -t nginx-clang:1.31.6 .
+docker run --rm nginx-clang:1.31.6 nginx -V      # version, compiler, OpenSSL, configure flags
+docker save nginx-clang:1.31.6 | gzip | ssh user@your-vps 'gunzip | docker load'
+```
+
+#### Security scanning
+
+Scan the image before deploying it:
+
+```sh
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image nginx-clang:1.31.6
+```
+
+Same scanner, same day, different runtime bases:
+
+| Runtime base                      | Critical | High  | Medium | Low | Size   |
+| --------------------------------- | -------- | ----- | ------ | --- | ------ |
+| `debian:12-slim`                  | 4        | 54    | 102    | 77  | 135 MB |
+| `gcr.io/distroless/cc-debian12`   | 0        | 1     | 29     | 18  | —      |
+| `scratch` + minimal rootfs (this) | **0**    | **0** | 21     | 11  | 32 MB  |
+
+The remaining findings are in glibc and the GCC runtime, most of them marked
+`will_not_fix` or `fix_deferred` by Debian; none is reachable from nginx in
+practice (functions such as `strfmon`, `wordexp` or `scanf("%mc")` are never
+called, and a local attacker would need a shell the image does not have). The
+glibc `gconv` modules are deliberately left out of the image: libxml2 parses
+UTF-8/16, Latin-1 and ASCII natively, and removing them closes the
+attacker-reachable `iconv` denial of service through exotic encodings
+declared in XML request bodies inspected by the WAF. The libraries are
+recorded in `/var/lib/dpkg/status.d/`, so scanners keep reporting them
+honestly instead of seeing an unknown image.
+
+Alpine scores fewer findings because musl has a shorter CVE history, but it
+would mean rebuilding everything against musl (the official LLVM release
+targets glibc) and a slower allocator under ModSecurity's load.
+
+#### Install on the VPS
+
+Files to create on the host:
+
+**`/usr/local/sbin/nginx-container`** runs the image with the host's files:
+
+```sh
+#!/bin/sh
+# /usr/local/sbin/nginx-container -- runs the nginx-clang image on the host
+# network with the host's configuration, certificates, WAF rules and logs.
+#   nginx-container run    start the server (foreground, used by nginx.service)
+#   nginx-container test   validate the host configuration with the image
+#
+# The host Docker daemon uses userns-remap: --userns host is required both
+# for --network host and so the master process can read the root-only TLS
+# private keys (workers still drop to www-data, exactly like before).
+set -eu
+
+IMAGE="${NGINX_IMAGE:-nginx-clang:1.31.6}"
+NAME=nginx
+
+MOUNTS="
+  -v /etc/nginx:/etc/nginx:ro
+  -v /etc/letsencrypt:/etc/letsencrypt:ro
+  -v /etc/modsecurity:/etc/modsecurity:ro
+  -v /usr/share/modsecurity-crs:/usr/share/modsecurity-crs:ro
+  -v /var/www:/var/www:ro
+  -v /var/log/nginx:/var/log/nginx
+  -v /var/log/modsecurity:/var/log/modsecurity
+  -v /var/log/modsec_audit.log:/var/log/modsec_audit.log
+  -v /etc/localtime:/etc/localtime:ro
+  -v /etc/timezone:/etc/timezone:ro
+"
+
+case "${1:-}" in
+  run)
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
+    exec docker run --rm --init --name "$NAME" --network host --userns host --pull never $MOUNTS "$IMAGE"
+    ;;
+  test)
+    # shellcheck disable=SC2086
+    exec docker run --rm --network host --userns host --pull never $MOUNTS "$IMAGE" nginx -t
+    ;;
+  *)
+    echo "usage: $0 run|test" >&2
+    exit 2
+    ;;
+esac
+```
+
+| Mount                                            | Mode       | Why                                                                          |
+| ------------------------------------------------ | ---------- | ---------------------------------------------------------------------------- |
+| `/etc/nginx`                                     | read-only  | the existing configuration, unchanged                                        |
+| `/etc/letsencrypt`                               | read-only  | certificates and the challenge files certbot writes                          |
+| `/etc/modsecurity`, `/usr/share/modsecurity-crs` | read-only  | WAF configuration and the OWASP CRS checkout                                 |
+| `/var/www`                                       | read-only  | static sites and the ACME webroot                                            |
+| `/var/log/nginx`, ModSecurity audit log/dir      | read-write | same files as before, so fail2ban and logrotate keep working                 |
+| `/etc/localtime`, `/etc/timezone`                | read-only  | log timestamps in local time; fail2ban ignores entries with the wrong offset |
+
+If the Docker daemon uses `userns-remap` (`ls -n` shows container files owned
+by UIDs such as `165536`), `--userns host` is required: user namespaces
+cannot share the host network, and the remapped root could not read the
+root-only TLS private keys. The master process runs as root, as it did on the
+host; workers drop to `www-data` (UID 33, the same as on the host).
+
+**`/usr/local/sbin/nginx`** forwards the `nginx` command to the container:
+
+```sh
+#!/bin/sh
+# /usr/local/sbin/nginx -- forwards nginx CLI calls (-t, -T, -V, -s reload,
+# -s reopen ...) to the running nginx container. /usr/local/sbin comes
+# before /usr/sbin in PATH, so certbot's nginx plugin, logrotate,
+# geoip-updater and local scripts keep working unchanged.
+exec docker exec nginx nginx "$@"
+```
+
+`/usr/local/sbin` precedes `/usr/sbin` in the `PATH` of root, systemd units
+and cron, so everything that calls `nginx` keeps working without changes:
+certbot's nginx plugin (`nginx -t`, `nginx -s reload`, `nginx -V`), helper
+scripts and GeoIP updaters.
+
+**`/etc/systemd/system/nginx.service`** replaces the distribution unit, so
+`systemctl start|stop|restart|reload|status nginx` now manage the container:
+
+```ini
+# /etc/systemd/system/nginx.service -- replaces the distribution unit, so
+# `systemctl start|stop|restart|reload|status nginx` manage the container.
+[Unit]
+Description=nginx (nginx-clang container, host network)
+Documentation=https://nginx.org/en/docs/
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/sbin/nginx-container test
+ExecStart=/usr/local/sbin/nginx-container run
+ExecReload=/usr/bin/docker exec nginx nginx -t
+ExecReload=/usr/bin/docker exec nginx nginx -s reload
+ExecStop=/usr/bin/docker stop -t 30 nginx
+Restart=always
+RestartSec=3
+TimeoutStartSec=120
+TimeoutStopSec=40
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**`/etc/logrotate.d/nginx`**: change the `postrotate` command, because the
+container's PID is not the host's:
+
+```sh
+postrotate
+    docker exec nginx nginx -s reopen >/dev/null 2>&1 || true
+endscript
+```
+
+#### Validate before switching
+
+1. Test the image against the live configuration (it only parses it):
+
+   ```sh
+   nginx-container test   # expect "test is successful" and the CRS rule count
+   ```
+
+2. Record a baseline of every site served by the current nginx:
+
+   ```sh
+   grep -hoE '^\s*server_name\s+[^;]+' /etc/nginx/sites-enabled/* | sed -E 's/^\s*server_name\s+//' \
+     | tr ' ' '\n' | grep -vE '^_?$|^www\.' | sort -u > /root/nginx-sites.txt
+   while read -r h; do
+     printf '%s ' "$h"
+     curl -sk -o /dev/null -w 'http=%{http_code} ' --resolve "$h:80:127.0.0.1" "http://$h/"
+     curl -sk -o /dev/null -w 'https=%{http_code} size=%{size_download}\n' --resolve "$h:443:127.0.0.1" "https://$h/"
+   done < /root/nginx-sites.txt > /root/nginx-baseline.txt
+   ```
+
+3. Optionally run the image side by side with production: copy the
+   configuration with `cp -rL /etc/nginx /root/nginx-shadow/etc-nginx`
+   (`-L` copies file contents instead of symlinks, so editing the copy never
+   touches production), move every `listen` to alternate ports (80 to 18080,
+   443 to 18443, 7443 to 17443, and any internal listener such as
+   `127.0.0.1:7444`), start the image with that copy and a temporary log
+   directory owned by `www-data`, and compare each site with the baseline.
+   A `server {}` block without `listen` listens on port 80 implicitly; give
+   it an alternate port too.
+
+#### Switch over
+
+The cutover takes about three seconds of downtime:
+
+```sh
+systemctl stop nginx
+install -m 755 nginx-container nginx /usr/local/sbin/
+install -m 644 nginx.service /etc/systemd/system/nginx.service
+install -m 644 logrotate-nginx /etc/logrotate.d/nginx
+systemctl daemon-reload
+systemctl start nginx
+```
+
+Verify, then keep the old installation for rollback:
+
+```sh
+# every site must match the baseline
+while read -r h; do printf '%s ' "$h"
+  curl -sk -o /dev/null -w 'http=%{http_code} ' --resolve "$h:80:127.0.0.1" "http://$h/"
+  curl -sk -o /dev/null -w 'https=%{http_code} size=%{size_download}\n' --resolve "$h:443:127.0.0.1" "https://$h/"
+done < /root/nginx-sites.txt | diff - /root/nginx-baseline.txt && echo "all sites match"
+
+nginx -t && systemctl reload nginx                      # wrapper and unit
+certbot renew --dry-run                                  # certbot nginx plugin through the wrapper
+fail2ban-client status                                   # jails still reading the same logs
+tail -1 /var/log/nginx/access.log                        # real client IP, local time
+```
+
+**Rollback:**
+
+```sh
+systemctl stop nginx
+docker rm -f nginx
+rm /etc/systemd/system/nginx.service /usr/local/sbin/nginx /usr/local/sbin/nginx-container
+cp <backup>/logrotate-nginx /etc/logrotate.d/nginx
+systemctl daemon-reload
+systemctl start nginx        # back to the host binary
+```
+
+#### Updating
+
+Change the version `ARG`s in the Dockerfile, build and transfer the image,
+then:
+
+```sh
+NGINX_IMAGE=nginx-clang:<new> nginx-container test   # validate first
+sed -i 's/nginx-clang:[0-9.]*/nginx-clang:<new>/' /usr/local/sbin/nginx-container
+systemctl restart nginx
+```
+
+Keep the previous image until the new one has run for a while; rolling back
+is the same edit in reverse.
+
+#### Pitfalls found along the way
+
+- **Replace a binary with `restart`, never `reload`.** A reload keeps the old
+  master process, which rejects the new dynamic modules as not binary
+  compatible.
+- **`load_module modules/...` is relative to the `--prefix`**
+  (`/usr/share/nginx`), not to `--modules-path`. Debian ships a
+  `/usr/share/nginx/modules -> /usr/lib/nginx/modules` symlink; the image
+  recreates it.
+- **Verify nginx tarballs with the developer keys** (`arut`, `pluknet`,
+  `sb`, `thresh` on nginx.org/en/pgp_keys.html). `nginx_signing.key` signs
+  the package repositories, not the source tarballs.
+- **Hold the distribution package** if it stays installed for rollback
+  (`apt-mark hold nginx nginx-common`), or a security update replaces
+  `/usr/sbin/nginx` with a binary that cannot load your modules.
+- **Rate-limited SSH.** If the server limits SSH connections (ufw `LIMIT`,
+  fail2ban), run deployment steps through one session or a script instead of
+  one connection per command.
 
 ## Operating the server
 
