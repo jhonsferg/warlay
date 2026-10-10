@@ -1,0 +1,15 @@
+# Generated or vendored content
+target/
+dist/
+node_modules/
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/
+Cargo.lock
+package-lock.json
+
+# Local-only folders (see .gitignore)
+/tools/
+/scripts/
+desktop/e2e/
+pinterest/
+.w3gs-research/
