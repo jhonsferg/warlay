@@ -4,7 +4,9 @@ mod envelope;
 mod error;
 mod handshake;
 mod hub;
+mod relay;
 mod rendezvous;
+mod ticket;
 mod tunnel;
 
 /// LAN-mesh mode: UDP control-plane messages (discovery / game listing
@@ -24,8 +26,15 @@ pub use handshake::{AuthRequest, AuthResponse, HandshakeHello, HandshakeWelcome}
 /// Hub mode: the UDP data-plane frame, scoped to a room by `room_token`
 /// rather than by static peer address.
 pub use hub::RelayFrame;
+/// Helper servers: last-resort UDP relay and their heartbeat to the main server.
+pub use relay::{
+    decode_relay_data, encode_relay_data, HelperHeartbeat, RelayControl, RELAY_CONTROL_TAG, RELAY_DATA_HEADER_LEN,
+    RELAY_DATA_TAG,
+};
 /// Hub mode: the UDP rendezvous protocol for P2P direct tunnel establishment.
 pub use rendezvous::{PeerInfo, RendezvousMessage};
+/// Room tickets the main server signs and helper servers verify.
+pub use ticket::RoomTicket;
 /// Hub mode: the TCP tunnel handshake carrying the real WC3 game session.
 pub use tunnel::TunnelHello;
 
