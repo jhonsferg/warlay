@@ -1,0 +1,8 @@
+[target.x86_64-pc-windows-msvc]
+# Statically link the MSVC C/C++ runtime instead of depending on
+# vcruntime140.dll/msvcp140.dll being present (via the "Visual C++
+# Redistributable") on whatever machine runs the built .exe. Without this,
+# the app fails to launch at all on a clean Windows install that's never
+# had VC++-built software on it — a very common "why won't this run on
+# another PC" cause for Rust/MSVC binaries.
+rustflags = ["-C", "target-feature=+crt-static"]
