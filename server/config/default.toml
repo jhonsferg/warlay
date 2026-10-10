@@ -1,0 +1,28 @@
+# Example configuration for warlay-server.
+# Copy this file, adjust it per device, and pass it via `--config path/to/file.toml`.
+
+server_name = "phone-bridge-1"
+
+[relay]
+# Local subnet side: where this bridge listens for game broadcast traffic
+# (Warcraft III's LAN discovery defaults to UDP 6112; adjust to your game).
+bind_addr = "0.0.0.0:6112"
+
+# Control-plane port used by Launcher clients for discovery / game listing.
+control_addr = "0.0.0.0:6116"
+
+# Remote bridge instances to mesh with, one per physically isolated subnet.
+# Each entry is that bridge's *data* address (bind_addr on that device),
+# reachable over an already-routable path (Wi-Fi hotspot uplink, VPN, etc).
+peers = []
+
+# How long an observed broadcast announcement is kept for the ListGames
+# control-plane query before it is considered stale.
+observation_ttl_secs = 15
+
+# How long a self-injected payload fingerprint is remembered to prevent the
+# bridge from re-relaying its own re-broadcast back out to peers.
+loop_guard_ttl_ms = 3000
+
+[observability]
+log_level = "info"
