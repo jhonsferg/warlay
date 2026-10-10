@@ -1,5 +1,7 @@
 mod cli;
+mod helper;
 mod logging;
+mod main_server;
 mod ws_server;
 
 use anyhow::{Context, Result};
@@ -23,6 +25,28 @@ async fn main() -> Result<()> {
     match cli.mode {
         Mode::Hub(args) => run_hub(args).await,
         Mode::LanMesh(args) => run_lan_mesh(args).await,
+        Mode::Main(args) => {
+            let mut config = main_server::load(&args.config)?;
+            main_server::apply_env(&mut config);
+            logging::init(args.log_level.as_deref().unwrap_or(&config.observability.log_level));
+            main_server::run(config).await
+        }
+        Mode::Helper(args) => {
+            let mut config = helper::load(&args.config)?;
+            if let Ok(secret) = std::env::var("WARLAY_HELPER_SECRET") {
+                config.helper.helper_secret = secret;
+            }
+            if let Some(edge) = config.helper.edge.as_mut() {
+                if let Ok(v) = std::env::var("WARLAY_DATABASE_URL") {
+                    edge.database_url = v;
+                }
+                if let Ok(v) = std::env::var("WARLAY_REDIS_URL") {
+                    edge.redis_url = v;
+                }
+            }
+            logging::init(args.log_level.as_deref().unwrap_or(&config.observability.log_level));
+            helper::run(config).await
+        }
     }
 }
 
