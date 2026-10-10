@@ -1,0 +1,250 @@
+// $gold, $border-bronze, $shadow-panel, etc. all come from _tokens.scss,
+// auto-injected here (and into every component's own scoped SCSS) by
+// vite.config.ts's additionalData -- see that file's comment.
+//
+// This file is intentionally thin: tokens, a CSS reset, and a small set of
+// truly cross-cutting utility classes with no single owning component
+// (.row, .field, .empty, .hint, .readonly-value, .panel/.card).
+// Everything specific to one component (the server rail, chat bubbles, the
+// console drawer, badges, buttons, ...) lives in that component's own
+// scoped <style lang="scss"> block instead, so a change here can't silently
+// break a component that never touches this file.
+
+// === BASE ===
+:root {
+  color-scheme: dark;
+  --font-heading: #{$font-heading};
+  --font-body: #{$font-body};
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --radius-sm: #{$radius-sm};
+  --radius-md: #{$radius-md};
+  --radius-lg: #{$radius-lg};
+
+  --border-bronze: #{$border-bronze};
+  --border-gold: #{$border-gold};
+  --gold: #{$gold};
+  --gold-bright: #{$gold-bright};
+  --gold-dim: #{$gold-dim};
+  --text-muted: #{$text-muted};
+  --danger: #{$danger};
+}
+
+* {
+  box-sizing: border-box;
+  font-family: $font-lato;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: $text;
+  // The window is no longer OS-transparent (see tauri.conf.json) -- this is
+  // just the base paint before .shell/.daemon-gate's own backgrounds cover
+  // the viewport, so it has to be an opaque color of its own now, not
+  // "transparent" (which would show WebView2's default host background,
+  // typically white, as a flash before Vue mounts).
+  background-color: $bg-void;
+  font-family: $font-body;
+  overflow: hidden;
+}
+
+// Inter carries hierarchy through weight alone (600 here), the way San
+// Francisco does on real Apple platforms -- no display/body face pairing,
+// no letter-spacing or text-shadow standing in for a "carved title" look
+// that doesn't belong in this system anymore.
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: $font-heading;
+  font-weight: 600;
+}
+
+// The accent color is the app's one reserved "this is the primary action"
+// color -- section headers are structure, not a call to action, so they
+// read in the plain label tone (weight and size carry the hierarchy)
+// rather than adding yet another accented element to a screen that
+// already has an accented primary button on it.
+h1 {
+  font-size: $text-display;
+  color: $text;
+}
+h2 {
+  font-size: $text-xl;
+  color: $text;
+  border-bottom: 1px solid $border-bronze;
+  padding-bottom: 0.5rem;
+}
+h3 {
+  font-size: $text-lg;
+  color: $text;
+}
+
+// Custom Scrollbar -- thin and understated (self-hiding is a real
+// compositor feature macOS has that a WebView can't replicate, so this
+// settles for "quiet until you actually grab it").
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: $border-bronze;
+  border-radius: $radius-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: $border-bronze-light;
+}
+
+// Respected globally rather than per-animation: covers every hover/press
+// compression, sheet transition, and speaking-pulse this redesign adds,
+// without each of them needing its own query.
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// === SHARED PRIMITIVES ===
+// A flat elevated surface, not a carved stone/wood plate: the base every
+// panel in the app builds on (server rail cards, settings cards, LAN tab
+// cards, ...). No corner ornament, no inset bevel ring -- macOS cards read
+// through a soft diffuse shadow and a hairline border, nothing simulating
+// physical relief.
+.panel {
+  background: $bg-panel;
+  border: 1px solid $border-bronze;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-panel;
+  padding: 20px;
+  transition: $transition;
+
+  &:hover {
+    border-color: $border-bronze-light;
+  }
+}
+
+.card {
+  @extend .panel;
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Utility classes for layout -- intentionally global (unlike everything
+// else, which moved into its owning component's own scoped SCSS): these
+// have no owner, they're generic layout primitives reused across dozens of
+// unrelated components (form field wrappers, flex rows, empty-state text),
+// same status as a CSS reset.
+.row {
+  display: flex;
+  flex-direction: row;
+}
+
+// A macOS-style joined control: an input directly attached to a button
+// (chat's send button, "Añadir" next to a CIDR field, "Buscar…" next to
+// the executable path, a room's inline password field + join button) --
+// they read as one continuous control, not two separate rounded-rect
+// elements bumping into each other. Only the outer corners stay rounded;
+// the touching edge is flat on both sides, and both children are forced
+// to the same height regardless of which BaseButton size variant is
+// used, since a button's own padding model doesn't naturally match
+// BaseInput's. This is a real recurring pattern across the app, not a
+// one-off -- that's why it lives here instead of duplicated per component.
+.input-group {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-radius: $radius-md;
+  transition: $transition;
+
+  > * {
+    height: 38px;
+  }
+
+  > :first-child {
+    flex: 1;
+    min-width: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  > :last-child {
+    flex-shrink: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  // The ring wraps the whole joined group, not just whichever child
+  // happens to be focused -- it reads as one control, so focusing the
+  // input has to look like focusing the button too. The input's own
+  // individual focus ring (BaseInput.vue) is suppressed here in favor of
+  // this one, since two overlapping rings with mismatched corners (one
+  // hugging just the input, one hugging the whole group) would look like
+  // a rendering glitch, not a design choice.
+  &:focus-within {
+    box-shadow: $focus-ring;
+  }
+
+  > :first-child:focus {
+    box-shadow: none;
+  }
+}
+
+.empty {
+  color: $text-muted;
+  font-style: italic;
+  text-align: center;
+}
+
+// Plain descriptive text under a form section/control -- distinct from
+// HintText's own .hint-text (that one reacts to validation state; this is
+// static copy every feature area sprinkles in).
+.hint {
+  margin: 0;
+  font-size: $text-sm;
+  color: $text-muted;
+}
+
+// A read-only value display (a resolved path, a saved address, ...).
+.readonly-value {
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid $border-bronze;
+  border-radius: $radius-sm;
+  color: $text;
+  font-family: "Consolas", monospace;
+  font-size: $text-sm;
+}
+
+// A label wrapping one input: label text stacked above the control, used
+// by every form in the app (CreateRoomForm, SettingsView, AddServerForm, ...).
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: $font-body;
+  font-size: $text-sm;
+  color: $text-dim;
+  min-width: 0;
+}
