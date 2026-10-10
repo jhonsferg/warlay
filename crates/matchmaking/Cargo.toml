@@ -1,0 +1,13 @@
+[package]
+name = "matchmaking"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+warlay-protocol = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+constant_time_eq = { workspace = true }
+
+
