@@ -33,16 +33,21 @@ RUN cargo build --release -p server \
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /app
 COPY --from=builder /out/warlay-server /usr/local/bin/warlay-server
-COPY --chown=65532:65532 server/config/hub.toml /app/config/hub.toml
+COPY --chown=65532:65532 server/config/hub.toml server/config/main.toml server/config/helper.toml /app/config/
 COPY --from=builder --chown=65532:65532 /out/data /app/data
 
-# 7777/tcp WebSocket matchmaking, 7778/tcp game-session tunnel,
-# 6112/udp LAN discovery relay, 7779/udp P2P rendezvous.
-EXPOSE 7777/tcp 7778/tcp 6112/udp 7779/udp
+# main: 8080/tcp REST + realtime WebSocket.
+# helper: 7779/udp P2P rendezvous, 7780/udp last-resort relay.
+# hub (legacy): 7777/tcp matchmaking, 7778/tcp tunnel, 6112/udp LAN relay.
+EXPOSE 8080/tcp 7779/udp 7780/udp 7777/tcp 7778/tcp 6112/udp
 
 # warlay.db (server identity + issued client keys) -- mount a named volume
 # so recreating the container doesn't force every client to re-register.
 VOLUME ["/app/data"]
 
 ENTRYPOINT ["/usr/local/bin/warlay-server"]
+# Run the main server with `main --config /app/config/main.toml` (needs
+# PostgreSQL + Redis, see WARLAY_DATABASE_URL/WARLAY_REDIS_URL/
+# WARLAY_HELPER_SECRET) and each helper with
+# `helper --config /app/config/helper.toml`.
 CMD ["hub", "--config", "/app/config/hub.toml"]
