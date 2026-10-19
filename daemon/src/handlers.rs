@@ -210,6 +210,16 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                     tokio::spawn(async move {
                         let s = state_ref.lock().await;
                         s.lan_loop_guard.mark(&bytes);
+                        // Same gate as the room sessions (see `session.rs`):
+                        // while our own WC3 is hosting, replaying the other
+                        // members' game state onto the local network is
+                        // both useless (we're in our own lobby) and what
+                        // must not reach a WC3 that's mid-create.
+                        if s.own_game_hosting.load(std::sync::atomic::Ordering::Relaxed)
+                            && warlay::engine::contains_game_state(&bytes)
+                        {
+                            return;
+                        }
                         if let Some(tx) = &s.lan_relay_tx {
                             let _ = tx.send(bytes);
                         }

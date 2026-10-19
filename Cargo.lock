@@ -878,7 +878,7 @@ dependencies = [
 
 [[package]]
 name = "config"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "core"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "crypto",
  "matchmaking",
@@ -1075,7 +1075,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "crypto"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "base64 0.23.1",
  "chacha20poly1305",
@@ -1156,7 +1156,7 @@ dependencies = [
 
 [[package]]
 name = "daemon"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "desktop"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "audiopus",
@@ -1503,7 +1503,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engine"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3002,7 +3002,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "matchmaking"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "constant_time_eq",
  "protocol",
@@ -3918,7 +3918,7 @@ dependencies = [
 
 [[package]]
 name = "protocol"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "base64 0.23.1",
  "bincode",
@@ -4781,7 +4781,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -4923,7 +4923,7 @@ dependencies = [
 
 [[package]]
 name = "social"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "argon2",
@@ -5246,7 +5246,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "storage"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "rusqlite",
  "thiserror 2.0.21",
@@ -6181,7 +6181,7 @@ dependencies = [
 
 [[package]]
 name = "transport"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "socket2",
  "thiserror 2.0.21",
@@ -6452,7 +6452,7 @@ dependencies = [
 
 [[package]]
 name = "warlay"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
  "config",
  "core",

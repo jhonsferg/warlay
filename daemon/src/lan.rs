@@ -4,10 +4,17 @@ use tracing::info;
 
 use crate::state::DaemonState;
 
+/// Starts this machine's LAN side of the room: the scoped capture, the
+/// rebroadcast socket, and the outbound relay to the other members.
+///
+/// `override_port`: legacy hub sessions redirect the `GAMEINFO` they
+/// replay onto the local network to one fixed tunnel port. Room sessions
+/// pass `None` — there, each peer's `GAMEINFO` is rewritten to that peer's
+/// own dedicated joiner port by `session.rs` *before* the rebroadcast.
 pub async fn spawn_lan_mesh(
     state_ref: Arc<tokio::sync::Mutex<DaemonState>>,
     game_port: u16,
-    join_port: Option<u16>,
+    override_port: Option<u16>,
 ) -> Result<(), String> {
     let mut s = state_ref.lock().await;
     if let Some(c) = s.lan_capture.take() {
@@ -17,13 +24,29 @@ pub async fn spawn_lan_mesh(
         r.abort();
     }
 
-    let capture_port = join_port.unwrap_or(game_port);
+    // The room's game port (and, in legacy sessions, the fixed tunnel
+    // port) are the capture's starting set. Every member starts with the
+    // game port — not just the room host: anyone may host a game the
+    // others join, and a browsing WC3's own queries toward the games it
+    // sees must be relayed on every member, not only one. Room sessions
+    // append each peer's joiner port as its rewritten GAMEINFO gets
+    // replayed locally, so the scope grows with the games this WC3 can
+    // actually see and join.
+    let capture_ports: warlay::engine::CapturePorts = Arc::new(std::sync::Mutex::new(match override_port {
+        Some(port) if port != game_port => vec![game_port, port],
+        _ => vec![game_port],
+    }));
+    s.lan_capture_ports = capture_ports.clone();
+    // A fresh tunnel starts with nothing of ours hosting: the sniff in the
+    // capture callback re-sets it the moment our own WC3 announces a game.
+    s.own_game_hosting.store(false, std::sync::atomic::Ordering::Relaxed);
 
     let (tx_rebroadcast, rx_rebroadcast) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     s.lan_relay_tx = Some(tx_rebroadcast);
 
     let loop_guard_for_capture = s.lan_loop_guard.clone();
     let game_started_for_capture = s.game_started.clone();
+    let own_game_hosting_for_capture = s.own_game_hosting.clone();
 
     let (cap_tx, mut cap_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     let cap_tx_clone = cap_tx.clone();
@@ -41,22 +64,40 @@ pub async fn spawn_lan_mesh(
     let lan_discovery_enabled = s.lan_discovery_enabled.clone();
 
     s.lan_capture = Some(
-        warlay::engine::spawn_lan_capture(capture_port, lan_discovery_enabled, move |bytes| {
-            // Observer-only, same as the echo check below: bytes are only
-            // read here, never modified/delayed, still forwarded as-is via
-            // `cap_tx.send(bytes)`. A re-announced game is the only real
-            // signal W3GS gives us that a previous session is over (see
-            // `contains_create_game`'s doc comment) -- the swap only fires
-            // once per detected game (and never on the room's very first
-            // CREATEGAME, since the flag starts false).
-            if warlay::engine::contains_create_game(&bytes)
-                && game_started_for_capture.swap(false, std::sync::atomic::Ordering::SeqCst)
-            {
-                let _ = game_ended_tx.send(());
+        warlay::engine::spawn_lan_capture(capture_ports, lan_discovery_enabled, move |bytes| {
+            // Echo check FIRST: every packet we replay onto the local
+            // network comes back through this promiscuous socket as an
+            // echo of our own IP, and now that every member's captures are
+            // relayed here too, letting echoes through would both re-relay
+            // them and — worse — misread another member's re-announced game
+            // as OUR OWN, firing a bogus GameEnded on whoever happened to
+            // be hosting. Everything below therefore reads only genuinely
+            // own-WC3 traffic.
+            //
+            // Observer-only, same contract as the echo check: bytes are
+            // only read here, never modified/delayed, still forwarded as-is
+            // via `cap_tx.send(bytes)`.
+            if loop_guard_for_capture.is_echo(&bytes) {
+                return;
             }
-            if !loop_guard_for_capture.is_echo(&bytes) {
-                let _ = cap_tx.send(bytes);
+            // Host-state sniff for `own_game_hosting`: a WC3 screen that
+            // announces (CREATEGAME/REFRESHGAME — both observed coming from
+            // a hosting session) is hosting; one that searches
+            // (SEARCHGAME) or destroys its game (DECREATEGAME) is browsing
+            // again. A re-announced game is also the only real signal W3GS
+            // gives us that a previous session is over (see
+            // `contains_create_game`'s doc) -- the swap only fires once per
+            // detected game (and never on the room's very first
+            // CREATEGAME, since `game_started` starts false).
+            if warlay::engine::contains_create_game(&bytes) || warlay::engine::contains_refresh_game(&bytes) {
+                own_game_hosting_for_capture.store(true, std::sync::atomic::Ordering::SeqCst);
+                if game_started_for_capture.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    let _ = game_ended_tx.send(());
+                }
+            } else if warlay::engine::contains_search_game(&bytes) || warlay::engine::contains_decreate_game(&bytes) {
+                own_game_hosting_for_capture.store(false, std::sync::atomic::Ordering::SeqCst);
             }
+            let _ = cap_tx.send(bytes);
         })
         .map_err(|e| format!("no se pudo iniciar la captura LAN: {e}"))?,
     );
@@ -86,7 +127,7 @@ pub async fn spawn_lan_mesh(
         warlay::engine::spawn_lan_rebroadcast(
             game_port,
             rx_rebroadcast,
-            join_port, // override_port: redirect joiners' GAMEINFO to our tunnel's real port
+            override_port, // legacy fixed redirect; room sessions rewrite per peer upstream
             move |bytes| {
                 let _ = cap_tx_clone.send(bytes);
             },
@@ -98,7 +139,7 @@ pub async fn spawn_lan_mesh(
     let active_id = s.active_room_server.clone();
     let state_for_task = state_ref.clone();
 
-    info!(game_port, capture_port, ?join_port, "LAN mesh started");
+    info!(game_port, ?override_port, "LAN mesh started");
 
     tokio::spawn(async move {
         loop {

@@ -48,7 +48,10 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
 # Tauri
-tauri = { version = "2", features = ["tray-icon"] }
+# `devtools` keeps the webview's developer tools available in release builds
+# (window config `devtools: true` + the `open_devtools` command + F12): the
+# feature flag is what actually enables them outside of debug builds.
+tauri = { version = "2", features = ["tray-icon", "devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"

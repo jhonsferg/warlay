@@ -554,6 +554,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::daemon::check_daemon_ready,
             commands::daemon::ensure_daemon_running,
+            commands::devtools::open_devtools,
             commands::e2e::e2e_identity,
             commands::e2e::e2e_encrypt,
             commands::e2e::e2e_decrypt,

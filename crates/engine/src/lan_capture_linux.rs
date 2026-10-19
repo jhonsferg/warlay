@@ -16,7 +16,7 @@ use std::time::Duration;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use crate::lan_filter::{classify_packet, CaptureOutcome};
+use crate::lan_filter::{classify_packet, CaptureOutcome, CapturePorts};
 use crate::subnet::local_ipv4_addrs;
 
 const RECV_TIMEOUT: Duration = Duration::from_millis(500);
@@ -64,11 +64,13 @@ struct SockaddrLl {
     addr: [u8; 8],
 }
 
-/// Captures this machine's own outgoing UDP packets to `game_port` and
-/// forwards each one's payload to `on_packet` (from a plain thread, never a
-/// tokio task -- same contract as the Windows capture).
+/// Captures this machine's own outgoing UDP packets to one of `ports`
+/// (the room's game port plus the live set of joiner ports — see
+/// `lan_filter::CapturePorts`) and forwards each one's payload to
+/// `on_packet` (from a plain thread, never a tokio task -- same contract
+/// as the Windows capture).
 pub fn spawn(
-    game_port: u16,
+    ports: CapturePorts,
     enabled: Arc<AtomicBool>,
     on_packet: impl Fn(Vec<u8>) + Send + Clone + 'static,
 ) -> Result<LanCaptureHandle, LanCaptureError> {
@@ -83,17 +85,17 @@ pub fn spawn(
     socket
         .set_read_timeout(Some(RECV_TIMEOUT))
         .map_err(LanCaptureError::Socket)?;
-    info!(local_ips = ?local_ipv4_addrs(), game_port, "starting LAN capture on an AF_PACKET socket (all interfaces)");
+    info!(local_ips = ?local_ipv4_addrs(), ports = ?ports.lock().unwrap(), "starting LAN capture on an AF_PACKET socket (all interfaces)");
 
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = stop.clone();
-    let thread = std::thread::spawn(move || run_capture_loop(socket, game_port, &thread_stop, &enabled, on_packet));
+    let thread = std::thread::spawn(move || run_capture_loop(socket, &ports, &thread_stop, &enabled, on_packet));
     Ok(LanCaptureHandle { stop, _thread: thread })
 }
 
 fn run_capture_loop(
     socket: Socket,
-    game_port: u16,
+    ports: &CapturePorts,
     stop: &AtomicBool,
     enabled: &AtomicBool,
     on_packet: impl Fn(Vec<u8>),
@@ -146,7 +148,7 @@ fn run_capture_loop(
         total_seen += 1;
         // SAFETY: `recv_from` initialized the first `len` bytes.
         let packet = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), len) };
-        match classify_packet(packet, game_port, &local_ips) {
+        match classify_packet(packet, ports, &local_ips) {
             CaptureOutcome::Relayed(payload) => {
                 if !enabled.load(Ordering::Relaxed) {
                     continue;
