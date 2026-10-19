@@ -99,6 +99,8 @@ pub async fn serve(state: Arc<Mutex<DaemonState>>) -> io::Result<()> {
             }
             _ = tokio::signal::ctrl_c() => break,
             _ = terminate.recv() => break,
+            // The desktop app asked us to exit.
+            () = crate::shutdown::requested() => break,
         }
     }
 
