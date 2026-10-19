@@ -91,10 +91,7 @@ pub fn contains_game_info(buf: &[u8]) -> bool {
 /// WC3 must keep receiving to answer them with `GAMEINFO`) is still
 /// replayed.
 pub fn contains_game_state(buf: &[u8]) -> bool {
-    contains_create_game(buf)
-        || contains_refresh_game(buf)
-        || contains_decreate_game(buf)
-        || contains_game_info(buf)
+    contains_create_game(buf) || contains_refresh_game(buf) || contains_decreate_game(buf) || contains_game_info(buf)
 }
 
 /// Overwrites the port at the tail of a `W3GS_GAMEINFO` payload (its last
@@ -180,7 +177,10 @@ mod tests {
 
         assert!(!contains_game_info(&search));
         assert!(!contains_search_game(&gameinfo));
-        assert!(!contains_game_state(&search), "SEARCHGAME must stay replayable while hosting");
+        assert!(
+            !contains_game_state(&search),
+            "SEARCHGAME must stay replayable while hosting"
+        );
         assert!(contains_game_state(&gameinfo));
         assert!(contains_game_state(&refresh));
         assert!(contains_decreate_game(&refresh) == false);
