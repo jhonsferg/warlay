@@ -21,7 +21,11 @@
 
 const W3GS_MAGIC: u8 = 0xF7;
 const W3GS_COUNTDOWN_START: u8 = 0x0A;
+const W3GS_SEARCHGAME: u8 = 0x2F;
+const W3GS_GAMEINFO: u8 = 0x30;
 const W3GS_CREATEGAME: u8 = 0x31;
+const W3GS_REFRESHGAME: u8 = 0x32;
+const W3GS_DECREATEGAME: u8 = 0x33;
 
 /// `W3GS_COUNTDOWN_START` has no payload — just the 4-byte header (magic,
 /// message id, 2-byte little-endian total length, which is `4` for an
@@ -42,6 +46,71 @@ pub fn contains_countdown_start(buf: &[u8]) -> bool {
 /// caveat as the rest of this module.
 pub fn contains_create_game(buf: &[u8]) -> bool {
     buf.windows(2).any(|w| w[0] == W3GS_MAGIC && w[1] == W3GS_CREATEGAME)
+}
+
+/// A browsing client announcing it wants to see the games on the LAN.
+/// Together with `contains_decreate_game`, this is the *browser-side*
+/// half of the two-way state the daemon keeps about this machine's own
+/// WC3 (see the daemon's `own_game_hosting` docs): a WC3 screen that
+/// searches is browsing, never hosting.
+pub fn contains_search_game(buf: &[u8]) -> bool {
+    buf.windows(2).any(|w| w[0] == W3GS_MAGIC && w[1] == W3GS_SEARCHGAME)
+}
+
+/// The host refreshing its open game's announcement (observed in real
+/// captures of a hosting session alongside `CREATEGAME`/`DECREATEGAME`),
+/// so it is host-side state too: a hosting WC3 re-announces, it never
+/// searches.
+pub fn contains_refresh_game(buf: &[u8]) -> bool {
+    buf.windows(2).any(|w| w[0] == W3GS_MAGIC && w[1] == W3GS_REFRESHGAME)
+}
+
+/// The host announcing its game is gone (user left the lobby, the match
+/// ended). Closes the "hosting" state again: back to the LAN browser.
+pub fn contains_decreate_game(buf: &[u8]) -> bool {
+    buf.windows(2).any(|w| w[0] == W3GS_MAGIC && w[1] == W3GS_DECREATEGAME)
+}
+
+/// The details packet a host sends in answer to a `SEARCHGAME` — the one
+/// carrying the game's name and the port to connect to on join.
+pub fn contains_game_info(buf: &[u8]) -> bool {
+    buf.windows(2).any(|w| w[0] == W3GS_MAGIC && w[1] == W3GS_GAMEINFO)
+}
+
+/// True for the W3GS messages that *describe a hosted game*: the lifecycle
+/// broadcasts (`CREATEGAME`/`REFRESHGAME`/`DECREATEGAME`) and `GAMEINFO`.
+///
+/// These are exactly what the daemon stops replaying onto this machine's
+/// local network while **this machine's own WC3 is hosting** (see the
+/// daemon's `own_game_hosting`): while we're in our own lobby we can't
+/// join anything (so the remote games are useless to us), and a remote
+/// `GAMEINFO` landing on the socket right as our own WC3 runs its create
+/// handshake is the one packet that never occurs on a real LAN in that
+/// state — the prime suspect for WC3's "hubo un fallo" creation error.
+/// Everything else (notably `SEARCHGAME`, the join requests a hosting
+/// WC3 must keep receiving to answer them with `GAMEINFO`) is still
+/// replayed.
+pub fn contains_game_state(buf: &[u8]) -> bool {
+    contains_create_game(buf)
+        || contains_refresh_game(buf)
+        || contains_decreate_game(buf)
+        || contains_game_info(buf)
+}
+
+/// Overwrites the port at the tail of a `W3GS_GAMEINFO` payload (its last
+/// two bytes, little-endian) with `port`, so the client that receives it
+/// connects to our local tunnel port instead of the sender's real one.
+/// Returns whether `packet` was a `GAMEINFO` long enough to rewrite.
+pub fn rewrite_gameinfo_port(packet: &mut [u8], port: u16) -> bool {
+    if packet.len() >= 4 && packet[0] == W3GS_MAGIC && packet[1] == W3GS_GAMEINFO {
+        let len = packet.len();
+        let port_bytes = port.to_le_bytes();
+        packet[len - 2] = port_bytes[0];
+        packet[len - 1] = port_bytes[1];
+        true
+    } else {
+        false
+    }
 }
 
 #[cfg(test)]
@@ -95,5 +164,47 @@ mod tests {
     fn empty_and_short_buffers_never_panic_for_create_game() {
         assert!(!contains_create_game(&[]));
         assert!(!contains_create_game(&[0xF7]));
+    }
+
+    #[test]
+    fn detects_each_lifecycle_message_by_magic_and_id() {
+        let search = [0xF7, 0x2F, 0x04, 0x00, 1, 2];
+        let gameinfo = [0xF7, 0x30, 0x08, 0x00, 1, 2, 3, 4];
+        let refresh = [0xF7, 0x32, 0x04, 0x00];
+        let decreate = [0xF7, 0x33, 0x04, 0x00];
+
+        assert!(contains_search_game(&search));
+        assert!(contains_game_info(&gameinfo));
+        assert!(contains_refresh_game(&refresh));
+        assert!(contains_decreate_game(&decreate));
+
+        assert!(!contains_game_info(&search));
+        assert!(!contains_search_game(&gameinfo));
+        assert!(!contains_game_state(&search), "SEARCHGAME must stay replayable while hosting");
+        assert!(contains_game_state(&gameinfo));
+        assert!(contains_game_state(&refresh));
+        assert!(contains_decreate_game(&refresh) == false);
+    }
+
+    #[test]
+    fn finds_a_lifecycle_message_inside_a_larger_buffer() {
+        let mut buf = vec![0xAA; 8];
+        buf.extend_from_slice(&[0xF7, 0x33, 0x04, 0x00]);
+        assert!(contains_decreate_game(&buf));
+        assert!(contains_game_state(&buf));
+    }
+
+    #[test]
+    fn rewrites_only_a_gameinfo_tail_port() {
+        let mut gameinfo = [0xF7, 0x30, 0x00, 0x00, 0x15, 0x00]; // port 0x0015 = 21
+        assert!(rewrite_gameinfo_port(&mut gameinfo, 5000));
+        assert_eq!(&gameinfo[4..], &5000u16.to_le_bytes());
+
+        let mut search = [0xF7, 0x2F, 0x04, 0x00];
+        assert!(!rewrite_gameinfo_port(&mut search, 5000));
+        assert_eq!(search, [0xF7, 0x2F, 0x04, 0x00], "non-GAMEINFO bytes must be untouched");
+
+        let mut tiny = [0xF7, 0x30, 0x00];
+        assert!(!rewrite_gameinfo_port(&mut tiny, 5000));
     }
 }
