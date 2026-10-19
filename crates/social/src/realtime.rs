@@ -70,6 +70,17 @@ pub enum Event {
     Message {
         message: Message,
     },
+    /// A message was deleted by its sender.
+    MessageDeleted {
+        channel: String,
+        message_id: Uuid,
+    },
+    /// `user_id` received/read a DM conversation up to these times.
+    ChatReceipt {
+        channel: String,
+        user_id: Uuid,
+        receipt: crate::receipts::Receipt,
+    },
     RoomUpdated {
         room: serde_json::Value,
     },
