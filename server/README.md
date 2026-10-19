@@ -150,17 +150,17 @@ docker run -d --name warlay-helper-1 --restart unless-stopped \
   warlay-helper
 ```
 
-| Variable                         | Role        | Overrides                              |
-| -------------------------------- | ----------- | -------------------------------------- |
-| `WARLAY_DATABASE_URL`            | main, edge  | `main.database_url`, `helper.edge.database_url` |
-| `WARLAY_REDIS_URL`               | main, edge  | `main.redis_url`, `helper.edge.redis_url` |
-| `WARLAY_HELPER_SECRET`           | main, helper | `main.helper_secret`, `helper.helper_secret` |
-| `WARLAY_HELPER_NAME`             | helper      | `helper.name` (keep it stable: the helper's identity derives from it) |
-| `WARLAY_HELPER_REGION`           | helper      | `helper.region`                        |
-| `WARLAY_MAIN_URL`                | helper      | `helper.main_url`                      |
-| `WARLAY_PUBLIC_RENDEZVOUS_ADDR`  | helper      | `helper.public_rendezvous_addr`        |
-| `WARLAY_PUBLIC_RELAY_ADDR`       | helper      | `helper.public_relay_addr`             |
-| `WARLAY_EDGE_PUBLIC_URL`         | helper      | `helper.edge.public_url` (turns the edge on) |
+| Variable                        | Role         | Overrides                                                             |
+| ------------------------------- | ------------ | --------------------------------------------------------------------- |
+| `WARLAY_DATABASE_URL`           | main, edge   | `main.database_url`, `helper.edge.database_url`                       |
+| `WARLAY_REDIS_URL`              | main, edge   | `main.redis_url`, `helper.edge.redis_url`                             |
+| `WARLAY_HELPER_SECRET`          | main, helper | `main.helper_secret`, `helper.helper_secret`                          |
+| `WARLAY_HELPER_NAME`            | helper       | `helper.name` (keep it stable: the helper's identity derives from it) |
+| `WARLAY_HELPER_REGION`          | helper       | `helper.region`                                                       |
+| `WARLAY_MAIN_URL`               | helper       | `helper.main_url`                                                     |
+| `WARLAY_PUBLIC_RENDEZVOUS_ADDR` | helper       | `helper.public_rendezvous_addr`                                       |
+| `WARLAY_PUBLIC_RELAY_ADDR`      | helper       | `helper.public_relay_addr`                                            |
+| `WARLAY_EDGE_PUBLIC_URL`        | helper       | `helper.edge.public_url` (turns the edge on)                          |
 
 ## TLS with a reverse proxy
 
