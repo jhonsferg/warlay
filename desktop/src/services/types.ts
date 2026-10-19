@@ -132,6 +132,23 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+/** How far a conversation partner has received and read what we sent them. */
+export interface ReceiptCursors {
+  deliveredAt: string;
+  readAt: string;
+}
+
+/** What the sender sees under a direct message. */
+export type MessageStatus = "sent" | "delivered" | "read";
+
+/** A friend whose direct messages we haven't read. */
+export interface UnreadSummary {
+  peerId: string;
+  count: number;
+  /** Time of the newest unread message. */
+  latestAt: string;
+}
+
 export interface AppNotification {
   id: string;
   kind: string;
@@ -150,6 +167,8 @@ export type RealtimeEvent =
   | { type: "friendRemoved"; userId: string }
   | { type: "notification"; notification: AppNotification }
   | { type: "message"; message: ChatMessage }
+  | { type: "messageDeleted"; channel: string; messageId: string }
+  | { type: "chatReceipt"; channel: string; userId: string; receipt: ReceiptCursors }
   | { type: "roomUpdated"; room: RoomView }
   | { type: "roomClosed"; roomId: string }
   | { type: "roomHelperChanged"; roomId: string; helper: HelperInfo }
