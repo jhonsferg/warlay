@@ -235,7 +235,8 @@ export const useChat = defineStore("chat", () => {
     }
     const known = peerReceipts.value[userId];
     peerReceipts.value[userId] = {
-      deliveredAt: known && micros(known.deliveredAt) > micros(receipt.deliveredAt) ? known.deliveredAt : receipt.deliveredAt,
+      deliveredAt:
+        known && micros(known.deliveredAt) > micros(receipt.deliveredAt) ? known.deliveredAt : receipt.deliveredAt,
       readAt: known && micros(known.readAt) > micros(receipt.readAt) ? known.readAt : receipt.readAt,
     };
   }
