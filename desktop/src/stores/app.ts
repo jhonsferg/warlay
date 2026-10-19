@@ -31,7 +31,14 @@ async function start() {
         // A fresh socket (first connect, or after moving to another edge):
         // whatever was pushed while we weren't connected is lost, so
         // reload the state the events would have updated.
-        void Promise.allSettled([social.load(), notifications.load(), rooms.loadList(), communities.loadMine()]);
+        void Promise.allSettled([
+          social.load(),
+          notifications.load(),
+          rooms.loadList(),
+          communities.loadMine(),
+          rooms.resyncSession(),
+          chat.catchUp(),
+        ]);
         break;
       case "presence":
         social.applyPresence(event.userId, event.presence);
@@ -70,7 +77,7 @@ async function start() {
         if (rooms.applyClosed(event.roomId)) toasts.info("La sala se cerró");
         break;
       case "communityUpdated":
-        void communities.refresh(event.communityId);
+        communities.refreshSoon(event.communityId);
         break;
       case "sessionRevoked":
         void session.logout();
