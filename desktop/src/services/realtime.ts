@@ -125,7 +125,7 @@ class Realtime {
   /** Sends a chat message over the socket; resolves with the stored message.
    * `requestId` identifies the send: retried with the same id (e.g. over
    * HTTP) the server never posts it twice. */
-  sendChat(kind: string, targetId: string, body: string, requestId = crypto.randomUUID()): Promise<ChatMessage> {
+  sendChat(kind: string, targetId: string, body: string, requestId: string = crypto.randomUUID()): Promise<ChatMessage> {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("socket closed"));
     return new Promise((resolve, reject) => {
