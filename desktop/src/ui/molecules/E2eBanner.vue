@@ -30,10 +30,14 @@ const emit = defineEmits<{ trust: [] }>();
       <ShieldAlert :size="14" />
       <span>
         La clave de seguridad de tu amigo cambió (¿nuevo dispositivo?).
-        <span v-if="code" class="e2e-banner__code">Código nuevo <code>{{ code }}</code></span>
+        <span v-if="code" class="e2e-banner__code"
+          >Código nuevo <code>{{ code }}</code></span
+        >
         Compruébalo con tu amigo antes de confiar.
       </span>
-      <WButton size="sm" variant="secondary" data-testid="trust-key" @click="emit('trust')">Confiar en la nueva clave</WButton>
+      <WButton size="sm" variant="secondary" data-testid="trust-key" @click="emit('trust')"
+        >Confiar en la nueva clave</WButton
+      >
     </template>
   </div>
 </template>
