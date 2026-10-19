@@ -20,6 +20,25 @@ pub struct DaemonState {
     pub lan_rebroadcast: Option<warlay::engine::LanRebroadcastHandle>,
     pub lan_relay_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     pub lan_loop_guard: Arc<warlay::engine::LoopGuard>,
+    /// The UDP ports the LAN capture currently relays: the game port plus
+    /// every per-peer joiner port (`GameGatewayHandle::ensure_listener`)
+    /// appended as those peers' rewritten `GAMEINFO`s get replayed locally
+    /// -- shared live with the capture's raw threads, see
+    /// `lan_filter::CapturePorts`.
+    pub lan_capture_ports: warlay::engine::CapturePorts,
+    /// True while THIS machine's own WC3 is hosting a game: from its own
+    /// `CREATEGAME`/`REFRESHGAME` broadcast until its next
+    /// `SEARCHGAME`/`DECREATEGAME` (sniffed in `lan.rs`'s capture
+    /// callback). Gates which remote packets are replayed onto the local
+    /// network (`session.rs` and `handlers.rs`): while we host, remote
+    /// game state is both useless to us (we're in our own lobby) and the
+    /// one thing that must not reach a WC3 mid-create.
+    pub own_game_hosting: Arc<AtomicBool>,
+    /// Per-peer local listeners that carry connections to other members'
+    /// games over the mesh, while a room's game tunnel is up (see
+    /// `start_game_gateway`): one dedicated port per peer, so the port in
+    /// a rewritten `GAMEINFO` says whose game the local WC3 is joining.
+    pub game_gateway: Option<Arc<warlay::engine::GameGatewayHandle>>,
     pub active_room_server: Option<String>,
     /// Which specific room `active_room_server` refers to. Needed because
     /// every hub-pushed `ServerMessage` (`RoomCreated`, `RoomRemoved`, ...)
@@ -67,9 +86,13 @@ pub fn teardown_tunnel_and_lan(s: &mut DaemonState) {
     let had_tunnel = s.game_tunnel.is_some();
     let had_capture = s.lan_capture.is_some();
     let had_rebroadcast = s.lan_rebroadcast.is_some();
+    let had_gateway = s.game_gateway.is_some();
 
     if let Some(t) = s.game_tunnel.take() {
         t.abort();
+    }
+    if let Some(g) = s.game_gateway.take() {
+        g.abort();
     }
     if let Some(c) = s.lan_capture.take() {
         c.abort();
@@ -79,7 +102,13 @@ pub fn teardown_tunnel_and_lan(s: &mut DaemonState) {
     }
     s.lan_relay_tx = None;
 
-    if had_tunnel || had_capture || had_rebroadcast {
-        info!(had_tunnel, had_capture, had_rebroadcast, "tunnel/LAN mesh torn down");
+    if had_tunnel || had_capture || had_rebroadcast || had_gateway {
+        info!(
+            had_tunnel,
+            had_capture,
+            had_rebroadcast,
+            had_gateway,
+            "tunnel/LAN mesh torn down"
+        );
     }
 }
