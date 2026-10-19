@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { chat as api, receipts as receiptsApi } from "../services/api";
+import { notifyOs, windowActive } from "../services/osNotify";
 import type { ChannelKind, ChatMessage, MessageStatus, ReceiptCursors } from "../services/types";
 import { useSession } from "./session";
 
@@ -32,8 +33,6 @@ interface PendingAck {
   readUpTo?: string;
   timer: ReturnType<typeof setTimeout>;
 }
-
-const windowActive = () => document.visibilityState === "visible" && document.hasFocus();
 
 export const useChat = defineStore("chat", () => {
   const channels = ref<Record<string, Channel>>({});
@@ -167,7 +166,10 @@ export const useChat = defineStore("chat", () => {
     if (key.startsWith("dm:")) {
       const partner = key.slice(3);
       recentDms.value = [partner, ...recentDms.value.filter((p) => p !== partner)];
-      if (!mine) ack(partner, open ? "read" : "delivered", message.createdAt);
+      if (!mine) {
+        ack(partner, open ? "read" : "delivered", message.createdAt);
+        void notifyOs(message.sender.displayName, message.body);
+      }
     }
   }
 
