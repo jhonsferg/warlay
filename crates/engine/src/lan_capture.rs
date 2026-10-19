@@ -1,4 +1,4 @@
-use crate::lan_filter::{classify_packet, CaptureOutcome};
+use crate::lan_filter::{classify_packet, CaptureOutcome, CapturePorts};
 use std::mem::size_of;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -58,11 +58,13 @@ impl LanCaptureHandle {
 /// only `ws2_32.dll` — part of Windows itself on every install — unlike
 /// binding WC3's own discovery port ourselves (see `network::w3gs`'s
 /// history for why that conflicts) or capturing via a third-party driver.
+/// Relays only packets aimed at one of `ports` (the room's game port plus
+/// the live set of joiner ports — see `lan_filter::CapturePorts`).
 ///
 /// Still needs Administrator privileges: `SIO_RCVALL` is a privileged
 /// operation on Windows no matter which capture technique is used.
 pub fn spawn(
-    game_port: u16,
+    ports: CapturePorts,
     enabled: Arc<AtomicBool>,
     on_packet: impl Fn(Vec<u8>) + Send + Clone + 'static,
 ) -> Result<LanCaptureHandle, LanCaptureError> {
@@ -75,9 +77,10 @@ pub fn spawn(
     }
 
     let local_ips = local_ipv4_addrs();
+    let ports_for_log = ports.lock().unwrap().clone();
     info!(
         ?local_ips,
-        game_port, "starting LAN capture: opening a promiscuous socket per local interface"
+        ports = ?ports_for_log, "starting LAN capture: opening a promiscuous socket per local interface"
     );
     let stop = Arc::new(AtomicBool::new(false));
     let mut threads = Vec::new();
@@ -95,12 +98,13 @@ pub fn spawn(
         };
 
         let local_ips_owned = local_ips.clone();
+        let ports = ports.clone();
         let on_packet = on_packet.clone();
         let stop = stop.clone();
         let enabled = enabled.clone();
         let ip = *ip;
         threads.push(std::thread::spawn(move || {
-            run_capture_loop(socket, ip, game_port, &local_ips_owned, &stop, &enabled, on_packet)
+            run_capture_loop(socket, ip, &ports, &local_ips_owned, &stop, &enabled, on_packet)
         }));
     }
 
@@ -167,7 +171,7 @@ fn open_promiscuous_socket(ip: Ipv4Addr) -> windows::core::Result<SOCKET> {
 fn run_capture_loop(
     socket: SOCKET,
     ip: Ipv4Addr,
-    game_port: u16,
+    ports: &CapturePorts,
     local_ips: &[Ipv4Addr],
     stop: &AtomicBool,
     enabled: &AtomicBool,
@@ -208,7 +212,7 @@ fn run_capture_loop(
             );
         }
 
-        match classify_packet(&buffer[..received as usize], game_port, local_ips) {
+        match classify_packet(&buffer[..received as usize], ports, local_ips) {
             CaptureOutcome::Relayed(payload) => {
                 // Checked per-packet (not just once at spawn time) so
                 // toggling this off from the "Agente" panel takes effect
@@ -224,7 +228,7 @@ fn run_capture_loop(
                 debug!(
                     %ip,
                     bytes = payload.len(),
-                    "captured a real UDP packet from us to the game port, forwarding to relay verbatim"
+                    "captured a real UDP packet from us to a scoped port, forwarding to relay verbatim"
                 );
                 if tracing::enabled!(tracing::Level::TRACE) {
                     trace!(%ip, hex = %crate::lan_rebroadcast::hex_dump(&payload), "captured packet payload");
@@ -235,7 +239,7 @@ fn run_capture_loop(
                 debug!(%ip, %source, "ignored: UDP packet to the game port, but not from one of our own IPs");
             }
             CaptureOutcome::WrongPort(port) => {
-                debug!(%ip, dest_port = port, game_port, "ignored: UDP packet from us, but to a different port");
+                debug!(%ip, dest_port = port, "ignored: UDP packet from us, but to a different port");
             }
             CaptureOutcome::NotUdp | CaptureOutcome::NotIpv4 | CaptureOutcome::Unparseable => {
                 // The overwhelming majority of promiscuous traffic (TCP,
