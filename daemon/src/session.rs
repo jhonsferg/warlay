@@ -137,8 +137,7 @@ pub async fn start_room_session(
                     s.lan_relay_tx.clone(),
                     s.game_gateway.clone(),
                     s.lan_capture_ports.clone(),
-                    s.own_game_hosting
-                        .load(std::sync::atomic::Ordering::Relaxed),
+                    s.own_game_hosting.load(std::sync::atomic::Ordering::Relaxed),
                 )
             };
             for (from, mut bytes) in packets {
