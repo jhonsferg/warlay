@@ -452,7 +452,7 @@ impl Realtime {
     }
 }
 
-fn conns_key(user_id: Uuid) -> String {
+pub(crate) fn conns_key(user_id: Uuid) -> String {
     format!("wl:conns:{user_id}")
 }
 
@@ -578,6 +578,7 @@ async fn run_socket(state: AppState, user_id: Uuid, socket: WebSocket) {
     if count == 1 {
         info!(%user_id, "user online");
         let _ = broadcast_presence(&state, user_id).await;
+        let _ = crate::routes::rooms::host_came_back(&state, user_id).await;
     }
 
     let (mut sink, mut stream) = socket.split();
@@ -667,8 +668,8 @@ async fn run_socket(state: AppState, user_id: Uuid, socket: WebSocket) {
             let mut redis = state.redis.clone();
             let count: i64 = redis.hlen(conns_key(user_id)).await.unwrap_or(0);
             if count <= 0 {
-                if let Err(error) = crate::routes::rooms::leave_current_room(&state, user_id).await {
-                    warn!(?error, %user_id, "failed to remove disconnected player from room");
+                if let Err(error) = crate::routes::rooms::disconnect_grace_expired(&state, user_id).await {
+                    warn!(?error, %user_id, "failed to handle a disconnected player's room");
                 }
             }
         });
