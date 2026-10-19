@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, CheckCheck, Trash2 } from "@lucide/vue";
+import { Check, CheckCheck, Lock, Trash2 } from "@lucide/vue";
 import { computed, ref } from "vue";
 import type { ChatMessage, MessageStatus } from "../../services/types";
 import WAvatar from "../atoms/WAvatar.vue";
@@ -39,11 +39,17 @@ function confirmDelete() {
         }}</span>
         <time class="message__time">{{ time }}</time>
       </header>
-      <p class="message__text">{{ message.body }}</p>
-      <span v-if="status" class="message__status" :class="`message__status--${status}`" :data-status="status">
-        <CheckCheck v-if="status !== 'sent'" :size="13" />
-        <Check v-else :size="13" />
-        {{ STATUS_LABEL[status] }}
+      <p v-if="message.undecryptable" class="message__text message__text--locked" data-testid="undecryptable">
+        <Lock :size="13" /> Mensaje cifrado que este dispositivo no puede leer
+      </p>
+      <p v-else class="message__text">{{ message.body }}</p>
+      <span v-if="status || message.encrypted" class="message__meta">
+        <Lock v-if="message.encrypted" :size="11" class="message__lock" title="Cifrado de extremo a extremo" />
+        <span v-if="status" class="message__status" :class="`message__status--${status}`" :data-status="status">
+          <CheckCheck v-if="status !== 'sent'" :size="13" />
+          <Check v-else :size="13" />
+          {{ STATUS_LABEL[status] }}
+        </span>
       </span>
     </div>
     <div v-if="mine" class="message__actions">
@@ -113,11 +119,28 @@ function confirmDelete() {
     line-height: 1.5;
   }
 
+  &__text--locked {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-style: italic;
+    color: var(--text-3);
+  }
+
+  &__meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  &__lock {
+    color: var(--text-3);
+  }
+
   &__status {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-top: 2px;
     font-size: var(--fs-xs);
     color: var(--text-3);
 
