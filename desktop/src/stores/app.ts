@@ -38,6 +38,7 @@ async function start() {
           communities.loadMine(),
           rooms.resyncSession(),
           chat.catchUp(),
+          chat.loadUnread(),
         ]);
         break;
       case "presence":
@@ -66,6 +67,12 @@ async function start() {
         break;
       case "message":
         chat.receive(event.message);
+        break;
+      case "messageDeleted":
+        chat.applyDeleted(event.channel, event.messageId);
+        break;
+      case "chatReceipt":
+        chat.applyReceipt(event.channel, event.userId, event.receipt);
         break;
       case "roomUpdated":
         if (rooms.applyUpdated(event.room) === "kicked") toasts.error("Te expulsaron de la sala");
