@@ -317,8 +317,12 @@ pub fn decrypt_dm(
 /// base64url only -- without opening it. For servers, which can't read one
 /// but may insist a body that claims to be one really looks like it.
 pub fn is_envelope(body: &str) -> bool {
-    body.strip_prefix(ENVELOPE_PREFIX)
-        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+    body.strip_prefix(ENVELOPE_PREFIX).is_some_and(|rest| {
+        !rest.is_empty()
+            && rest
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    })
 }
 
 /// A code two users can compare out of band (in person, by call) to be sure
