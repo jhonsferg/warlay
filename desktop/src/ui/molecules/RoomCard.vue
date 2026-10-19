@@ -27,6 +27,7 @@ const fill = computed(() => Math.round((props.room.members.length / props.room.m
       <WBadge v-if="room.status === 'in_game'" tone="game" dot>En partida</WBadge>
       <WBadge v-else tone="success" dot>Abierta</WBadge>
     </header>
+    <WBadge v-if="room.hostAway" tone="danger" dot>Anfitrión desconectado</WBadge>
 
     <div class="room-card__tags">
       <WBadge v-if="room.communityName" tone="accent">{{ room.communityName }}</WBadge>
