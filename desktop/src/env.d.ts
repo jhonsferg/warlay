@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Default main server URL baked into the build. */
+  /** Optional build-time override of the main server URL; the production URL
+   * itself lives in `services/http.ts`. */
   readonly VITE_WARLAY_MAIN_URL?: string;
 }
