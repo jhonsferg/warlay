@@ -1077,6 +1077,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 name = "crypto"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "chacha20poly1305",
  "constant_time_eq",
  "getrandom 0.3.4",
