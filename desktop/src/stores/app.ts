@@ -3,6 +3,7 @@ import { native } from "../services/native";
 import { notifyOs } from "../services/osNotify";
 import { realtime } from "../services/realtime";
 import { useChat } from "./chat";
+import { useE2e } from "./e2e";
 import { useCommunities } from "./communities";
 import { useNotifications } from "./notifications";
 import { useRooms } from "./rooms";
@@ -95,6 +96,8 @@ async function start() {
         break;
     }
   });
+  // Before the socket: its first messages may be encrypted.
+  void useE2e().init();
   realtime.connect();
 
   await Promise.allSettled([
@@ -116,6 +119,7 @@ function stop() {
   useCommunities().reset();
   useRooms().reset();
   useChat().reset();
+  useE2e().reset();
   useNotifications().reset();
 }
 
