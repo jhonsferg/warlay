@@ -79,8 +79,7 @@ export const native = {
     invoke<string>("e2e_encrypt", { me, peerId, peerPublicKey, requestId, plaintext }),
   e2eDecrypt: (me: string, peerId: string, peerPublicKey: string, senderId: string, envelope: string) =>
     invoke<{ plaintext: string; requestId: string }>("e2e_decrypt", { me, peerId, peerPublicKey, senderId, envelope }),
-  e2eSafetyNumber: (me: string, peerPublicKey: string) =>
-    invoke<string>("e2e_safety_number", { me, peerPublicKey }),
+  e2eSafetyNumber: (me: string, peerPublicKey: string) => invoke<string>("e2e_safety_number", { me, peerPublicKey }),
 
   ensureDaemonRunning: () => invoke<void>("ensure_daemon_running"),
 
