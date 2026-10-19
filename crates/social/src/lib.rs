@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use axum::http::{HeaderValue, Method};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing::info;
@@ -34,7 +34,7 @@ pub use config::MainSettings;
 pub use error::ApiError;
 pub use state::AppState;
 
-use routes::{auth as auth_routes, chat as chat_routes, communities, friends, invites, notifications, rooms, users};
+use routes::{auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications, rooms, users};
 
 /// Connects to Postgres (running migrations) and Redis, and starts the
 /// realtime subscriber.
@@ -96,6 +96,8 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/logout", post(auth_routes::logout))
         .route("/me", get(auth_routes::me).patch(auth_routes::update_me))
         .route("/me/password", post(auth_routes::change_password))
+        .route("/me/e2e-key", put(keys::publish))
+        .route("/users/{id}/e2e-key", get(keys::get))
         .route("/users/search", get(users::search))
         .route("/users/{id}", get(users::profile))
         .route("/friends", get(friends::list))
