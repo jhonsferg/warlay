@@ -92,6 +92,9 @@ export interface RoomView {
   status: RoomStatus;
   members: UserSummary[];
   createdAt: string;
+  /** When the server read this state (µs since the epoch); updates older
+   * than the state already held are stale and dropped. */
+  snapshotAt?: number;
 }
 
 export interface HelperInfo {
