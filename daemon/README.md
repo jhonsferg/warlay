@@ -5,6 +5,11 @@ everything needing elevated privileges or long-lived sockets, on behalf of the
 [desktop client](../desktop/README.md). It has no window; the client talks to
 it over a local named pipe.
 
+It also builds and runs on Linux (`wnetd`), with the same requests, handlers
+and behavior: the IPC endpoint is a Unix socket instead of the named pipe and
+LAN capture uses an `AF_PACKET` socket instead of `SIO_RCVALL` (see
+[Linux](#linux)).
+
 ## Responsibilities
 
 - **Hub connections** - one encrypted matchmaking connection per registered
@@ -35,9 +40,11 @@ flowchart LR
     src --> handlers["handlers.rs<br/>one handler per DaemonRequest"]
     src --> lan["lan.rs<br/>LAN capture and replay<br/>for the active room"]
     src --> state["state.rs<br/>shared state: connections,<br/>tunnel, mesh"]
-    src --> security["security.rs<br/>pipe ACL and connecting<br/>process verification"]
+    src --> security["security.rs<br/>pipe ACL and connecting<br/>process verification (Windows)"]
+    src --> unix["unix_socket.rs<br/>Unix socket server and<br/>peer-credential check (Linux)"]
+    src --> paths["paths.rs<br/>data and log directory<br/>per platform"]
     src --> storage["storage.rs<br/>daemon settings in SQLite"]
-    src --> autostart["autostart.rs<br/>logon Scheduled Task registration"]
+    src --> autostart["autostart.rs<br/>logon Scheduled Task registration (Windows)"]
     src --> logging["logging.rs and log_control.rs<br/>rotating file logs and<br/>runtime log levels"]
 ```
 
@@ -72,6 +79,26 @@ Release builds use the Windows GUI subsystem (no console window) and embed a
 manifest requesting elevation (`build.rs`). For a client build, run
 `npm run prepare-daemon-sidecar` in `desktop/`, which builds the daemon and
 copies it where Tauri bundles it.
+
+## Linux
+
+```sh
+cargo build --release -p daemon   # -> target/release/wnetd
+sudo ./target/release/wnetd       # or grant it CAP_NET_RAW instead of root
+```
+
+| | Windows | Linux |
+| --- | --- | --- |
+| IPC endpoint | named pipe `\\.\pipe\warlay-daemon` | Unix socket: `$WARLAY_DAEMON_SOCKET`, else `$XDG_RUNTIME_DIR/warlay-daemon.sock`, else `/tmp/warlay-daemon-<uid>.sock` |
+| Access control | pipe ACL + client executable check | socket file mode `0600` + `SO_PEERCRED` (same user or root) |
+| LAN capture | raw socket in `SIO_RCVALL` mode (Administrator) | `AF_PACKET` socket tapping outgoing frames (`CAP_NET_RAW`) |
+| Data and logs | `%APPDATA%\com.warlay.lanlauncher\` | `$WARLAY_DATA_DIR`, else `$XDG_DATA_HOME/warlay`, else `~/.local/share/warlay` |
+| Shutdown | Ctrl+C | SIGINT or SIGTERM (`docker stop`, systemd) |
+| `--install` | logon Scheduled Task | not used: run it from a systemd unit |
+
+The protocol is the same newline-delimited JSON
+([`crates/protocol/src/ipc.rs`](../crates/protocol/src/ipc.rs)), so any
+client that speaks it can drive either build.
 
 ## Tests
 
