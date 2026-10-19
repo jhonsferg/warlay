@@ -33,6 +33,8 @@ const GROUP: &str = "persist";
 const RECENT_LEN: isize = 200;
 const CHANNEL_TTL_SECS: u64 = 300;
 const USER_TTL_SECS: u64 = 600;
+/// How long a send's request id is remembered for deduplication.
+const REQUEST_TTL_SECS: u64 = 600;
 
 pub fn dm_key(a: Uuid, b: Uuid) -> String {
     format!("dm:{}:{}", a.min(b), a.max(b))
@@ -128,7 +130,29 @@ pub async fn user_summary(state: &AppState, user_id: Uuid) -> ApiResult<UserSumm
     Ok(user)
 }
 
-pub async fn send(state: &AppState, me: Uuid, kind: &str, id: Uuid, body: &str) -> ApiResult<Message> {
+/// Posts a message. `request_id`, when given, makes it idempotent: the same
+/// id from the same user returns the message already posted (a send that
+/// timed out on the socket and was retried over HTTP, or reached a frozen
+/// edge that processed it later) instead of posting it twice.
+pub async fn send(
+    state: &AppState,
+    me: Uuid,
+    kind: &str,
+    id: Uuid,
+    body: &str,
+    request_id: Option<&str>,
+) -> ApiResult<Message> {
+    let dedup_key = request_id
+        .filter(|r| !r.is_empty() && r.len() <= 64)
+        .map(|r| format!("wl:chatreq:{me}:{r}"));
+    let mut redis = state.redis.clone();
+    if let Some(key) = &dedup_key {
+        if let Some(sent) = redis.get::<_, Option<String>>(key).await? {
+            if let Ok(message) = serde_json::from_str::<Message>(&sent) {
+                return Ok(message);
+            }
+        }
+    }
     let body = body.trim();
     if body.is_empty() {
         return Err(ApiError::bad_request("empty_message", "el mensaje está vacío"));
@@ -149,8 +173,25 @@ pub async fn send(state: &AppState, me: Uuid, kind: &str, id: Uuid, body: &str) 
         created_at: Utc::now(),
     };
     let json = serde_json::to_string(&message).map_err(ApiError::internal)?;
+    if let Some(dedup_key) = &dedup_key {
+        // Claims the request id; losing the race means a concurrent attempt
+        // of this same send got there first.
+        let claimed: Option<String> = redis::cmd("SET")
+            .arg(dedup_key)
+            .arg(&json)
+            .arg("NX")
+            .arg("EX")
+            .arg(REQUEST_TTL_SECS)
+            .query_async(&mut redis)
+            .await?;
+        if claimed.is_none() {
+            let sent: Option<String> = redis.get(dedup_key).await?;
+            if let Some(message) = sent.and_then(|s| serde_json::from_str::<Message>(&s).ok()) {
+                return Ok(message);
+            }
+        }
+    }
     let recent = format!("wl:chat:recent:{key}");
-    let mut redis = state.redis.clone();
     let _: () = redis::pipe()
         .cmd("XADD")
         .arg(STREAM)
