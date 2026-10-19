@@ -19,6 +19,7 @@ mod paths;
 #[cfg(windows)]
 mod security;
 mod session;
+mod shutdown;
 mod state;
 mod storage;
 #[cfg(unix)]
@@ -133,6 +134,12 @@ async fn serve_named_pipe(daemon_state: Arc<Mutex<DaemonState>>) -> Result<(), E
                 info!("shutdown signal received, tearing down active session");
                 let mut s = daemon_state.lock().await;
                 state::teardown_tunnel_and_lan(&mut s);
+                break;
+            }
+            // The desktop app asked us to exit (its tray "Salir"): the
+            // handler already released everything, this just ends the loop.
+            () = shutdown::requested() => {
+                info!("shutdown requested by the desktop app, exiting");
                 break;
             }
         }
