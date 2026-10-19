@@ -32,16 +32,14 @@ pub async fn spawn_lan_mesh(
     // append each peer's joiner port as its rewritten GAMEINFO gets
     // replayed locally, so the scope grows with the games this WC3 can
     // actually see and join.
-    let capture_ports: warlay::engine::CapturePorts =
-        Arc::new(std::sync::Mutex::new(match override_port {
-            Some(port) if port != game_port => vec![game_port, port],
-            _ => vec![game_port],
-        }));
+    let capture_ports: warlay::engine::CapturePorts = Arc::new(std::sync::Mutex::new(match override_port {
+        Some(port) if port != game_port => vec![game_port, port],
+        _ => vec![game_port],
+    }));
     s.lan_capture_ports = capture_ports.clone();
     // A fresh tunnel starts with nothing of ours hosting: the sniff in the
     // capture callback re-sets it the moment our own WC3 announces a game.
-    s.own_game_hosting
-        .store(false, std::sync::atomic::Ordering::Relaxed);
+    s.own_game_hosting.store(false, std::sync::atomic::Ordering::Relaxed);
 
     let (tx_rebroadcast, rx_rebroadcast) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     s.lan_relay_tx = Some(tx_rebroadcast);
@@ -91,16 +89,12 @@ pub async fn spawn_lan_mesh(
             // `contains_create_game`'s doc) -- the swap only fires once per
             // detected game (and never on the room's very first
             // CREATEGAME, since `game_started` starts false).
-            if warlay::engine::contains_create_game(&bytes)
-                || warlay::engine::contains_refresh_game(&bytes)
-            {
+            if warlay::engine::contains_create_game(&bytes) || warlay::engine::contains_refresh_game(&bytes) {
                 own_game_hosting_for_capture.store(true, std::sync::atomic::Ordering::SeqCst);
                 if game_started_for_capture.swap(false, std::sync::atomic::Ordering::SeqCst) {
                     let _ = game_ended_tx.send(());
                 }
-            } else if warlay::engine::contains_search_game(&bytes)
-                || warlay::engine::contains_decreate_game(&bytes)
-            {
+            } else if warlay::engine::contains_search_game(&bytes) || warlay::engine::contains_decreate_game(&bytes) {
                 own_game_hosting_for_capture.store(false, std::sync::atomic::Ordering::SeqCst);
             }
             let _ = cap_tx.send(bytes);
