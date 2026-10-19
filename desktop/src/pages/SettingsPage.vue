@@ -17,13 +17,14 @@ import WSwitch from "../ui/atoms/WSwitch.vue";
 import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
+import LogSettingsSection from "../ui/organisms/LogSettingsSection.vue";
 import AppShell from "../ui/templates/AppShell.vue";
 
 const session = useSession();
 const settings = useSettings();
 const toasts = useToasts();
 
-type Tab = "account" | "game" | "network";
+type Tab = "account" | "game" | "network" | "logs";
 const tab = ref<Tab>("account");
 
 const displayName = ref(session.me?.displayName ?? "");
@@ -126,6 +127,7 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
         { id: 'account', label: 'Cuenta' },
         { id: 'game', label: 'Juego' },
         { id: 'network', label: 'Red y agente' },
+        { id: 'logs', label: 'Registros' },
       ]"
     />
 
@@ -286,6 +288,8 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
         </div>
       </section>
     </div>
+
+    <LogSettingsSection v-if="tab === 'logs'" />
   </AppShell>
 </template>
 
