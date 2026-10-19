@@ -13,9 +13,11 @@ import type {
   InviteView,
   Me,
   Profile,
+  ReceiptCursors,
   RoomSession,
   RoomView,
   Tokens,
+  UnreadSummary,
   UserWithPresence,
 } from "./types";
 
@@ -106,6 +108,8 @@ export const chat = {
         base,
       ),
     ),
+  remove: (kind: ChannelKind, id: string, messageId: string) =>
+    onEdge((base) => api<void>("DELETE", `/chat/${kind}/${id}/messages/${messageId}`, undefined, base)),
   send: async (kind: ChannelKind, id: string, body: string) => {
     // One id for every attempt: if the socket attempt did reach the server
     // (it only timed out), the HTTP retry returns that same message.
@@ -118,6 +122,15 @@ export const chat = {
       return onEdge((base) => api<ChatMessage>("POST", `/chat/${kind}/${id}/messages`, { body, requestId }, base));
     }
   },
+};
+
+export const receipts = {
+  /** We received/read the conversation with `peerId` up to `upTo`. */
+  mark: (peerId: string, state: "delivered" | "read", upTo: string) =>
+    onEdge((base) => api<ReceiptCursors>("POST", `/chat/dm/${peerId}/receipt`, { state, upTo }, base)),
+  /** How far `peerId` has received and read what we sent. */
+  peer: (peerId: string) => onEdge((base) => api<ReceiptCursors>("GET", `/chat/dm/${peerId}/receipt`, undefined, base)),
+  unread: () => onEdge((base) => api<UnreadSummary[]>("GET", "/chat/unread", undefined, base)),
 };
 
 export const notifications = {
