@@ -43,7 +43,7 @@ const fill = computed(() => Math.round((props.room.members.length / props.room.m
       <WButton
         v-else
         size="sm"
-        :disabled="full || room.status === 'in_game'"
+        :disabled="full"
         :loading="busy"
         @click="$emit('join', room)"
       >
