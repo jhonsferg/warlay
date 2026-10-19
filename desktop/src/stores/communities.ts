@@ -56,11 +56,44 @@ export const useCommunities = defineStore("communities", () => {
     if (details.value[id]) await loadDetail(id);
   }
 
+  const pendingRefresh = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** `refresh` on a `communityUpdated` event: every member of the community
+   * gets it at once, so wait a random moment (and fold repeats) instead of
+   * all of them refetching in the same instant. */
+  function refreshSoon(id: string) {
+    if (pendingRefresh.has(id)) return;
+    const timer = setTimeout(
+      () => {
+        pendingRefresh.delete(id);
+        void refresh(id).catch(() => {});
+      },
+      300 + Math.random() * 2000,
+    );
+    pendingRefresh.set(id, timer);
+  }
+
   function reset() {
+    pendingRefresh.forEach(clearTimeout);
+    pendingRefresh.clear();
     mine.value = [];
     details.value = {};
     discovered.value = [];
   }
 
-  return { mine, details, discovered, loadMine, loadDetail, discover, create, join, leave, remove, refresh, reset };
+  return {
+    mine,
+    details,
+    discovered,
+    loadMine,
+    loadDetail,
+    discover,
+    create,
+    join,
+    leave,
+    remove,
+    refresh,
+    refreshSoon,
+    reset,
+  };
 });
