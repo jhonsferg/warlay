@@ -4,10 +4,12 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { errorMessage } from "../../services/http";
 import type { ChannelKind, ChatMessage } from "../../services/types";
 import { channelKey, useChat } from "../../stores/chat";
+import { useE2e } from "../../stores/e2e";
 import { useSession } from "../../stores/session";
 import { useToasts } from "../../stores/toasts";
 import WIconButton from "../atoms/WIconButton.vue";
 import WSpinner from "../atoms/WSpinner.vue";
+import E2eBanner from "../molecules/E2eBanner.vue";
 import EmojiPicker from "../molecules/EmojiPicker.vue";
 import EmptyState from "../molecules/EmptyState.vue";
 import MessageItem from "../molecules/MessageItem.vue";
@@ -15,6 +17,7 @@ import MessageItem from "../molecules/MessageItem.vue";
 const props = defineProps<{ kind: ChannelKind; targetId: string; placeholder: string; emptyTitle?: string }>();
 
 const chat = useChat();
+const e2e = useE2e();
 const session = useSession();
 const toasts = useToasts();
 const draft = ref("");
@@ -26,6 +29,7 @@ const input = ref<HTMLTextAreaElement | null>(null);
 const emojiOpen = ref(false);
 
 const key = computed(() => channelKey(props.kind, props.targetId));
+const security = computed(() => (props.kind === "dm" ? e2e.securityOf(props.targetId) : "off"));
 const messages = computed(() => chat.channel(key.value).messages);
 
 // Group consecutive messages by the same sender within 5 minutes.
@@ -120,6 +124,12 @@ onUnmounted(() => {
 
 <template>
   <section class="chat-panel">
+    <E2eBanner
+      v-if="!loading && security !== 'off'"
+      :security="security"
+      :code="e2e.safetyNumbers[targetId]"
+      @trust="e2e.trust(targetId)"
+    />
     <div ref="scroller" class="chat-panel__scroll" data-testid="chat-messages">
       <div v-if="loading" class="chat-panel__loading"><WSpinner :size="22" /></div>
       <EmptyState
