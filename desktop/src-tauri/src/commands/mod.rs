@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod daemon;
 pub mod discovery;
+pub mod e2e;
 pub mod launcher;
 pub mod matchmaking;
 pub mod overlay;
