@@ -86,7 +86,7 @@ export function refreshTokens(): Promise<boolean> {
   return refreshing;
 }
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 async function send(method: Method, path: string, body?: unknown, base = mainServerUrl()): Promise<Response> {
   const headers: Record<string, string> = {};
