@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use warlay::protocol::{RoomSummary, ServerMessage};
+use warlay::protocol::ServerMessage;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
