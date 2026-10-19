@@ -129,7 +129,10 @@ fn load_or_create(dir: &Path, user: Uuid) -> Result<Identity, AppError> {
 /// Identities already opened this run, by account.
 fn identity_for(user: Uuid) -> Result<Arc<Identity>, AppError> {
     static CACHE: OnceLock<Mutex<HashMap<Uuid, Arc<Identity>>>> = OnceLock::new();
-    let mut cache = CACHE.get_or_init(Default::default).lock().expect("identity cache poisoned");
+    let mut cache = CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .expect("identity cache poisoned");
     if let Some(identity) = cache.get(&user) {
         return Ok(identity.clone());
     }
@@ -149,7 +152,9 @@ fn peer_key(text: &str) -> Result<[u8; 32], AppError> {
 /// This account's public key (base64url), creating the identity if needed.
 #[tauri::command]
 pub fn e2e_identity(user_id_text: String) -> Result<String, AppError> {
-    Ok(e2e::encode_public_key(&identity_for(user_id(&user_id_text)?)?.public_bytes()))
+    Ok(e2e::encode_public_key(
+        &identity_for(user_id(&user_id_text)?)?.public_bytes(),
+    ))
 }
 
 /// The message body to post for `plaintext`, sent to `peer_id`.
@@ -235,7 +240,10 @@ mod tests {
         let again = load_or_create(&dir, user).unwrap();
         assert_eq!(first.public_bytes(), again.public_bytes());
         // Another account on the same machine has its own key.
-        assert_ne!(first.public_bytes(), load_or_create(&dir, Uuid::new_v4()).unwrap().public_bytes());
+        assert_ne!(
+            first.public_bytes(),
+            load_or_create(&dir, Uuid::new_v4()).unwrap().public_bytes()
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 
@@ -265,8 +273,24 @@ mod tests {
         let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
         let dir = temp_dir("talk");
         let (ida, idb) = (load_or_create(&dir, a).unwrap(), load_or_create(&dir, b).unwrap());
-        let envelope = e2e::encrypt_dm(&ida, &idb.public_bytes(), *a.as_bytes(), *b.as_bytes(), "r", "hola".as_bytes()).unwrap();
-        let opened = e2e::decrypt_dm(&idb, &ida.public_bytes(), *a.as_bytes(), *b.as_bytes(), &envelope, false).unwrap();
+        let envelope = e2e::encrypt_dm(
+            &ida,
+            &idb.public_bytes(),
+            *a.as_bytes(),
+            *b.as_bytes(),
+            "r",
+            "hola".as_bytes(),
+        )
+        .unwrap();
+        let opened = e2e::decrypt_dm(
+            &idb,
+            &ida.public_bytes(),
+            *a.as_bytes(),
+            *b.as_bytes(),
+            &envelope,
+            false,
+        )
+        .unwrap();
         assert_eq!(opened.plaintext, b"hola");
         std::fs::remove_dir_all(dir).ok();
     }
