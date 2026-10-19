@@ -285,9 +285,12 @@ pub async fn delete_message(state: &AppState, me: Uuid, kind: &str, id: Uuid, me
     let mut redis = state.redis.clone();
     let recent_key = format!("wl:chat:recent:{key}");
     let cached: Vec<String> = redis.lrange(&recent_key, 0, -1).await?;
-    let in_recent = cached
-        .into_iter()
-        .find_map(|json| serde_json::from_str::<Message>(&json).ok().filter(|m| m.id == message_id).map(|m| (json, m)));
+    let in_recent = cached.into_iter().find_map(|json| {
+        serde_json::from_str::<Message>(&json)
+            .ok()
+            .filter(|m| m.id == message_id)
+            .map(|m| (json, m))
+    });
     let in_db: Option<(Uuid, Option<DateTime<Utc>>)> =
         sqlx::query_as("SELECT sender_id, deleted_at FROM messages WHERE id = $1 AND channel = $2")
             .bind(message_id)
