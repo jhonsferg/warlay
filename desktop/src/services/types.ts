@@ -95,6 +95,8 @@ export interface RoomView {
   /** When the server read this state (µs since the epoch); updates older
    * than the state already held are stale and dropped. */
   snapshotAt?: number;
+  /** The host is disconnected; the room lives on until they return or close it. */
+  hostAway?: boolean;
 }
 
 export interface HelperInfo {
