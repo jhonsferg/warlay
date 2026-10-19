@@ -9,7 +9,11 @@ use tracing::info;
 
 /// `(version, name, sql)`, in the order they must run. Never edit an
 /// applied migration: add a new one.
-const MIGRATIONS: &[(i64, &str, &str)] = &[(1, "initial", INITIAL), (2, "chat_receipts", CHAT_RECEIPTS)];
+const MIGRATIONS: &[(i64, &str, &str)] = &[
+    (1, "initial", INITIAL),
+    (2, "chat_receipts", CHAT_RECEIPTS),
+    (3, "room_host_absence", ROOM_HOST_ABSENCE),
+];
 
 /// Arbitrary constant identifying Warlay's migration lock.
 const LOCK_KEY: i64 = 0x5741_524C_4159;
@@ -190,4 +194,11 @@ CREATE TABLE IF NOT EXISTS chat_reads (
     read_at       TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
     PRIMARY KEY (user_id, channel)
 );
+"#;
+
+/// A room outlives its host's connection: this is since when the host has
+/// been away (NULL while connected), so abandoned rooms can be closed.
+const ROOM_HOST_ABSENCE: &str = r#"
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS host_away_since TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS rooms_host_away_idx ON rooms(host_away_since) WHERE host_away_since IS NOT NULL;
 "#;
