@@ -87,14 +87,14 @@ cargo build --release -p daemon   # -> target/release/wnetd
 sudo ./target/release/wnetd       # or grant it CAP_NET_RAW instead of root
 ```
 
-| | Windows | Linux |
-| --- | --- | --- |
-| IPC endpoint | named pipe `\\.\pipe\warlay-daemon` | Unix socket: `$WARLAY_DAEMON_SOCKET`, else `$XDG_RUNTIME_DIR/warlay-daemon.sock`, else `/tmp/warlay-daemon-<uid>.sock` |
-| Access control | pipe ACL + client executable check | socket file mode `0600` + `SO_PEERCRED` (same user or root) |
-| LAN capture | raw socket in `SIO_RCVALL` mode (Administrator) | `AF_PACKET` socket tapping outgoing frames (`CAP_NET_RAW`) |
-| Data and logs | `%APPDATA%\com.warlay.lanlauncher\` | `$WARLAY_DATA_DIR`, else `$XDG_DATA_HOME/warlay`, else `~/.local/share/warlay` |
-| Shutdown | Ctrl+C | SIGINT or SIGTERM (`docker stop`, systemd) |
-| `--install` | logon Scheduled Task | not used: run it from a systemd unit |
+|                | Windows                                         | Linux                                                                                                                  |
+| -------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| IPC endpoint   | named pipe `\\.\pipe\warlay-daemon`             | Unix socket: `$WARLAY_DAEMON_SOCKET`, else `$XDG_RUNTIME_DIR/warlay-daemon.sock`, else `/tmp/warlay-daemon-<uid>.sock` |
+| Access control | pipe ACL + client executable check              | socket file mode `0600` + `SO_PEERCRED` (same user or root)                                                            |
+| LAN capture    | raw socket in `SIO_RCVALL` mode (Administrator) | `AF_PACKET` socket tapping outgoing frames (`CAP_NET_RAW`)                                                             |
+| Data and logs  | `%APPDATA%\com.warlay.lanlauncher\`             | `$WARLAY_DATA_DIR`, else `$XDG_DATA_HOME/warlay`, else `~/.local/share/warlay`                                         |
+| Shutdown       | Ctrl+C                                          | SIGINT or SIGTERM (`docker stop`, systemd)                                                                             |
+| `--install`    | logon Scheduled Task                            | not used: run it from a systemd unit                                                                                   |
 
 The protocol is the same newline-delimited JSON
 ([`crates/protocol/src/ipc.rs`](../crates/protocol/src/ipc.rs)), so any
