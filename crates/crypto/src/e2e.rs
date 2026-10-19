@@ -100,6 +100,17 @@ impl Identity {
     }
 }
 
+/// A public key as the text exchanged with the server (base64url).
+pub fn encode_public_key(key: &[u8; KEY_LEN]) -> String {
+    URL_SAFE_NO_PAD.encode(key)
+}
+
+/// The inverse of [`encode_public_key`]; `None` for anything that isn't a
+/// 32-byte key.
+pub fn decode_public_key(text: &str) -> Option<[u8; KEY_LEN]> {
+    URL_SAFE_NO_PAD.decode(text).ok()?.try_into().ok()
+}
+
 /// Everything about a message that is authenticated but not secret.
 struct Binding<'a> {
     sender: [u8; 16],
@@ -471,6 +482,15 @@ mod tests {
         assert!(is_envelope(&envelope));
         for not in ["", "e2e1:", "hola", "e2e1:con espacios", "e2e1:a+b/c=", "E2E1:abc"] {
             assert!(!is_envelope(not), "{not:?}");
+        }
+    }
+
+    #[test]
+    fn public_keys_round_trip_as_text() {
+        let key = Identity::generate().public_bytes();
+        assert_eq!(decode_public_key(&encode_public_key(&key)), Some(key));
+        for bad in ["", "AAAA", "!!!", &URL_SAFE_NO_PAD.encode([1_u8; 31])] {
+            assert_eq!(decode_public_key(bad), None);
         }
     }
 
