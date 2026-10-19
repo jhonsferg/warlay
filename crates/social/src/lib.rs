@@ -175,6 +175,15 @@ pub fn edge_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Closes the rooms whose host has been away longer than
+/// `host_absence_close_secs` (the watchdog does this every minute). Exposed
+/// for maintenance tooling and tests.
+pub async fn reap_abandoned_rooms(state: &AppState) {
+    if let Err(error) = routes::rooms::reap_abandoned_rooms(state).await {
+        tracing::warn!(?error, "abandoned room reaper failed");
+    }
+}
+
 /// Starts this node's share of persisting chat to PostgreSQL.
 /// Main server only: moves rooms off helpers that died.
 pub fn start_helper_watchdog(state: &AppState) {
