@@ -438,9 +438,6 @@ pub async fn join_room(
     if !invited && !can_see(state, user_id, &room).await? {
         return Err(ApiError::forbidden("no puedes unirte a esta sala"));
     }
-    if room.status == "in_game" {
-        return Err(ApiError::conflict("in_game", "la partida ya comenzó"));
-    }
     if room.members.len() as i32 >= room.max_players {
         return Err(ApiError::conflict("room_full", "la sala está llena"));
     }
@@ -471,12 +468,11 @@ pub async fn join_room(
             .bind(room_id)
             .fetch_optional(&mut *tx)
             .await?;
-    let Some((max_players, status)) = locked.filter(|(_, s)| s != "closed") else {
+    // A running game doesn't close the room to newcomers: the room is a
+    // virtual LAN, and `in_game` is only a badge.
+    let Some((max_players, _)) = locked.filter(|(_, s)| s != "closed") else {
         return Err(ApiError::not_found("la sala ya no existe"));
     };
-    if status == "in_game" {
-        return Err(ApiError::conflict("in_game", "la partida ya comenzó"));
-    }
     let members: i64 = sqlx::query_scalar("SELECT count(*) FROM room_members WHERE room_id = $1")
         .bind(room_id)
         .fetch_one(&mut *tx)
