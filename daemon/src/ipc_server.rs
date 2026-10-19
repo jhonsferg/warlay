@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::windows::named_pipe::NamedPipeServer;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -43,12 +42,16 @@ pub async fn push_event(state: &Arc<Mutex<DaemonState>>, response: DaemonRespons
 }
 
 /// Runs the full request/response lifecycle for one already-accepted,
-/// already-identity-verified pipe connection: registers it as the current
-/// "UI" target for push events (resyncing it with whatever's already live,
-/// so a UI restart doesn't go dark until the next state change), then reads
-/// newline-delimited JSON requests until the client disconnects or the pipe
-/// errors.
-pub async fn handle_connection(connected_client: NamedPipeServer, state_clone: Arc<Mutex<DaemonState>>) {
+/// already-identity-verified client connection (a named pipe on Windows, a
+/// Unix socket on Linux): registers it as the current "UI" target for push
+/// events (resyncing it with whatever's already live, so a UI restart
+/// doesn't go dark until the next state change), then reads
+/// newline-delimited JSON requests until the client disconnects or the
+/// connection errors.
+pub async fn handle_connection<S>(connected_client: S, state_clone: Arc<Mutex<DaemonState>>)
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
     let (reader, mut writer) = tokio::io::split(connected_client);
     let mut reader = BufReader::new(reader);
 
