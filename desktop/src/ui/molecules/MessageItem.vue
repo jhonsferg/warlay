@@ -57,7 +57,14 @@ function confirmDelete() {
         <button type="button" class="message__action message__action--danger" @click="confirmDelete">Borrar</button>
         <button type="button" class="message__action" @click="confirming = false">Cancelar</button>
       </template>
-      <button v-else type="button" class="message__action" aria-label="Borrar mensaje" title="Borrar mensaje" @click="confirming = true">
+      <button
+        v-else
+        type="button"
+        class="message__action"
+        aria-label="Borrar mensaje"
+        title="Borrar mensaje"
+        @click="confirming = true"
+      >
         <Trash2 :size="14" />
       </button>
     </div>
