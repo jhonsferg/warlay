@@ -59,7 +59,24 @@ wnetd.exe --install    # register auto-start at logon (run as administrator)
 wnetd.exe --uninstall  # remove the auto-start task
 ```
 
-Logs are written to `%APPDATA%\com.warlay.lanlauncher\logs\`.
+Logs are written to `%APPDATA%\com.warlay.lanlauncher\logs\`, one file per
+process start.
+
+**Log level.** The default is `info`, which records lifecycle events only:
+individual LAN packets are logged at `debug`, and their hex dumps at `trace`
+(which is huge: use it to diagnose, then go back). The level can be changed
+while the daemon runs, from Ajustes > Registros in the app or with a
+`SetAgentSettings` request; it is saved and applied at once, no restart.
+
+**Old logs.** The app deletes log files (its own and the daemon's) older than
+the retention chosen in Ajustes > Registros, when it starts and every hour
+after, and never one that is being written.
+
+**Shutdown.** The daemon runs elevated, so the app can't terminate it from
+outside. When you quit from the tray icon the app sends `Shutdown`: the
+daemon drops its hub connections, leaves the room, closes the tunnel and the
+LAN capture, answers, and exits; the app waits until it is gone. Closing the
+window only hides it and leaves the daemon running.
 
 ## Security
 
