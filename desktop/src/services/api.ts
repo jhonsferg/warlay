@@ -13,6 +13,7 @@ import type {
   InviteView,
   Me,
   Profile,
+  PublicKeyView,
   ReceiptCursors,
   RoomSession,
   RoomView,
@@ -110,10 +111,10 @@ export const chat = {
     ),
   remove: (kind: ChannelKind, id: string, messageId: string) =>
     onEdge((base) => api<void>("DELETE", `/chat/${kind}/${id}/messages/${messageId}`, undefined, base)),
-  send: async (kind: ChannelKind, id: string, body: string) => {
+  send: async (kind: ChannelKind, id: string, body: string, requestId: string = crypto.randomUUID()) => {
     // One id for every attempt: if the socket attempt did reach the server
     // (it only timed out), the HTTP retry returns that same message.
-    const requestId = crypto.randomUUID();
+    // (An encrypted message is sealed under its id, so it is passed in.)
     try {
       return await realtime.sendChat(kind, id, body, requestId);
     } catch (error) {
@@ -122,6 +123,13 @@ export const chat = {
       return onEdge((base) => api<ChatMessage>("POST", `/chat/${kind}/${id}/messages`, { body, requestId }, base));
     }
   },
+};
+
+export const keys = {
+  /** Publishes this device's public key (replacing any previous one). */
+  publish: (publicKey: string) => api<PublicKeyView>("PUT", "/me/e2e-key", { publicKey }),
+  /** A friend's public key; rejects with a 404 when they have none yet. */
+  get: (userId: string) => api<PublicKeyView>("GET", `/users/${userId}/e2e-key`),
 };
 
 export const receipts = {
