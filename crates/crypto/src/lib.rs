@@ -8,6 +8,7 @@
 //! not defend against.
 
 mod aead;
+pub mod e2e;
 mod handshake;
 mod proof;
 mod token;
