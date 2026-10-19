@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { MessagesSquare, SendHorizontal } from "@lucide/vue";
+import { MessagesSquare, SendHorizontal, Smile } from "@lucide/vue";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { errorMessage } from "../../services/http";
-import type { ChannelKind } from "../../services/types";
+import type { ChannelKind, ChatMessage } from "../../services/types";
 import { channelKey, useChat } from "../../stores/chat";
 import { useSession } from "../../stores/session";
 import { useToasts } from "../../stores/toasts";
 import WIconButton from "../atoms/WIconButton.vue";
 import WSpinner from "../atoms/WSpinner.vue";
+import EmojiPicker from "../molecules/EmojiPicker.vue";
 import EmptyState from "../molecules/EmptyState.vue";
 import MessageItem from "../molecules/MessageItem.vue";
 
@@ -20,6 +21,9 @@ const draft = ref("");
 const sending = ref(false);
 const loading = ref(true);
 const scroller = ref<HTMLElement | null>(null);
+const composer = ref<HTMLElement | null>(null);
+const input = ref<HTMLTextAreaElement | null>(null);
+const emojiOpen = ref(false);
 
 const key = computed(() => channelKey(props.kind, props.targetId));
 const messages = computed(() => chat.channel(key.value).messages);
@@ -32,7 +36,9 @@ const rows = computed(() =>
       !!prev &&
       prev.sender.id === m.sender.id &&
       new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < 5 * 60_000;
-    return { message: m, grouped, mine: m.sender.id === session.me?.id };
+    const mine = m.sender.id === session.me?.id;
+    // Delivery state is a direct-message thing; groups have no single reader.
+    return { message: m, grouped, mine, status: mine && props.kind === "dm" ? chat.statusOf(m) : undefined };
   }),
 );
 
@@ -69,7 +75,31 @@ async function send() {
   }
 }
 
+async function remove(message: ChatMessage) {
+  try {
+    await chat.remove(message);
+  } catch (error) {
+    toasts.error("No se pudo borrar el mensaje", errorMessage(error));
+  }
+}
+
+/** Inserts at the caret, so an emoji lands where the user was typing. */
+async function insertEmoji(emoji: string) {
+  const el = input.value;
+  const start = el?.selectionStart ?? draft.value.length;
+  const end = el?.selectionEnd ?? draft.value.length;
+  draft.value = draft.value.slice(0, start) + emoji + draft.value.slice(end);
+  await nextTick();
+  el?.focus();
+  el?.setSelectionRange(start + emoji.length, start + emoji.length);
+}
+
+function closeEmojiOnOutsideClick(e: MouseEvent) {
+  if (emojiOpen.value && composer.value && !composer.value.contains(e.target as Node)) emojiOpen.value = false;
+}
+
 function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape") emojiOpen.value = false;
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     void send();
@@ -78,8 +108,12 @@ function onKeydown(e: KeyboardEvent) {
 
 watch(key, open);
 watch(() => messages.value.length, scrollToBottom);
-onMounted(open);
+onMounted(() => {
+  document.addEventListener("mousedown", closeEmojiOnOutsideClick);
+  void open();
+});
 onUnmounted(() => {
+  document.removeEventListener("mousedown", closeEmojiOnOutsideClick);
   if (chat.focused === key.value) chat.focus(null);
 });
 </script>
@@ -101,10 +135,14 @@ onUnmounted(() => {
         :message="row.message"
         :grouped="row.grouped"
         :mine="row.mine"
+        :status="row.status"
+        @delete="remove"
       />
     </div>
-    <form class="chat-panel__composer" @submit.prevent="send">
+    <form ref="composer" class="chat-panel__composer" @submit.prevent="send">
+      <div v-if="emojiOpen" class="chat-panel__emoji"><EmojiPicker @pick="insertEmoji" /></div>
       <textarea
+        ref="input"
         v-model="draft"
         class="chat-panel__input"
         rows="1"
@@ -113,6 +151,7 @@ onUnmounted(() => {
         aria-label="Escribe un mensaje"
         @keydown="onKeydown"
       />
+      <WIconButton label="Emojis" :active="emojiOpen" @click="emojiOpen = !emojiOpen"><Smile /></WIconButton>
       <WIconButton label="Enviar" :active="draft.trim().length > 0" @click="send"><SendHorizontal /></WIconButton>
     </form>
   </section>
@@ -138,7 +177,15 @@ onUnmounted(() => {
     color: var(--text-3);
   }
 
+  &__emoji {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + var(--s-2));
+    z-index: 10;
+  }
+
   &__composer {
+    position: relative;
     display: flex;
     align-items: flex-end;
     gap: var(--s-2);
