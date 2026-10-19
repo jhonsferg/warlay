@@ -105,10 +105,7 @@ pub fn teardown_tunnel_and_lan(s: &mut DaemonState) {
     if had_tunnel || had_capture || had_rebroadcast || had_gateway {
         info!(
             had_tunnel,
-            had_capture,
-            had_rebroadcast,
-            had_gateway,
-            "tunnel/LAN mesh torn down"
+            had_capture, had_rebroadcast, had_gateway, "tunnel/LAN mesh torn down"
         );
     }
 }
