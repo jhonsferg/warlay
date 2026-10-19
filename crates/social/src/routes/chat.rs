@@ -17,8 +17,12 @@ pub struct HistoryQuery {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SendMessage {
     body: String,
+    /// The client's id for this send, shared with its realtime-socket
+    /// attempt so a retry never posts the message twice.
+    request_id: Option<String>,
 }
 
 /// `GET /chat/:kind/:id/messages` -- newest last, paginated with `before`.
@@ -40,5 +44,7 @@ pub async fn send(
     Path((kind, id)): Path<(String, Uuid)>,
     Json(req): Json<SendMessage>,
 ) -> ApiResult<Json<Message>> {
-    Ok(Json(chat::send(&state, auth.user_id, &kind, id, &req.body).await?))
+    Ok(Json(
+        chat::send(&state, auth.user_id, &kind, id, &req.body, req.request_id.as_deref()).await?,
+    ))
 }
