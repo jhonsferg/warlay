@@ -86,7 +86,7 @@ async fn audience(state: &AppState, kind: &str, me: Uuid, id: Uuid, key: &str) -
 }
 
 /// The channel key plus its audience, if `me` may use it.
-async fn authorize(state: &AppState, me: Uuid, kind: &str, id: Uuid) -> ApiResult<(String, Vec<Uuid>)> {
+pub(crate) async fn authorize(state: &AppState, me: Uuid, kind: &str, id: Uuid) -> ApiResult<(String, Vec<Uuid>)> {
     let key = channel_key(kind, me, id)?;
     let members = audience(state, kind, me, id, &key).await?;
     if members.contains(&me) {
@@ -170,7 +170,10 @@ pub async fn send(
         channel: key.clone(),
         sender: user_summary(state, me).await?,
         body: body.to_string(),
-        created_at: Utc::now(),
+        // Microseconds, like PostgreSQL stores them: read cursors are compared
+        // with this time on both sides, and a nanosecond tail would leave
+        // every message just past the cursor that acknowledged it.
+        created_at: DateTime::from_timestamp_micros(Utc::now().timestamp_micros()).unwrap_or_else(Utc::now),
     };
     let json = serde_json::to_string(&message).map_err(ApiError::internal)?;
     if let Some(dedup_key) = &dedup_key {
@@ -234,7 +237,7 @@ struct MessageRow {
 async fn from_db(state: &AppState, key: &str, before: Option<DateTime<Utc>>, limit: i64) -> ApiResult<Vec<Message>> {
     let rows = sqlx::query_as::<_, MessageRow>(
         "SELECT id, channel, sender_id, body, created_at FROM messages
-         WHERE channel = $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+         WHERE channel = $1 AND deleted_at IS NULL AND ($2::timestamptz IS NULL OR created_at < $2)
          ORDER BY created_at DESC LIMIT $3",
     )
     .bind(key)
@@ -258,6 +261,61 @@ async fn from_db(state: &AppState, key: &str, before: Option<DateTime<Utc>>, lim
             })
         })
         .collect())
+}
+
+fn tombstone_key(message_id: Uuid) -> String {
+    format!("wl:chat:deleted:{message_id}")
+}
+
+/// Deletes one of `me`'s own messages. The message may be anywhere on its
+/// way: still in the channel's recent list and the persist stream, already
+/// in PostgreSQL, or both. A tombstone in Redis covers the first case: the
+/// persister marks the row as deleted when it finally writes it.
+pub async fn delete_message(state: &AppState, me: Uuid, kind: &str, id: Uuid, message_id: Uuid) -> ApiResult<()> {
+    let (key, members) = authorize(state, me, kind, id).await?;
+    let mut redis = state.redis.clone();
+    let recent_key = format!("wl:chat:recent:{key}");
+    let cached: Vec<String> = redis.lrange(&recent_key, 0, -1).await?;
+    let in_recent = cached
+        .into_iter()
+        .find_map(|json| serde_json::from_str::<Message>(&json).ok().filter(|m| m.id == message_id).map(|m| (json, m)));
+    let in_db: Option<(Uuid, Option<DateTime<Utc>>)> =
+        sqlx::query_as("SELECT sender_id, deleted_at FROM messages WHERE id = $1 AND channel = $2")
+            .bind(message_id)
+            .bind(&key)
+            .fetch_optional(&state.db)
+            .await?;
+    let sender = match (&in_recent, &in_db) {
+        (Some((_, message)), _) => message.sender.id,
+        (None, Some((sender, _))) => *sender,
+        (None, None) => return Err(ApiError::not_found("el mensaje no existe")),
+    };
+    if sender != me {
+        return Err(ApiError::forbidden("solo puedes borrar tus propios mensajes"));
+    }
+    if in_db.as_ref().is_some_and(|(_, deleted_at)| deleted_at.is_some()) {
+        return Ok(());
+    }
+    let _: () = redis.set_ex(tombstone_key(message_id), "1", 24 * 3600).await?;
+    if let Some((json, _)) = in_recent {
+        let _: i64 = redis.lrem(&recent_key, 1, json).await?;
+    }
+    sqlx::query("UPDATE messages SET deleted_at = now() WHERE id = $1 AND channel = $2 AND deleted_at IS NULL")
+        .bind(message_id)
+        .bind(&key)
+        .execute(&state.db)
+        .await?;
+    state
+        .realtime
+        .emit(
+            &members,
+            &Event::MessageDeleted {
+                channel: key,
+                message_id,
+            },
+        )
+        .await;
+    Ok(())
 }
 
 /// Newest messages last. The first page comes from the Redis recent list
@@ -334,6 +392,23 @@ async fn persist_batch(state: &AppState, entries: Vec<(String, String)>) -> usiz
             // Leave them unacknowledged: they'll be retried or claimed.
             warn!(%error, count = messages.len(), "failed to persist chat batch");
             return 0;
+        }
+        // Deleted while still queued: mark the rows now that they exist.
+        let mut redis = state.redis.clone();
+        let tombstones: Vec<String> = ids.iter().map(|id| tombstone_key(*id)).collect();
+        let flags: Result<Vec<Option<String>>, _> = redis.mget(&tombstones).await;
+        if let Ok(flags) = flags {
+            let deleted: Vec<Uuid> = ids
+                .iter()
+                .zip(flags)
+                .filter_map(|(id, flag)| flag.map(|_| *id))
+                .collect();
+            if !deleted.is_empty() {
+                let _ = sqlx::query("UPDATE messages SET deleted_at = now() WHERE id = ANY($1) AND deleted_at IS NULL")
+                    .bind(&deleted)
+                    .execute(&state.db)
+                    .await;
+            }
         }
     }
     let stream_ids: Vec<String> = entries.into_iter().map(|(id, _)| id).collect();
