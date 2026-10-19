@@ -19,6 +19,20 @@ export interface AgentStatus {
   meshPeers: PeerLinkStatus[];
 }
 
+/** The network agent's own configuration (it applies a new log level at once). */
+export interface AgentSettings {
+  logLevel: string;
+  lanDiscoveryEnabled: boolean;
+}
+
+/** What the log folder holds (the app's and the agent's logs). */
+export interface LogUsage {
+  files: number;
+  bytes: number;
+  /** Files the sweep that produced this reading removed. */
+  removed: number;
+}
+
 export interface GameSettings {
   gameExecutablePath: string;
   gameArgs: string;
@@ -73,6 +87,14 @@ async function listen<T>(event: string, handler: (payload: T) => void): Promise<
 }
 
 export const native = {
+  /** Logs: levels change while running; old files are swept by age. */
+  agentSettings: () => invoke<AgentSettings | undefined>("get_agent_settings"),
+  saveAgentSettings: (settings: AgentSettings) => invoke<void>("save_agent_settings", { settings }),
+  setLogLevel: (target: "console" | "file", level: string) => invoke<void>("set_log_level", { target, level }),
+  setLogRetentionDays: (days: number) => invoke<void>("set_log_retention_days", { days }),
+  logUsage: () => invoke<LogUsage | undefined>("get_log_usage"),
+  cleanLogsNow: (allInactive: boolean) => invoke<LogUsage | undefined>("clean_logs_now", { allInactive }),
+
   /** End-to-end encryption: keys stay in the shell; only public keys and text cross. */
   e2eIdentity: (userId: string) => invoke<string | undefined>("e2e_identity", { userIdText: userId }),
   e2eEncrypt: (me: string, peerId: string, peerPublicKey: string, requestId: string, plaintext: string) =>
