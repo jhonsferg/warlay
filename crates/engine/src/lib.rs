@@ -23,6 +23,7 @@ pub use discovery_service::{query_games, spawn_discovery, RelayInfo};
 pub use hub_address::HubAddress;
 #[cfg(any(windows, target_os = "linux"))]
 pub use lan_capture::{spawn as spawn_lan_capture, LanCaptureHandle};
+pub use lan_filter::CapturePorts;
 pub use lan_rebroadcast::{spawn as spawn_lan_rebroadcast, LanRebroadcastHandle};
 pub use matchmaking_client::MatchmakingConnection;
 pub use p2p_mesh::{MeshConfig, PathToHost, PeerLinkState, PeerMesh, PeerMeshHandle};
@@ -30,10 +31,13 @@ pub use p2p_tunnel::{connect_via_relay, punch_and_connect, P2pTunnelHandle};
 pub use relay_client::{RelayClient, RelayClientHandle};
 pub use subnet::{list_local_subnets, DetectedSubnet, Ipv4Cidr};
 pub use tcp_tunnel_client::{
-    start_hosting, start_hosting_mesh, start_hosting_with_p2p, start_joining, start_joining_mesh,
-    start_joining_with_p2p, HubTunnelEndpoint, TunnelHandle,
+    start_game_gateway, start_hosting, start_hosting_mesh, start_hosting_with_p2p, start_joining,
+    start_joining_mesh, start_joining_with_p2p, GameGatewayHandle, HubTunnelEndpoint, TunnelHandle,
 };
-pub use w3gs_sniff::contains_create_game;
+pub use w3gs_sniff::{
+    contains_create_game, contains_decreate_game, contains_game_info, contains_game_state, contains_refresh_game,
+    contains_search_game, rewrite_gameinfo_port,
+};
 pub use warlay_core::LoopGuard;
 
 use thiserror::Error;
