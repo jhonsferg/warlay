@@ -57,6 +57,13 @@ pub enum DaemonRequest {
     /// seeing this user as present/in their room indefinitely.
     DisconnectAll,
 
+    /// Asks the daemon to shut itself down: it drops every hub connection,
+    /// leaves the room's mesh, tears down the tunnel and the LAN capture,
+    /// answers, and then exits its process. The desktop app's tray "Salir"
+    /// sends it: the daemon runs elevated, so the (non-elevated) app can't
+    /// terminate it from outside -- it has to be asked to stop itself.
+    Shutdown,
+
     CreateRoom {
         server_id: String,
         name: String,
@@ -192,6 +199,7 @@ impl DaemonRequest {
             DaemonRequest::ConnectToHub { .. } => "ConnectToHub",
             DaemonRequest::DisconnectFromHub { .. } => "DisconnectFromHub",
             DaemonRequest::DisconnectAll => "DisconnectAll",
+            DaemonRequest::Shutdown => "Shutdown",
             DaemonRequest::CreateRoom { .. } => "CreateRoom",
             DaemonRequest::JoinRoom { .. } => "JoinRoom",
             DaemonRequest::LeaveRoom { .. } => "LeaveRoom",
@@ -356,4 +364,25 @@ pub enum DaemonResponse {
     /// The host's game announced a new game after a match (`CREATEGAME`
     /// seen): the previous match is over.
     GameEnded,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_travels_as_a_bare_tagged_request() {
+        let json = serde_json::to_string(&DaemonRequest::Shutdown).unwrap();
+        assert_eq!(json, r#"{"type":"Shutdown"}"#);
+        let back: DaemonRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, DaemonRequest::Shutdown));
+        assert_eq!(back.variant_name(), "Shutdown");
+    }
+
+    #[test]
+    fn agent_settings_default_to_a_quiet_log_level() {
+        let settings: AgentSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(settings.log_level, "info");
+        assert!(settings.lan_discovery_enabled);
+    }
 }

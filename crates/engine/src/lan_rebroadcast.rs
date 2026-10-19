@@ -2,7 +2,14 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::{debug, info, trace, warn};
+
+/// Space-separated hex of `bytes`, for `trace!` dumps. Built only when asked
+/// for: the callers check `tracing::enabled!` first, since a hex string per
+/// packet is exactly what made the daemon's log huge at the default level.
+pub(crate) fn hex_dump(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ")
+}
 use warlay_transport::{TransportError, UdpTransport};
 
 pub struct LanRebroadcastHandle {
@@ -63,7 +70,7 @@ pub async fn spawn(
                         let port_bytes = port.to_le_bytes();
                         packet[len - 2] = port_bytes[0];
                         packet[len - 1] = port_bytes[1];
-                        info!(port, "injected override TCP port into GAMEINFO broadcast");
+                        debug!(port, "injected override TCP port into GAMEINFO broadcast");
                     }
                 }
 
@@ -72,14 +79,15 @@ pub async fn spawn(
                 // <20 bytes) — that's GAMEINFO, the one carrying the actual
                 // game name/port WC3 uses to decide where to connect on join.
                 if received_count == 1 || packet.len() > 20 {
-                    let hex: Vec<String> = packet.iter().map(|b| format!("{b:02X}")).collect();
-                    info!(
+                    debug!(
                         bytes = packet.len(),
                         %destination,
-                        hex = %hex.join(" "),
                         "received a relayed W3GS packet from the hub — rebroadcasting it now onto our own local \
                          network so our WC3 can see it"
                     );
+                    if tracing::enabled!(tracing::Level::TRACE) {
+                        trace!(hex = %hex_dump(&packet), "relayed W3GS packet");
+                    }
                 }
                 match sender.send_to(&packet, destination).await {
                     Ok(sent) => {
@@ -108,14 +116,15 @@ pub async fn spawn(
             match sender.recv_from(&mut buffer).await {
                 Ok((len, from)) => {
                     let payload = buffer[..len].to_vec();
-                    let hex: Vec<String> = payload.iter().map(|b| format!("{b:02X}")).collect();
-                    info!(
+                    debug!(
                         bytes = len,
                         %from,
-                        hex = %hex.join(" "),
                         "got a direct reply on our rebroadcast socket (likely a real W3GS_GAMEINFO answering a \
                          relayed SEARCHGAME) — relaying it onward"
                     );
+                    if tracing::enabled!(tracing::Level::TRACE) {
+                        trace!(hex = %hex_dump(&payload), "direct reply payload");
+                    }
                     on_reply(payload);
                 }
                 Err(error) => {

@@ -179,29 +179,49 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-/// The daemon is a separate, independently-running process (survives the
-/// window closing, even survives this very process exiting on its own) —
-/// so simply exiting *this* process leaves the daemon's hub WebSocket
-/// connections fully alive, and every other connected client keeps seeing
-/// this user as present/in their room indefinitely. "Salir" is meant to be
-/// a real quit, so tell the daemon to drop every hub connection it's
-/// holding first (bounded to 3s -- `DisconnectAll` doesn't wait on the
-/// network itself, so this should normally resolve almost instantly; the
-/// bound just keeps quitting from hanging if the daemon is unresponsive)
-/// before actually exiting.
+/// The daemon is a separate process that runs elevated (see
+/// `commands::daemon::spawn_daemon_elevated`), so this app -- which is not --
+/// can neither kill it nor rely on it noticing we left: it would keep every
+/// hub connection, the room's mesh, the game tunnel and the LAN capture
+/// alive, and other players would keep seeing this user as present. "Salir"
+/// is meant to be a real quit, so the daemon is asked to shut itself down
+/// (it releases all of that, answers, and exits its process), and we wait
+/// -- bounded, so quitting can never hang -- until it is really gone before
+/// exiting ourselves.
 fn quit_app(app: &AppHandle) {
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let client = app_handle.state::<AppState>().daemon_client.lock().unwrap().clone();
         if let Some(client) = client {
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                client.call(DaemonRequest::DisconnectAll),
-            )
-            .await;
+            shutdown_daemon(&client).await;
         }
         app_handle.exit(0);
     });
+}
+
+/// How long to wait for the daemon to accept the shutdown, and then to be
+/// gone.
+const DAEMON_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+const DAEMON_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+async fn shutdown_daemon(client: &daemon_ipc::DaemonClient) {
+    match tokio::time::timeout(DAEMON_ANSWER_TIMEOUT, client.call(DaemonRequest::Shutdown)).await {
+        Ok(Ok(warlay::protocol::ipc::DaemonResponse::Success { .. })) => {
+            if !commands::daemon::wait_until_daemon_gone(DAEMON_EXIT_TIMEOUT).await {
+                tracing::warn!("el agente aceptó apagarse pero sigue activo tras {DAEMON_EXIT_TIMEOUT:?}");
+            }
+        }
+        // An older daemon that doesn't know `Shutdown` (it answers with an
+        // error), or one that didn't answer in time: at least let go of
+        // everything it holds, as this quit always did.
+        other => {
+            tracing::warn!(
+                ?other,
+                "el agente no aceptó apagarse, se le pide solo soltar las conexiones"
+            );
+            let _ = tokio::time::timeout(DAEMON_ANSWER_TIMEOUT, client.call(DaemonRequest::DisconnectAll)).await;
+        }
+    }
 }
 
 /// Builds the system tray icon so the app can keep running in the
@@ -499,9 +519,8 @@ pub fn run() {
                 }
             });
 
-            // Once per launch is this app's whole retention cadence — see
-            // `log_cleanup`'s own docs for why there's no periodic timer.
-            log_cleanup::spawn_cleanup(log_dir, settings.log_retention_days);
+            // At launch, then hourly: the app can sit in the tray for days.
+            log_cleanup::spawn_periodic(app.handle().clone());
 
             setup_tray(app.handle())?;
 
@@ -571,6 +590,8 @@ pub fn run() {
             commands::settings::save_settings,
             commands::settings::set_log_level,
             commands::settings::set_log_retention_days,
+            commands::settings::get_log_usage,
+            commands::settings::clean_logs_now,
             commands::system_info::get_system_info,
             commands::overlay::set_overlay_interactive,
             commands::voice::push_voice_frame,

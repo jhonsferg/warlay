@@ -17,6 +17,35 @@ async fn ping_existing(state: &State<'_, AppState>) -> bool {
     client.call(DaemonRequest::Ping).await.is_ok()
 }
 
+/// Waits until no daemon is serving its pipe any more (its process ended),
+/// or `timeout` passes. Returns whether it is gone. A pipe that is busy is
+/// still a daemon; only "no such pipe" counts as gone.
+pub async fn wait_until_daemon_gone(timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if daemon_pipe_missing() {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+#[cfg(windows)]
+fn daemon_pipe_missing() -> bool {
+    use tokio::net::windows::named_pipe::ClientOptions;
+    // Opening (and at once dropping) a client is how to ask whether the pipe
+    // exists; the daemon drops a connection it can't verify.
+    matches!(ClientOptions::new().open(PIPE_NAME), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+}
+
+#[cfg(not(windows))]
+fn daemon_pipe_missing() -> bool {
+    true
+}
+
 /// Tries to attach to a daemon that's already running (e.g. started by the
 /// logon Scheduled Task before the desktop app even launched) without
 /// spawning anything. On success, stores the connection for reuse.

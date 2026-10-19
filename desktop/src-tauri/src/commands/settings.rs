@@ -36,6 +36,25 @@ pub fn set_log_level(state: State<'_, AppState>, target: LogTarget, level: Strin
     Ok(())
 }
 
+/// How much the log folder (the app's and the daemon's) holds right now.
+#[tauri::command]
+pub fn get_log_usage() -> log_cleanup::LogUsage {
+    log_cleanup::usage(&log_cleanup::log_dir())
+}
+
+/// Sweeps the log folder right now: files older than the retention window, or
+/// with `all_inactive` every file that isn't being written to. Returns what
+/// is left and how many files went.
+#[tauri::command]
+pub async fn clean_logs_now(state: State<'_, AppState>, all_inactive: bool) -> Result<log_cleanup::LogUsage, AppError> {
+    let days = if all_inactive {
+        0
+    } else {
+        state.store.get_settings()?.log_retention_days
+    };
+    Ok(log_cleanup::clean_now(log_cleanup::log_dir(), days).await)
+}
+
 /// Persists the new retention window and immediately re-runs the cleanup
 /// sweep with it — a shorter value should visibly delete old logs right
 /// away rather than only taking effect on the next launch.
