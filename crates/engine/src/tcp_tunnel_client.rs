@@ -490,11 +490,7 @@ impl GameGatewayHandle {
         if let Some(port) = self.listeners.lock().unwrap().get(&peer).map(|l| l.port) {
             return Ok(port);
         }
-        let listener = TcpListener::bind((
-            std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
-            0,
-        ))
-        .await?;
+        let listener = TcpListener::bind((std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 0)).await?;
         let port = listener.local_addr()?.port();
 
         // Two inbound GAMEINFOs for the same peer can race here; the loser
@@ -521,14 +517,7 @@ impl GameGatewayHandle {
                     debug!(%peer_addr, %peer, %room_token, "local game client connected, carrying to its game's owner over the mesh");
                     let mesh = mesh.clone();
                     tokio::spawn(async move {
-                        bridge_joiner_connection(
-                            None,
-                            room_token,
-                            local_game,
-                            Some(mesh),
-                            Some(peer),
-                        )
-                        .await;
+                        bridge_joiner_connection(None, room_token, local_game, Some(mesh), Some(peer)).await;
                     });
                 }
             });
@@ -549,10 +538,7 @@ impl GameGatewayHandle {
 
 /// Starts this member's join gateway for a room: no listeners yet — each
 /// peer's is bound when the daemon first rewrites that peer's `GAMEINFO`.
-pub fn start_game_gateway(
-    room_token: Uuid,
-    mesh: Arc<p2p_mesh::PeerMeshHandle>,
-) -> GameGatewayHandle {
+pub fn start_game_gateway(room_token: Uuid, mesh: Arc<p2p_mesh::PeerMeshHandle>) -> GameGatewayHandle {
     GameGatewayHandle {
         room_token,
         mesh,
