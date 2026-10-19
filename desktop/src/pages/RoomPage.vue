@@ -146,6 +146,7 @@ async function kick(member: UserSummary) {
               <WBadge v-if="room.status === 'in_game'" tone="game" dot>En partida</WBadge>
               <WBadge v-else tone="success" dot>Esperando jugadores</WBadge>
               <WBadge tone="neutral">{{ room.members.length }}/{{ room.maxPlayers }} jugadores</WBadge>
+              <WBadge v-if="room.hostAway" tone="danger" dot data-testid="host-away">Anfitrión desconectado</WBadge>
               <WBadge v-if="rooms.isHost" tone="warning"><Crown /> Eres el anfitrión</WBadge>
             </div>
             <h2>{{ room.name }}</h2>
