@@ -41,13 +41,7 @@ const fill = computed(() => Math.round((props.room.members.length / props.room.m
         <span class="room-card__count"><Users :size="14" /> {{ room.members.length }}/{{ room.maxPlayers }}</span>
       </div>
       <WButton v-if="current" size="sm" variant="secondary" @click="$emit('open', room)">Abrir sala</WButton>
-      <WButton
-        v-else
-        size="sm"
-        :disabled="full"
-        :loading="busy"
-        @click="$emit('join', room)"
-      >
+      <WButton v-else size="sm" :disabled="full" :loading="busy" @click="$emit('join', room)">
         {{ full ? "Llena" : "Unirse" }}
       </WButton>
     </footer>
