@@ -95,12 +95,51 @@ pub fn load(path: &Path) -> Result<HelperConfigFile> {
     toml::from_str(&raw).with_context(|| format!("parsing {}", path.display()))
 }
 
+/// Environment overrides, so one image serves every helper container:
+/// `WARLAY_HELPER_SECRET`, `WARLAY_HELPER_NAME`, `WARLAY_HELPER_REGION`,
+/// `WARLAY_MAIN_URL`, `WARLAY_PUBLIC_RENDEZVOUS_ADDR`,
+/// `WARLAY_PUBLIC_RELAY_ADDR`, and for the edge `WARLAY_EDGE_PUBLIC_URL`
+/// (setting it turns the edge on), `WARLAY_DATABASE_URL`, `WARLAY_REDIS_URL`.
+pub fn apply_env(config: &mut HelperConfigFile) {
+    let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let helper = &mut config.helper;
+    if let Some(v) = var("WARLAY_HELPER_SECRET") {
+        helper.helper_secret = v;
+    }
+    if let Some(v) = var("WARLAY_HELPER_NAME") {
+        helper.name = v;
+    }
+    if let Some(v) = var("WARLAY_HELPER_REGION") {
+        helper.region = v;
+    }
+    if let Some(v) = var("WARLAY_MAIN_URL") {
+        helper.main_url = v;
+    }
+    if let Some(v) = var("WARLAY_PUBLIC_RENDEZVOUS_ADDR") {
+        helper.public_rendezvous_addr = v;
+    }
+    if let Some(v) = var("WARLAY_PUBLIC_RELAY_ADDR") {
+        helper.public_relay_addr = v;
+    }
+    if let Some(v) = var("WARLAY_EDGE_PUBLIC_URL") {
+        helper.edge.get_or_insert_with(EdgeSettings::default).public_url = v;
+    }
+    if let Some(edge) = helper.edge.as_mut() {
+        if let Some(v) = var("WARLAY_DATABASE_URL") {
+            edge.database_url = v;
+        }
+        if let Some(v) = var("WARLAY_REDIS_URL") {
+            edge.redis_url = v;
+        }
+    }
+}
+
 /// A helper's live sockets, shared with whatever reports its load.
 pub struct HelperCore {
     pub settings: HelperSettings,
     pub rendezvous: Arc<UdpRendezvous>,
     pub relay: Arc<UdpRelay>,
-    /// The edge'"'"'s shared state, when this helper is one.
+    /// The edge's shared state, when this helper is one.
     pub edge: Option<warlay::social::AppState>,
 }
 
