@@ -87,6 +87,9 @@ async function listen<T>(event: string, handler: (payload: T) => void): Promise<
 }
 
 export const native = {
+  /** Developer tools: F12 / Ctrl+Shift+I, enabled in release builds too. */
+  openDevtools: () => invoke<void>("open_devtools"),
+
   /** Logs: levels change while running; old files are swept by age. */
   agentSettings: () => invoke<AgentSettings | undefined>("get_agent_settings"),
   saveAgentSettings: (settings: AgentSettings) => invoke<void>("save_agent_settings", { settings }),
