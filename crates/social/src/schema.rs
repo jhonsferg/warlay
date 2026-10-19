@@ -9,7 +9,7 @@ use tracing::info;
 
 /// `(version, name, sql)`, in the order they must run. Never edit an
 /// applied migration: add a new one.
-const MIGRATIONS: &[(i64, &str, &str)] = &[(1, "initial", INITIAL)];
+const MIGRATIONS: &[(i64, &str, &str)] = &[(1, "initial", INITIAL), (2, "chat_receipts", CHAT_RECEIPTS)];
 
 /// Arbitrary constant identifying Warlay's migration lock.
 const LOCK_KEY: i64 = 0x5741_524C_4159;
@@ -174,4 +174,20 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, created_at DESC);
+"#;
+
+/// Message deletion (kept as a tombstone, so a message still queued for
+/// persisting can be marked too) and per-user read cursors for DMs.
+const CHAT_RECEIPTS: &str = r#"
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+-- Everything in `channel` up to `delivered_at` reached one of the user's
+-- devices, and up to `read_at` was seen. Cursors only move forward.
+CREATE TABLE IF NOT EXISTS chat_reads (
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel       TEXT NOT NULL,
+    delivered_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    read_at       TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    PRIMARY KEY (user_id, channel)
+);
 "#;
