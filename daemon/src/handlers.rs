@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 use warlay::engine::NetworkError;
@@ -309,6 +309,24 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             teardown_tunnel_and_lan(&mut s);
             DaemonResponse::Success {
                 request_type: "DisconnectAll".to_string(),
+            }
+        }
+
+        DaemonRequest::Shutdown => {
+            info!("apagado solicitado por la app: cerrando conexiones, sala, túnel y captura");
+            {
+                let mut s = _state.lock().await;
+                s.connections.clear();
+                s.active_room_server = None;
+                s.active_room_id = None;
+                clear_peer_mesh(&mut s);
+                crate::session::clear_room_session(&mut s);
+                teardown_tunnel_and_lan(&mut s);
+            }
+            // The reply goes out first; then the accept loop is told to stop.
+            crate::shutdown::request_soon();
+            DaemonResponse::Success {
+                request_type: "Shutdown".to_string(),
             }
         }
 
@@ -667,7 +685,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             let peer_mesh = _state.lock().await.peer_mesh.clone();
             if let Some(mesh) = peer_mesh {
                 let connected = mesh.connected_peers();
-                debug!(%room_token, peer_count = connected.len(), bytes_len = opus_bytes.len(), "enviando frame de voz a peers");
+                trace!(%room_token, peer_count = connected.len(), bytes_len = opus_bytes.len(), "enviando frame de voz a peers");
                 for (peer_id, _) in connected {
                     mesh.send_datagram_to(peer_id, opus_bytes.clone());
                 }
