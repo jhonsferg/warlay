@@ -771,7 +771,9 @@ async fn a_room_outlives_its_host_disconnecting() {
     let host = s.register("ph").await;
     let player = s.register("pp").await;
     let latecomer = s.register("pl").await;
-    let session = s.ok("POST", "/rooms", &host, Some(json!({ "name": "Sobrevive" }))).await;
+    let session = s
+        .ok("POST", "/rooms", &host, Some(json!({ "name": "Sobrevive" })))
+        .await;
     let room_id = session["room"]["id"].as_str().unwrap().to_string();
     s.ok("POST", &format!("/rooms/{room_id}/join"), &player, None).await;
 
@@ -817,7 +819,9 @@ async fn rooms_whose_host_never_returns_are_eventually_closed() {
     let Some(s) = start().await else { return };
     let host = s.register("ah").await;
     let player = s.register("ap").await;
-    let session = s.ok("POST", "/rooms", &host, Some(json!({ "name": "Abandonada" }))).await;
+    let session = s
+        .ok("POST", "/rooms", &host, Some(json!({ "name": "Abandonada" })))
+        .await;
     let room_id = session["room"]["id"].as_str().unwrap().to_string();
     s.ok("POST", &format!("/rooms/{room_id}/join"), &player, None).await;
 
@@ -849,7 +853,9 @@ async fn e2e_keys_and_encrypted_direct_messages() {
     let b64 = |key: [u8; 32]| URL_SAFE_NO_PAD.encode(key);
 
     // No key yet; garbage and the all-zero point are refused.
-    let (status, _) = s.call("GET", &format!("/users/{}/e2e-key", b.id), Some(&a.token), None).await;
+    let (status, _) = s
+        .call("GET", &format!("/users/{}/e2e-key", b.id), Some(&a.token), None)
+        .await;
     assert_eq!(status, 404);
     for bad in ["", "AAAA", &b64([0; 32])] {
         let (status, value) = s
@@ -859,12 +865,32 @@ async fn e2e_keys_and_encrypted_direct_messages() {
     }
 
     // Publish; republishing the same key isn't a change, a new one is.
-    let first = s.ok("PUT", "/me/e2e-key", &a, Some(json!({ "publicKey": b64(ida.public_bytes()) }))).await;
+    let first = s
+        .ok(
+            "PUT",
+            "/me/e2e-key",
+            &a,
+            Some(json!({ "publicKey": b64(ida.public_bytes()) })),
+        )
+        .await;
     assert_eq!(first["changed"], false);
-    let again = s.ok("PUT", "/me/e2e-key", &a, Some(json!({ "publicKey": b64(ida.public_bytes()) }))).await;
+    let again = s
+        .ok(
+            "PUT",
+            "/me/e2e-key",
+            &a,
+            Some(json!({ "publicKey": b64(ida.public_bytes()) })),
+        )
+        .await;
     assert_eq!(again["changed"], false);
     assert_eq!(again["updatedAt"], first["updatedAt"]);
-    s.ok("PUT", "/me/e2e-key", &b, Some(json!({ "publicKey": b64(idb.public_bytes()) }))).await;
+    s.ok(
+        "PUT",
+        "/me/e2e-key",
+        &b,
+        Some(json!({ "publicKey": b64(idb.public_bytes()) })),
+    )
+    .await;
 
     // Friends (and oneself) see it; strangers don't.
     let seen = s.ok("GET", &format!("/users/{}/e2e-key", a.id), &b, None).await;
@@ -878,26 +904,66 @@ async fn e2e_keys_and_encrypted_direct_messages() {
     // An encrypted DM, far longer than a plain one may be, goes through
     // untouched, and only its two parties can read it.
     let text = "ñ".repeat(1900);
-    let envelope = encrypt_dm(&ida, &idb.public_bytes(), *a.id.as_bytes(), *b.id.as_bytes(), "req-e2e", text.as_bytes()).unwrap();
+    let envelope = encrypt_dm(
+        &ida,
+        &idb.public_bytes(),
+        *a.id.as_bytes(),
+        *b.id.as_bytes(),
+        "req-e2e",
+        text.as_bytes(),
+    )
+    .unwrap();
     assert!(envelope.len() > 2000);
     let sent = s
-        .ok("POST", &format!("/chat/dm/{}/messages", b.id), &a, Some(json!({ "body": envelope })))
+        .ok(
+            "POST",
+            &format!("/chat/dm/{}/messages", b.id),
+            &a,
+            Some(json!({ "body": envelope })),
+        )
         .await;
     assert_eq!(sent["body"], envelope.as_str());
     let history = s.ok("GET", &format!("/chat/dm/{}/messages", a.id), &b, None).await;
     let stored = history[0]["body"].as_str().unwrap();
     assert!(!stored.contains('ñ'));
-    let opened = decrypt_dm(&idb, &ida.public_bytes(), *a.id.as_bytes(), *b.id.as_bytes(), stored, false).unwrap();
+    let opened = decrypt_dm(
+        &idb,
+        &ida.public_bytes(),
+        *a.id.as_bytes(),
+        *b.id.as_bytes(),
+        stored,
+        false,
+    )
+    .unwrap();
     assert_eq!(opened.plaintext, text.as_bytes());
-    let mine = decrypt_dm(&ida, &idb.public_bytes(), *a.id.as_bytes(), *b.id.as_bytes(), stored, true).unwrap();
+    let mine = decrypt_dm(
+        &ida,
+        &idb.public_bytes(),
+        *a.id.as_bytes(),
+        *b.id.as_bytes(),
+        stored,
+        true,
+    )
+    .unwrap();
     assert_eq!(mine.plaintext, text.as_bytes());
 
     // The larger limit is only for real envelopes, in DMs.
     let padded = format!("e2e1:{}", "A".repeat(5000));
-    s.ok("POST", &format!("/chat/dm/{}/messages", b.id), &a, Some(json!({ "body": padded }))).await;
+    s.ok(
+        "POST",
+        &format!("/chat/dm/{}/messages", b.id),
+        &a,
+        Some(json!({ "body": padded })),
+    )
+    .await;
     for body in [format!("e2e1: {}", "A".repeat(5000)), "x".repeat(2001)] {
         let (status, value) = s
-            .call("POST", &format!("/chat/dm/{}/messages", b.id), Some(&a.token), Some(json!({ "body": body })))
+            .call(
+                "POST",
+                &format!("/chat/dm/{}/messages", b.id),
+                Some(&a.token),
+                Some(json!({ "body": body })),
+            )
             .await;
         assert_eq!((status, value["error"].as_str()), (400, Some("message_too_long")));
     }
