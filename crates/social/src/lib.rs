@@ -15,6 +15,7 @@ mod error;
 pub mod helpers;
 mod models;
 pub mod realtime;
+mod receipts;
 mod routes;
 mod schema;
 mod state;
@@ -131,6 +132,12 @@ pub fn router(state: AppState) -> Router {
             "/chat/{kind}/{id}/messages",
             get(chat_routes::history).post(chat_routes::send),
         )
+        .route("/chat/{kind}/{id}/messages/{message_id}", delete(chat_routes::delete_message))
+        .route(
+            "/chat/{kind}/{id}/receipt",
+            get(chat_routes::peer_receipt).post(chat_routes::mark_receipt),
+        )
+        .route("/chat/unread", get(chat_routes::unread))
         .route("/notifications", get(notifications::list))
         .route("/notifications/read-all", post(notifications::mark_all_read))
         .route("/notifications/{id}/read", post(notifications::mark_read))
@@ -154,6 +161,12 @@ pub fn edge_router(state: AppState) -> Router {
             "/chat/{kind}/{id}/messages",
             get(chat_routes::history).post(chat_routes::send),
         )
+        .route("/chat/{kind}/{id}/messages/{message_id}", delete(chat_routes::delete_message))
+        .route(
+            "/chat/{kind}/{id}/receipt",
+            get(chat_routes::peer_receipt).post(chat_routes::mark_receipt),
+        )
+        .route("/chat/unread", get(chat_routes::unread))
         .route("/ws", get(realtime::ws_handler));
     Router::new()
         .nest("/api/v1", api)
