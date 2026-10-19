@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::{
-    hash_password, issue_access_token, random_token, rate_limit, revoke_access_token, token_hash, verify_password,
-    AuthUser,
+    ensure_hashing_capacity, hash_password, issue_access_token, random_token, rate_limit, revoke_access_token,
+    token_hash, verify_password, AuthUser,
 };
 use crate::error::{ApiError, ApiResult};
 use crate::models::{load_user, pick_color, Me, UserRow};
@@ -157,10 +157,11 @@ pub async fn register(
     validate_email(&email)?;
     validate_password(&req.password)?;
     let display_name = validate_display_name(req.display_name.as_deref().unwrap_or(&username))?;
+    ensure_hashing_capacity()?;
     rate_limit(&state, &format!("register:{}", email), 5, 3600).await?;
 
     let id = Uuid::new_v4();
-    let password_hash = hash_password(&req.password)?;
+    let password_hash = hash_password(&req.password).await?;
     let inserted = sqlx::query(
         "INSERT INTO users (id, username, email, password_hash, display_name, avatar_color)
          VALUES ($1, $2, $3, $4, $5, $6)",
@@ -197,6 +198,7 @@ pub async fn login(
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
     let login = req.login.trim().to_lowercase();
+    ensure_hashing_capacity()?;
     rate_limit(&state, &format!("login:{login}"), 10, 300).await?;
     let user = sqlx::query_as::<_, UserRow>(
         "SELECT id, username::text AS username, email::text AS email, password_hash, display_name, avatar_color, bio, created_at
@@ -213,10 +215,10 @@ pub async fn login(
             "usuario o contraseña incorrectos",
         )
     };
-    let user = user.ok_or_else(invalid)?;
-    if !verify_password(&req.password, &user.password_hash) {
-        return Err(invalid());
-    }
+    // Hashes even for unknown accounts, so the response time doesn't tell
+    // them apart either.
+    let matches = verify_password(&req.password, user.as_ref().map(|u| u.password_hash.as_str())).await?;
+    let user = user.filter(|_| matches).ok_or_else(invalid)?;
     Ok(Json(start_session(&state, user, &headers).await?))
 }
 
@@ -312,7 +314,7 @@ pub async fn change_password(
     let user = load_user(&state, auth.user_id)
         .await?
         .ok_or_else(ApiError::unauthorized)?;
-    if !verify_password(&req.current_password, &user.password_hash) {
+    if !verify_password(&req.current_password, Some(&user.password_hash)).await? {
         return Err(ApiError::bad_request(
             "invalid_credentials",
             "la contraseña actual no es correcta",
@@ -320,7 +322,7 @@ pub async fn change_password(
     }
     validate_password(&req.new_password)?;
     sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
-        .bind(hash_password(&req.new_password)?)
+        .bind(hash_password(&req.new_password).await?)
         .bind(auth.user_id)
         .execute(&state.db)
         .await?;
