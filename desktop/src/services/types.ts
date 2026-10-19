@@ -132,6 +132,17 @@ export interface ChatMessage {
   sender: UserSummary;
   body: string;
   createdAt: string;
+  /** Client-side: the body was end-to-end encrypted and has been opened. */
+  encrypted?: boolean;
+  /** Client-side: an encrypted message this device can't open. */
+  undecryptable?: boolean;
+}
+
+/** A user's public key for end-to-end encrypted direct messages. */
+export interface PublicKeyView {
+  publicKey: string;
+  updatedAt: string;
+  changed: boolean;
 }
 
 /** How far a conversation partner has received and read what we sent them. */
