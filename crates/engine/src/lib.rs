@@ -31,8 +31,8 @@ pub use p2p_tunnel::{connect_via_relay, punch_and_connect, P2pTunnelHandle};
 pub use relay_client::{RelayClient, RelayClientHandle};
 pub use subnet::{list_local_subnets, DetectedSubnet, Ipv4Cidr};
 pub use tcp_tunnel_client::{
-    start_game_gateway, start_hosting, start_hosting_mesh, start_hosting_with_p2p, start_joining,
-    start_joining_mesh, start_joining_with_p2p, GameGatewayHandle, HubTunnelEndpoint, TunnelHandle,
+    start_game_gateway, start_hosting, start_hosting_mesh, start_hosting_with_p2p, start_joining, start_joining_mesh,
+    start_joining_with_p2p, GameGatewayHandle, HubTunnelEndpoint, TunnelHandle,
 };
 pub use w3gs_sniff::{
     contains_create_game, contains_decreate_game, contains_game_info, contains_game_state, contains_refresh_game,
