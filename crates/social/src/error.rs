@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
-use tracing::error;
+use tracing::{error, warn};
 
 /// Every API failure: an HTTP status, a stable machine-readable `code` the
 /// client can branch on, and a human-readable (Spanish) message.
@@ -64,14 +64,39 @@ impl IntoResponse for ApiError {
     }
 }
 
+impl ApiError {
+    /// A backing store is momentarily out of reach (restarting, pool
+    /// exhausted): a retryable 503 rather than an internal error.
+    fn unavailable(error: impl std::fmt::Display) -> Self {
+        warn!(%error, "backing store unavailable");
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "el servicio no está disponible en este momento, intenta de nuevo",
+        )
+    }
+}
+
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
-        Self::internal(error)
+        match error {
+            sqlx::Error::PoolTimedOut | sqlx::Error::Io(_) | sqlx::Error::PoolClosed => Self::unavailable(error),
+            other => Self::internal(other),
+        }
     }
 }
 
 impl From<redis::RedisError> for ApiError {
     fn from(error: redis::RedisError) -> Self {
-        Self::internal(error)
+        let transient = error.is_io_error()
+            || error.is_connection_dropped()
+            || error.is_connection_refusal()
+            || error.is_timeout()
+            || error.kind() == redis::ErrorKind::BusyLoadingError;
+        if transient {
+            Self::unavailable(error)
+        } else {
+            Self::internal(error)
+        }
     }
 }
