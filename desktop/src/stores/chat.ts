@@ -85,6 +85,24 @@ export const useChat = defineStore("chat", () => {
     }
   }
 
+  /** After the realtime socket comes back: messages pushed while it was
+   * down never arrived, so top up every channel already on screen from its
+   * latest page of history. */
+  async function catchUp() {
+    const loaded = Object.entries(channels.value).filter(([, ch]) => ch.loaded);
+    await Promise.allSettled(
+      loaded.map(async ([key]) => {
+        const separator = key.indexOf(":");
+        const kind = key.slice(0, separator) as ChannelKind;
+        const latest = await api.history(kind, key.slice(separator + 1));
+        const missed = latest.filter((m) => !channel(key).messages.some((known) => known.id === m.id));
+        if (missed.length === 0) return;
+        missed.forEach(receive);
+        channel(key).messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      }),
+    );
+  }
+
   function reset() {
     channels.value = {};
     unread.value = {};
@@ -104,6 +122,7 @@ export const useChat = defineStore("chat", () => {
     send,
     focus,
     receive,
+    catchUp,
     reset,
   };
 });
