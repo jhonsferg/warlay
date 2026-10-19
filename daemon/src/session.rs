@@ -128,10 +128,58 @@ pub async fn start_room_session(
             if packets.is_empty() {
                 continue;
             }
-            let s = inbound_state.lock().await;
-            for (_, bytes) in packets {
-                s.lan_loop_guard.mark(&bytes);
-                if let Some(tx) = &s.lan_relay_tx {
+            // Snapshot what each packet needs while holding the lock; the
+            // gateway bind below is async work that must not hold it.
+            let (loop_guard, relay_tx, gateway, capture_ports, own_hosting) = {
+                let s = inbound_state.lock().await;
+                (
+                    s.lan_loop_guard.clone(),
+                    s.lan_relay_tx.clone(),
+                    s.game_gateway.clone(),
+                    s.lan_capture_ports.clone(),
+                    s.own_game_hosting
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                )
+            };
+            for (from, mut bytes) in packets {
+                loop_guard.mark(&bytes);
+                // While our own WC3 is hosting, replaying the other members'
+                // game state (announcements + GAMEINFO) onto the local
+                // network is useless — we're in our own lobby, not
+                // browsing — and a remote GAMEINFO landing on the socket
+                // right as our WC3 runs its create handshake is a state that
+                // never occurs on a real LAN: the prime suspect for WC3's
+                // failed-creation dialog. Join traffic still flows: a
+                // hosting WC3 must keep receiving SEARCHGAME to answer it
+                // with GAMEINFO (that is how someone joins *our* game).
+                if own_hosting && warlay::engine::contains_game_state(&bytes) {
+                    continue;
+                }
+                // Each peer's GAMEINFO is rewritten to that peer's own
+                // dedicated joiner port, so when our WC3 joins the game it
+                // advertised, the port it connects to says which member the
+                // session must be carried to (see `start_game_gateway`).
+                if warlay::engine::contains_game_info(&bytes) {
+                    if let Some(gateway) = &gateway {
+                        match gateway.ensure_listener(from).await {
+                            Ok(port) => {
+                                // Scope the capture to it as well: our
+                                // WC3's own queries toward that port are
+                                // this game's traffic too and must be
+                                // relayed.
+                                {
+                                    let mut ports = capture_ports.lock().unwrap();
+                                    if !ports.contains(&port) {
+                                        ports.push(port);
+                                    }
+                                }
+                                warlay::engine::rewrite_gameinfo_port(&mut bytes, port);
+                            }
+                            Err(error) => warn!(%error, %from, "no se pudo abrir el puerto local de unión para el par"),
+                        }
+                    }
+                }
+                if let Some(tx) = &relay_tx {
                     let _ = tx.send(bytes);
                 }
             }
@@ -162,6 +210,9 @@ pub async fn stop_room_session(state: Arc<Mutex<DaemonState>>) -> DaemonResponse
     }
 }
 
+/// Starts this member's game tunnel. Both halves on every member, host or
+/// not: anyone may host a game the others join, and anyone may join a
+/// game another member hosts.
 pub async fn start_game_tunnel(state: Arc<Mutex<DaemonState>>, game_port: u16) -> DaemonResponse {
     let (mesh, room_id, is_host) = {
         let s = state.lock().await;
@@ -171,42 +222,40 @@ pub async fn start_game_tunnel(state: Arc<Mutex<DaemonState>>, game_port: u16) -
         }
     };
 
-    let join_port = if is_host {
-        let state_for_cb = state.clone();
-        let handle = warlay::engine::start_hosting_mesh(game_port, mesh, move || {
-            let state = state_for_cb.clone();
-            tokio::spawn(async move {
-                state
-                    .lock()
-                    .await
-                    .game_started
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                push_event(&state, DaemonResponse::GameStarted).await;
-            });
+    // Host side: register our local WC3 on the mesh so any member's joiner
+    // gateway can carry a session to it (`STREAM_LOCAL_GAME`, directly or
+    // through a member that has our link).
+    let state_for_cb = state.clone();
+    let host_handle = warlay::engine::start_hosting_mesh(game_port, mesh.clone(), move || {
+        let state = state_for_cb.clone();
+        tokio::spawn(async move {
+            state
+                .lock()
+                .await
+                .game_started
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            push_event(&state, DaemonResponse::GameStarted).await;
         });
+    });
+    // Join side: one dedicated local port per peer, bound on demand as
+    // their rewritten GAMEINFOs arrive — so a connection there says
+    // exactly which member's game our WC3 is asking to join.
+    let gateway = Arc::new(warlay::engine::start_game_gateway(room_id, mesh));
+
+    {
         let mut s = state.lock().await;
-        if let Some(previous) = s.game_tunnel.replace(handle) {
+        if let Some(previous) = s.game_tunnel.replace(host_handle) {
             previous.abort();
         }
-        None
-    } else {
-        let listen: SocketAddr = (std::net::Ipv4Addr::UNSPECIFIED, 0).into();
-        match warlay::engine::start_joining_mesh(room_id, listen, mesh).await {
-            Ok((handle, port)) => {
-                let mut s = state.lock().await;
-                if let Some(previous) = s.game_tunnel.replace(handle) {
-                    previous.abort();
-                }
-                Some(port)
-            }
-            Err(e) => return err("StartGameTunnel", e),
+        if let Some(previous) = s.game_gateway.replace(gateway) {
+            previous.abort();
         }
-    };
+    }
 
-    if let Err(e) = spawn_lan_mesh(state.clone(), game_port, join_port).await {
+    if let Err(e) = spawn_lan_mesh(state.clone(), game_port, None).await {
         return err("StartGameTunnel", e);
     }
-    info!(%room_id, is_host, game_port, ?join_port, "túnel de juego P2P iniciado");
+    info!(%room_id, is_host, game_port, "túnel de juego P2P iniciado");
     push_event(&state, DaemonResponse::TunnelStatusChanged { running: true }).await;
     DaemonResponse::Success {
         request_type: "StartGameTunnel".to_string(),
