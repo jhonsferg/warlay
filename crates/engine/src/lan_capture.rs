@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle as ThreadHandle;
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::subnet::local_ipv4_addrs;
 use windows::Win32::Networking::WinSock::{
@@ -221,13 +221,14 @@ fn run_capture_loop(
                 // Full payload, not just the header — diagnosing the actual
                 // join step (e.g. locating the port W3GS_GAMEINFO tells WC3
                 // to connect to) needs more than the first few bytes.
-                let hex: Vec<String> = payload.iter().map(|b| format!("{b:02X}")).collect();
-                info!(
+                debug!(
                     %ip,
                     bytes = payload.len(),
-                    hex = %hex.join(" "),
                     "captured a real UDP packet from us to the game port, forwarding to relay verbatim"
                 );
+                if tracing::enabled!(tracing::Level::TRACE) {
+                    trace!(%ip, hex = %crate::lan_rebroadcast::hex_dump(&payload), "captured packet payload");
+                }
                 on_packet(payload);
             }
             CaptureOutcome::NotOurSource(source) => {
