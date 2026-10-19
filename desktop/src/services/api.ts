@@ -61,7 +61,8 @@ export const communities = {
 };
 
 export const rooms = {
-  list: () => api<RoomView[]>("GET", "/rooms"),
+  list: (query = "") =>
+    api<RoomView[]>("GET", query.trim() ? `/rooms?q=${encodeURIComponent(query.trim())}` : "/rooms"),
   current: () => api<RoomSession | null>("GET", "/rooms/current"),
   create: (body: { name: string; communityId?: string | null; password?: string; maxPlayers?: number }) =>
     api<RoomSession>("POST", "/rooms", body),
@@ -106,12 +107,15 @@ export const chat = {
       ),
     ),
   send: async (kind: ChannelKind, id: string, body: string) => {
+    // One id for every attempt: if the socket attempt did reach the server
+    // (it only timed out), the HTTP retry returns that same message.
+    const requestId = crypto.randomUUID();
     try {
-      return await realtime.sendChat(kind, id, body);
+      return await realtime.sendChat(kind, id, body, requestId);
     } catch (error) {
       // A rejection by the server is final; a dead socket falls back to HTTP.
       if (error instanceof Error && !error.message.startsWith("socket")) throw error;
-      return onEdge((base) => api<ChatMessage>("POST", `/chat/${kind}/${id}/messages`, { body }, base));
+      return onEdge((base) => api<ChatMessage>("POST", `/chat/${kind}/${id}/messages`, { body, requestId }, base));
     }
   },
 };
