@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod daemon;
+pub mod devtools;
 pub mod discovery;
 pub mod e2e;
 pub mod launcher;
