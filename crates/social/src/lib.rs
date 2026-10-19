@@ -34,7 +34,9 @@ pub use config::MainSettings;
 pub use error::ApiError;
 pub use state::AppState;
 
-use routes::{auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications, rooms, users};
+use routes::{
+    auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications, rooms, users,
+};
 
 /// Connects to Postgres (running migrations) and Redis, and starts the
 /// realtime subscriber.
@@ -134,7 +136,10 @@ pub fn router(state: AppState) -> Router {
             "/chat/{kind}/{id}/messages",
             get(chat_routes::history).post(chat_routes::send),
         )
-        .route("/chat/{kind}/{id}/messages/{message_id}", delete(chat_routes::delete_message))
+        .route(
+            "/chat/{kind}/{id}/messages/{message_id}",
+            delete(chat_routes::delete_message),
+        )
         .route(
             "/chat/{kind}/{id}/receipt",
             get(chat_routes::peer_receipt).post(chat_routes::mark_receipt),
@@ -163,7 +168,10 @@ pub fn edge_router(state: AppState) -> Router {
             "/chat/{kind}/{id}/messages",
             get(chat_routes::history).post(chat_routes::send),
         )
-        .route("/chat/{kind}/{id}/messages/{message_id}", delete(chat_routes::delete_message))
+        .route(
+            "/chat/{kind}/{id}/messages/{message_id}",
+            delete(chat_routes::delete_message),
+        )
         .route(
             "/chat/{kind}/{id}/receipt",
             get(chat_routes::peer_receipt).post(chat_routes::mark_receipt),
