@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { chat as api, receipts as receiptsApi } from "../services/api";
 import { notifyOs, windowActive } from "../services/osNotify";
 import type { ChannelKind, ChatMessage, MessageStatus, ReceiptCursors } from "../services/types";
+import { isEnvelope, useE2e } from "./e2e";
 import { useSession } from "./session";
 
 export interface Channel {
@@ -44,6 +45,9 @@ export const useChat = defineStore("chat", () => {
   /** How far each partner has received/read what we sent them, by partner id. */
   const peerReceipts = ref<Record<string, ReceiptCursors>>({});
   const pendingAcks = new Map<string, PendingAck>();
+  /** Request id -> message id, per DM, to drop an encrypted message the server
+   * replays under another id. */
+  const seenRequests = new Map<string, Map<string, string>>();
 
   const totalUnreadDms = computed(() =>
     Object.entries(unread.value)
@@ -67,6 +71,32 @@ export const useChat = defineStore("chat", () => {
   /** Maps the server's channel name to our key ("dm:a:b" -> "dm:<other>"). */
   function keyOfChannel(serverChannel: string): string {
     return serverChannel.startsWith("dm:") ? `dm:${partnerOf(serverChannel)}` : serverChannel;
+  }
+
+  /** Opens an end-to-end encrypted direct message. Plain ones pass through;
+   * `null` is a replay of a message already shown. */
+  async function openMessage(message: ChatMessage): Promise<ChatMessage | null> {
+    if (!message.channel.startsWith("dm:") || !isEnvelope(message.body)) return message;
+    const partner = partnerOf(message.channel);
+    const opened = await useE2e().decrypt(partner, message);
+    if (!opened) return { ...message, body: "", undecryptable: true };
+    const key = keyOfChannel(message.channel);
+    const seen = seenRequests.get(key) ?? new Map<string, string>();
+    seenRequests.set(key, seen);
+    const first = seen.get(opened.requestId);
+    if (first !== undefined && first !== message.id) return null;
+    seen.set(opened.requestId, message.id);
+    return { ...message, body: opened.plaintext, encrypted: true };
+  }
+
+  async function openAll(messages: ChatMessage[]): Promise<ChatMessage[]> {
+    const opened = [];
+    // In order, so a replay is the later of two copies.
+    for (const message of messages) {
+      const result = await openMessage(message);
+      if (result) opened.push(result);
+    }
+    return opened;
   }
 
   /** Newest message the partner sent us in a DM, if any is loaded. */
@@ -118,7 +148,8 @@ export const useChat = defineStore("chat", () => {
     const key = channelKey(kind, id);
     const ch = channel(key);
     if (ch.loaded) return;
-    const messages = await api.history(kind, id);
+    if (kind === "dm") await useE2e().prepare(id);
+    const messages = await openAll(await api.history(kind, id));
     ch.messages = messages;
     ch.loaded = true;
     ch.hasMore = messages.length >= 50;
@@ -131,14 +162,17 @@ export const useChat = defineStore("chat", () => {
   async function loadOlder(kind: ChannelKind, id: string) {
     const ch = channel(channelKey(kind, id));
     if (!ch.hasMore || ch.messages.length === 0) return;
-    const older = await api.history(kind, id, ch.messages[0].createdAt);
+    const older = await openAll(await api.history(kind, id, ch.messages[0].createdAt));
     ch.messages = [...older, ...ch.messages];
     ch.hasMore = older.length >= 50;
   }
 
   async function send(kind: ChannelKind, id: string, body: string) {
-    const message = await api.send(kind, id, body);
-    receive(message);
+    const requestId = crypto.randomUUID();
+    // Direct messages go out sealed whenever both sides have encryption.
+    const sealed = kind === "dm" ? await useE2e().encrypt(id, requestId, body) : null;
+    const message = await api.send(kind, id, sealed ?? body, requestId);
+    await receive(message);
   }
 
   /** Deletes one of our own messages for everybody. */
@@ -155,7 +189,9 @@ export const useChat = defineStore("chat", () => {
     readOpenDm();
   }
 
-  function receive(message: ChatMessage) {
+  async function receive(received: ChatMessage) {
+    const message = await openMessage(received);
+    if (!message) return;
     const key = keyOfChannel(message.channel);
     const ch = channel(key);
     if (ch.messages.some((m) => m.id === message.id)) return;
@@ -239,7 +275,7 @@ export const useChat = defineStore("chat", () => {
       loaded.map(async ([key]) => {
         const separator = key.indexOf(":");
         const kind = key.slice(0, separator) as ChannelKind;
-        const latest = await api.history(kind, key.slice(separator + 1));
+        const latest = await openAll(await api.history(kind, key.slice(separator + 1)));
         // What was deleted while we were away must go too.
         const alive = new Set(latest.map((m) => m.id));
         const oldest = latest[0] ? micros(latest[0].createdAt) : Infinity;
@@ -247,7 +283,7 @@ export const useChat = defineStore("chat", () => {
         if (kind === "dm") void loadPeerReceipt(key.slice(separator + 1));
         const missed = latest.filter((m) => !channel(key).messages.some((known) => known.id === m.id));
         if (missed.length === 0) return;
-        missed.forEach(receive);
+        await Promise.all(missed.map(receive));
         channel(key).messages.sort((a, b) => micros(a.createdAt) - micros(b.createdAt));
       }),
     );
@@ -256,6 +292,7 @@ export const useChat = defineStore("chat", () => {
   function reset() {
     pendingAcks.forEach((pending) => clearTimeout(pending.timer));
     pendingAcks.clear();
+    seenRequests.clear();
     channels.value = {};
     unread.value = {};
     recentDms.value = [];
