@@ -17,6 +17,10 @@ room_ticket_ttl_secs = 43200
 # Leave empty to accept any origin (the desktop app's webview).
 cors_origins = []
 disconnect_grace_secs = 45
+# A host who disconnects keeps their room open for everyone. It is closed only
+# if they never come back within this long (they can close it themselves any
+# time); players keep playing meanwhile.
+host_absence_close_secs = 86400
 
 # Uncomment to also run a helper inside the main server (single-VPS setup).
 # [embedded_helper]
