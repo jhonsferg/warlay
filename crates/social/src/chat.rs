@@ -28,6 +28,10 @@ use crate::routes::rooms::room_member_ids;
 use crate::state::AppState;
 
 pub const MAX_BODY_CHARS: usize = 2000;
+/// An end-to-end encrypted direct message is a base64 envelope holding the
+/// text twice (for each side) plus overhead: its plaintext is capped on the
+/// client, here only the envelope is bounded.
+const MAX_E2E_BODY_CHARS: usize = 32 * 1024;
 const STREAM: &str = "wl:chat:stream";
 const GROUP: &str = "persist";
 const RECENT_LEN: isize = 200;
@@ -157,7 +161,12 @@ pub async fn send(
     if body.is_empty() {
         return Err(ApiError::bad_request("empty_message", "el mensaje está vacío"));
     }
-    if body.chars().count() > MAX_BODY_CHARS {
+    // The server can't read an envelope, but it can insist on being one:
+    // only direct messages, only base64url, so the larger limit can't be
+    // used to store arbitrary text.
+    let encrypted = kind == "dm" && warlay_crypto::e2e::is_envelope(body);
+    let limit = if encrypted { MAX_E2E_BODY_CHARS } else { MAX_BODY_CHARS };
+    if body.chars().count() > limit {
         return Err(ApiError::bad_request(
             "message_too_long",
             "el mensaje es demasiado largo",
