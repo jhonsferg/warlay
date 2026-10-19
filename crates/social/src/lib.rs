@@ -15,6 +15,7 @@ mod error;
 pub mod helpers;
 mod models;
 pub mod realtime;
+mod receipts;
 mod routes;
 mod schema;
 mod state;
@@ -24,7 +25,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use axum::http::{HeaderValue, Method};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing::info;
@@ -33,7 +34,9 @@ pub use config::MainSettings;
 pub use error::ApiError;
 pub use state::AppState;
 
-use routes::{auth as auth_routes, chat as chat_routes, communities, friends, invites, notifications, rooms, users};
+use routes::{
+    auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications, rooms, users,
+};
 
 /// Connects to Postgres (running migrations) and Redis, and starts the
 /// realtime subscriber.
@@ -95,6 +98,8 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/logout", post(auth_routes::logout))
         .route("/me", get(auth_routes::me).patch(auth_routes::update_me))
         .route("/me/password", post(auth_routes::change_password))
+        .route("/me/e2e-key", put(keys::publish))
+        .route("/users/{id}/e2e-key", get(keys::get))
         .route("/users/search", get(users::search))
         .route("/users/{id}", get(users::profile))
         .route("/friends", get(friends::list))
@@ -131,6 +136,15 @@ pub fn router(state: AppState) -> Router {
             "/chat/{kind}/{id}/messages",
             get(chat_routes::history).post(chat_routes::send),
         )
+        .route(
+            "/chat/{kind}/{id}/messages/{message_id}",
+            delete(chat_routes::delete_message),
+        )
+        .route(
+            "/chat/{kind}/{id}/receipt",
+            get(chat_routes::peer_receipt).post(chat_routes::mark_receipt),
+        )
+        .route("/chat/unread", get(chat_routes::unread))
         .route("/notifications", get(notifications::list))
         .route("/notifications/read-all", post(notifications::mark_all_read))
         .route("/notifications/{id}/read", post(notifications::mark_read))
@@ -154,12 +168,30 @@ pub fn edge_router(state: AppState) -> Router {
             "/chat/{kind}/{id}/messages",
             get(chat_routes::history).post(chat_routes::send),
         )
+        .route(
+            "/chat/{kind}/{id}/messages/{message_id}",
+            delete(chat_routes::delete_message),
+        )
+        .route(
+            "/chat/{kind}/{id}/receipt",
+            get(chat_routes::peer_receipt).post(chat_routes::mark_receipt),
+        )
+        .route("/chat/unread", get(chat_routes::unread))
         .route("/ws", get(realtime::ws_handler));
     Router::new()
         .nest("/api/v1", api)
         .route("/health", get(|| async { "ok" }))
         .layer(cors(&state.settings))
         .with_state(state)
+}
+
+/// Closes the rooms whose host has been away longer than
+/// `host_absence_close_secs` (the watchdog does this every minute). Exposed
+/// for maintenance tooling and tests.
+pub async fn reap_abandoned_rooms(state: &AppState) {
+    if let Err(error) = routes::rooms::reap_abandoned_rooms(state).await {
+        tracing::warn!(?error, "abandoned room reaper failed");
+    }
 }
 
 /// Starts this node's share of persisting chat to PostgreSQL.

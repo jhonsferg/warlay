@@ -92,6 +92,11 @@ export interface RoomView {
   status: RoomStatus;
   members: UserSummary[];
   createdAt: string;
+  /** When the server read this state (µs since the epoch); updates older
+   * than the state already held are stale and dropped. */
+  snapshotAt?: number;
+  /** The host is disconnected; the room lives on until they return or close it. */
+  hostAway?: boolean;
 }
 
 export interface HelperInfo {
@@ -127,6 +132,34 @@ export interface ChatMessage {
   sender: UserSummary;
   body: string;
   createdAt: string;
+  /** Client-side: the body was end-to-end encrypted and has been opened. */
+  encrypted?: boolean;
+  /** Client-side: an encrypted message this device can't open. */
+  undecryptable?: boolean;
+}
+
+/** A user's public key for end-to-end encrypted direct messages. */
+export interface PublicKeyView {
+  publicKey: string;
+  updatedAt: string;
+  changed: boolean;
+}
+
+/** How far a conversation partner has received and read what we sent them. */
+export interface ReceiptCursors {
+  deliveredAt: string;
+  readAt: string;
+}
+
+/** What the sender sees under a direct message. */
+export type MessageStatus = "sent" | "delivered" | "read";
+
+/** A friend whose direct messages we haven't read. */
+export interface UnreadSummary {
+  peerId: string;
+  count: number;
+  /** Time of the newest unread message. */
+  latestAt: string;
 }
 
 export interface AppNotification {
@@ -147,6 +180,8 @@ export type RealtimeEvent =
   | { type: "friendRemoved"; userId: string }
   | { type: "notification"; notification: AppNotification }
   | { type: "message"; message: ChatMessage }
+  | { type: "messageDeleted"; channel: string; messageId: string }
+  | { type: "chatReceipt"; channel: string; userId: string; receipt: ReceiptCursors }
   | { type: "roomUpdated"; room: RoomView }
   | { type: "roomClosed"; roomId: string }
   | { type: "roomHelperChanged"; roomId: string; helper: HelperInfo }

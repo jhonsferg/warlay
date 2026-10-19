@@ -50,6 +50,10 @@ pub enum RendezvousMessage {
     /// identity and host flag all come from a `RoomTicket` signed by the
     /// main server instead of being taken on the sender's word.
     RegisterWithTicket { ticket: Vec<u8> },
+    /// The hub's answer to a `Heartbeat` it can't place (it restarted and
+    /// lost its rooms, or the peer's public address changed): register
+    /// again. Clients that predate it fail to decode it and ignore it.
+    RegisterAgain,
 }
 
 impl RendezvousMessage {

@@ -34,6 +34,7 @@ async fn start() -> Option<Server> {
         redis_url,
         helper_secret: SECRET.into(),
         disconnect_grace_secs: 1,
+        host_absence_close_secs: 2,
         ..MainSettings::default()
     };
     let state = social::connect(settings).await.expect("connect");
@@ -88,6 +89,7 @@ impl Server {
             "GET" => self.client.get(url),
             "POST" => self.client.post(url),
             "PATCH" => self.client.patch(url),
+            "PUT" => self.client.put(url),
             "DELETE" => self.client.delete(url),
             _ => unreachable!(),
         };
@@ -502,10 +504,21 @@ async fn rooms_sessions_tickets_and_lifecycle() {
     let friends = s.ok("GET", "/friends", &host, None).await;
     assert_eq!(friends[0]["presence"]["status"], "in_game");
 
+    // A running game doesn't lock the room: a newcomer can still join.
+    s.ok("POST", &format!("/rooms/{room_id}/leave"), &other, None).await;
+    let rejoined = s
+        .ok(
+            "POST",
+            &format!("/rooms/{room_id}/join"),
+            &late,
+            Some(json!({ "password": "orcs" })),
+        )
+        .await;
+    assert_eq!(rejoined["room"]["status"], "in_game");
+
     // The host leaving closes the room for everyone.
     s.ok("POST", &format!("/rooms/{room_id}/leave"), &host, None).await;
-    let closed = wait_for(&mut ws_friend, "roomClosed").await;
-    assert_eq!(closed["roomId"], room_id.as_str());
+    wait_for_room(&mut ws_friend, "roomClosed", &room_id).await;
     let current = s.ok("GET", "/rooms/current", &friend, None).await;
     assert!(current.is_null());
 }
@@ -614,4 +627,344 @@ async fn chat_flows_through_edges_and_is_persisted() {
     .unwrap();
     let edges = s.ok("GET", "/edges", &a, None).await;
     assert!(edges.as_array().unwrap().iter().any(|e| e["url"] == edge.as_str()));
+}
+
+/// Polls `path` until `done` accepts its answer (the chat persister writes
+/// to PostgreSQL a moment after a message is sent).
+async fn eventually(s: &Server, user: &User, path: &str, done: impl Fn(&Value) -> bool) -> Value {
+    for _ in 0..50 {
+        let value = s.ok("GET", path, user, None).await;
+        if done(&value) {
+            return value;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("{path} never reached the expected state");
+}
+
+#[tokio::test]
+async fn dm_receipts_unread_counts_and_deletion() {
+    let Some(s) = start().await else { return };
+    let a = s.register("ra").await;
+    let b = s.register("rb").await;
+    s.befriend(&a, &b).await;
+    let mut ws_a = s.socket(&a).await;
+    let mut ws_b = s.socket(&b).await;
+
+    let to_b = format!("/chat/dm/{}/messages", b.id);
+    let first = s.ok("POST", &to_b, &a, Some(json!({ "body": "uno" }))).await;
+    let second = s.ok("POST", &to_b, &a, Some(json!({ "body": "dos" }))).await;
+    wait_for(&mut ws_b, "message").await;
+    wait_for(&mut ws_b, "message").await;
+
+    // B hasn't read anything: two unread, and A's messages are still "sent".
+    let unread = eventually(&s, &b, "/chat/unread", |v| v[0]["count"] == 2).await;
+    assert_eq!(unread[0]["peerId"], a.id.to_string());
+    let peer = s.ok("GET", &format!("/chat/dm/{}/receipt", b.id), &a, None).await;
+    let created = |m: &Value| m["createdAt"].as_str().unwrap().to_string();
+    assert!(peer["deliveredAt"].as_str().unwrap() < created(&first).as_str());
+
+    // B's device acknowledges delivery of both: A sees it live.
+    s.ok(
+        "POST",
+        &format!("/chat/dm/{}/receipt", a.id),
+        &b,
+        Some(json!({ "state": "delivered", "upTo": created(&second) })),
+    )
+    .await;
+    let seen = wait_for(&mut ws_a, "chatReceipt").await;
+    assert_eq!(seen["userId"], b.id.to_string());
+    assert_eq!(seen["receipt"]["deliveredAt"], second["createdAt"]);
+    // Delivered is not read: the unread count stays.
+    assert_eq!(s.ok("GET", "/chat/unread", &b, None).await[0]["count"], 2);
+
+    // Reading the first message only leaves one unread.
+    s.ok(
+        "POST",
+        &format!("/chat/dm/{}/receipt", a.id),
+        &b,
+        Some(json!({ "state": "read", "upTo": created(&first) })),
+    )
+    .await;
+    wait_for(&mut ws_a, "chatReceipt").await;
+    assert_eq!(s.ok("GET", "/chat/unread", &b, None).await[0]["count"], 1);
+
+    // Cursors never move back.
+    s.ok(
+        "POST",
+        &format!("/chat/dm/{}/receipt", a.id),
+        &b,
+        Some(json!({ "state": "read", "upTo": "2000-01-01T00:00:00Z" })),
+    )
+    .await;
+    let peer = s.ok("GET", &format!("/chat/dm/{}/receipt", b.id), &a, None).await;
+    assert_eq!(peer["readAt"], first["createdAt"]);
+
+    // Only the sender deletes, and everyone in the channel hears about it.
+    let second_id = second["id"].as_str().unwrap();
+    let (status, _) = s
+        .call(
+            "DELETE",
+            &format!("/chat/dm/{}/messages/{second_id}", a.id),
+            Some(&b.token),
+            None,
+        )
+        .await;
+    assert_eq!(status, 403);
+    s.ok("DELETE", &format!("/chat/dm/{}/messages/{second_id}", b.id), &a, None)
+        .await;
+    let deleted = wait_for(&mut ws_b, "messageDeleted").await;
+    assert_eq!(deleted["messageId"], second_id);
+
+    // Gone from history, from the recent cache and from the unread count --
+    // even though the persister may only have written it after the delete.
+    let history = eventually(&s, &b, &format!("/chat/dm/{}/messages", a.id), |v| {
+        v.as_array().unwrap().len() == 1
+    })
+    .await;
+    assert_eq!(history[0]["body"], "uno");
+    let unread = eventually(&s, &b, "/chat/unread", |v| v.as_array().unwrap().is_empty()).await;
+    assert!(unread.as_array().unwrap().is_empty());
+
+    // Receipts only exist for direct messages.
+    let (status, _) = s
+        .call(
+            "POST",
+            &format!("/chat/community/{}/receipt", a.id),
+            Some(&a.token),
+            Some(json!({ "state": "read", "upTo": "2030-01-01T00:00:00Z" })),
+        )
+        .await;
+    assert_eq!(status, 400);
+}
+
+/// The next event of type `kind` about room `room_id`: public rooms are
+/// announced to every connected user, so other tests' rooms show up too.
+async fn wait_for_room<S>(ws: &mut S, kind: &str, room_id: &str) -> Value
+where
+    S: StreamExt<Item = Result<tokio_tungstenite::tungstenite::Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    loop {
+        let event = wait_for(ws, kind).await;
+        if event["room"]["id"] == room_id || event["roomId"] == room_id {
+            return event;
+        }
+    }
+}
+
+/// Waits until room `room_id` is announced with `hostAway == away`; earlier
+/// updates (coalesced joins, say) are skipped.
+async fn wait_for_host_away<S>(ws: &mut S, room_id: &str, away: bool)
+where
+    S: StreamExt<Item = Result<tokio_tungstenite::tungstenite::Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    loop {
+        if wait_for_room(ws, "roomUpdated", room_id).await["room"]["hostAway"] == away {
+            return;
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_room_outlives_its_host_disconnecting() {
+    let Some(s) = start().await else { return };
+    let host = s.register("ph").await;
+    let player = s.register("pp").await;
+    let latecomer = s.register("pl").await;
+    let session = s
+        .ok("POST", "/rooms", &host, Some(json!({ "name": "Sobrevive" })))
+        .await;
+    let room_id = session["room"]["id"].as_str().unwrap().to_string();
+    s.ok("POST", &format!("/rooms/{room_id}/join"), &player, None).await;
+
+    let mut ws_player = s.socket(&player).await;
+    let ws_host = s.socket(&host).await;
+    drop(ws_host);
+
+    // Past the grace period (1s) the host is flagged away, not removed.
+    wait_for_host_away(&mut ws_player, &room_id, true).await;
+    let room = s.ok("GET", &format!("/rooms/{room_id}"), &player, None).await;
+    assert_eq!(room["members"].as_array().unwrap().len(), 2);
+    assert_eq!(room["status"], "open");
+
+    // The room keeps taking players while its host is gone...
+    s.ok("POST", &format!("/rooms/{room_id}/join"), &latecomer, None).await;
+    // ...and the host can't wander off into another one and take it down.
+    let (status, value) = s
+        .call("POST", "/rooms", Some(&host.token), Some(json!({ "name": "Otra" })))
+        .await;
+    assert_eq!((status, value["error"].as_str()), (409, Some("hosting")));
+
+    // Back online, they get the room back and can manage it as before.
+    let _ws_host = s.socket(&host).await;
+    wait_for_host_away(&mut ws_player, &room_id, false).await;
+    let current = s.ok("GET", "/rooms/current", &host, None).await;
+    assert_eq!(current["isHost"], true);
+    assert_eq!(current["room"]["id"], room_id.as_str());
+    s.ok(
+        "POST",
+        &format!("/rooms/{room_id}/status"),
+        &host,
+        Some(json!({ "status": "in_game" })),
+    )
+    .await;
+
+    // Only the host closing it ends the room.
+    s.ok("DELETE", &format!("/rooms/{room_id}"), &host, None).await;
+    wait_for_room(&mut ws_player, "roomClosed", &room_id).await;
+}
+
+#[tokio::test]
+async fn rooms_whose_host_never_returns_are_eventually_closed() {
+    let Some(s) = start().await else { return };
+    let host = s.register("ah").await;
+    let player = s.register("ap").await;
+    let session = s
+        .ok("POST", "/rooms", &host, Some(json!({ "name": "Abandonada" })))
+        .await;
+    let room_id = session["room"]["id"].as_str().unwrap().to_string();
+    s.ok("POST", &format!("/rooms/{room_id}/join"), &player, None).await;
+
+    let mut ws_player = s.socket(&player).await;
+    drop(s.socket(&host).await);
+    wait_for_host_away(&mut ws_player, &room_id, true).await;
+
+    // Not yet: the host has only just left (host_absence_close_secs = 2).
+    social::reap_abandoned_rooms(&s.state).await;
+    assert!(!s.ok("GET", "/rooms/current", &player, None).await.is_null());
+
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    social::reap_abandoned_rooms(&s.state).await;
+    wait_for_room(&mut ws_player, "roomClosed", &room_id).await;
+    assert!(s.ok("GET", "/rooms/current", &player, None).await.is_null());
+}
+
+#[tokio::test]
+async fn e2e_keys_and_encrypted_direct_messages() {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use warlay_crypto::e2e::{decrypt_dm, encrypt_dm, Identity};
+
+    let Some(s) = start().await else { return };
+    let a = s.register("ka").await;
+    let b = s.register("kb").await;
+    let stranger = s.register("ks").await;
+    s.befriend(&a, &b).await;
+    let (ida, idb) = (Identity::generate(), Identity::generate());
+    let b64 = |key: [u8; 32]| URL_SAFE_NO_PAD.encode(key);
+
+    // No key yet; garbage and the all-zero point are refused.
+    let (status, _) = s
+        .call("GET", &format!("/users/{}/e2e-key", b.id), Some(&a.token), None)
+        .await;
+    assert_eq!(status, 404);
+    for bad in ["", "AAAA", &b64([0; 32])] {
+        let (status, value) = s
+            .call("PUT", "/me/e2e-key", Some(&a.token), Some(json!({ "publicKey": bad })))
+            .await;
+        assert_eq!((status, value["error"].as_str()), (400, Some("invalid_key")));
+    }
+
+    // Publish; republishing the same key isn't a change, a new one is.
+    let first = s
+        .ok(
+            "PUT",
+            "/me/e2e-key",
+            &a,
+            Some(json!({ "publicKey": b64(ida.public_bytes()) })),
+        )
+        .await;
+    assert_eq!(first["changed"], false);
+    let again = s
+        .ok(
+            "PUT",
+            "/me/e2e-key",
+            &a,
+            Some(json!({ "publicKey": b64(ida.public_bytes()) })),
+        )
+        .await;
+    assert_eq!(again["changed"], false);
+    assert_eq!(again["updatedAt"], first["updatedAt"]);
+    s.ok(
+        "PUT",
+        "/me/e2e-key",
+        &b,
+        Some(json!({ "publicKey": b64(idb.public_bytes()) })),
+    )
+    .await;
+
+    // Friends (and oneself) see it; strangers don't.
+    let seen = s.ok("GET", &format!("/users/{}/e2e-key", a.id), &b, None).await;
+    assert_eq!(seen["publicKey"], b64(ida.public_bytes()));
+    s.ok("GET", &format!("/users/{}/e2e-key", a.id), &a, None).await;
+    let (status, _) = s
+        .call("GET", &format!("/users/{}/e2e-key", a.id), Some(&stranger.token), None)
+        .await;
+    assert_eq!(status, 403);
+
+    // An encrypted DM, far longer than a plain one may be, goes through
+    // untouched, and only its two parties can read it.
+    let text = "ñ".repeat(1900);
+    let envelope = encrypt_dm(
+        &ida,
+        &idb.public_bytes(),
+        *a.id.as_bytes(),
+        *b.id.as_bytes(),
+        "req-e2e",
+        text.as_bytes(),
+    )
+    .unwrap();
+    assert!(envelope.len() > 2000);
+    let sent = s
+        .ok(
+            "POST",
+            &format!("/chat/dm/{}/messages", b.id),
+            &a,
+            Some(json!({ "body": envelope })),
+        )
+        .await;
+    assert_eq!(sent["body"], envelope.as_str());
+    let history = s.ok("GET", &format!("/chat/dm/{}/messages", a.id), &b, None).await;
+    let stored = history[0]["body"].as_str().unwrap();
+    assert!(!stored.contains('ñ'));
+    let opened = decrypt_dm(
+        &idb,
+        &ida.public_bytes(),
+        *a.id.as_bytes(),
+        *b.id.as_bytes(),
+        stored,
+        false,
+    )
+    .unwrap();
+    assert_eq!(opened.plaintext, text.as_bytes());
+    let mine = decrypt_dm(
+        &ida,
+        &idb.public_bytes(),
+        *a.id.as_bytes(),
+        *b.id.as_bytes(),
+        stored,
+        true,
+    )
+    .unwrap();
+    assert_eq!(mine.plaintext, text.as_bytes());
+
+    // The larger limit is only for real envelopes, in DMs.
+    let padded = format!("e2e1:{}", "A".repeat(5000));
+    s.ok(
+        "POST",
+        &format!("/chat/dm/{}/messages", b.id),
+        &a,
+        Some(json!({ "body": padded })),
+    )
+    .await;
+    for body in [format!("e2e1: {}", "A".repeat(5000)), "x".repeat(2001)] {
+        let (status, value) = s
+            .call(
+                "POST",
+                &format!("/chat/dm/{}/messages", b.id),
+                Some(&a.token),
+                Some(json!({ "body": body })),
+            )
+            .await;
+        assert_eq!((status, value["error"].as_str()), (400, Some("message_too_long")));
+    }
 }

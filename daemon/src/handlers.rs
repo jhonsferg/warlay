@@ -616,16 +616,28 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
 
         DaemonRequest::LaunchGame { path, args } => {
             let exe_path = std::path::Path::new(&path);
-            let has_exe_extension = exe_path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case("exe"))
-                .unwrap_or(false);
-            if !has_exe_extension {
-                return err("LaunchGame", "la ruta debe apuntar a un ejecutable (.exe)");
+            #[cfg(windows)]
+            {
+                let has_exe_extension = exe_path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("exe"))
+                    .unwrap_or(false);
+                if !has_exe_extension {
+                    return err("LaunchGame", "la ruta debe apuntar a un ejecutable (.exe)");
+                }
             }
             match exe_path.metadata() {
-                Ok(meta) if meta.is_file() => {}
+                Ok(meta) if meta.is_file() => {
+                    // No extension marks a program here: its execute bit does.
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        if meta.permissions().mode() & 0o111 == 0 {
+                            return err("LaunchGame", "la ruta no es ejecutable");
+                        }
+                    }
+                }
                 Ok(_) => return err("LaunchGame", "la ruta no es un archivo"),
                 Err(_) => return err("LaunchGame", "el ejecutable no existe"),
             }

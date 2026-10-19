@@ -3,6 +3,12 @@ import { accessToken, mainServerUrl, refreshTokens } from "./http";
 import type { ChatMessage, RealtimeEvent } from "./types";
 
 type Handler = (event: RealtimeEvent) => void;
+
+const PING_EVERY_MS = 10_000;
+/** Silence (not even a pong) for this long means the edge is gone without
+ * closing the socket (frozen node, network partition): drop it and move on
+ * instead of waiting for TCP to give up, which can take many minutes. */
+const DEAD_AFTER_MS = 25_000;
 export type ConnectionState = "idle" | "connecting" | "open" | "reconnecting";
 
 interface Pending {
@@ -57,14 +63,28 @@ class Realtime {
     const socket = new WebSocket(`${base.replace(/^http/, "ws")}/api/v1/ws?token=${encodeURIComponent(token)}`);
     this.socket = socket;
     let opened = false;
+    let lastHeard = Date.now();
 
     socket.onopen = () => {
       opened = true;
+      lastHeard = Date.now();
       this.retry = 0;
       this.setState("open");
-      this.pingTimer = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send("ping"), 20_000);
+      this.pingTimer = setInterval(() => {
+        if (Date.now() - lastHeard > DEAD_AFTER_MS) {
+          // close() on a dead link only fires onclose after the closing
+          // handshake times out: detach and reconnect right away.
+          socket.onclose = null;
+          socket.onmessage = null;
+          socket.close();
+          onClosed();
+          return;
+        }
+        if (socket.readyState === WebSocket.OPEN) socket.send("ping");
+      }, PING_EVERY_MS);
     };
     socket.onmessage = (msg) => {
+      lastHeard = Date.now();
       if (msg.data === "pong") return;
       let event: { type: string; requestId?: string; message?: unknown };
       try {
@@ -83,7 +103,8 @@ class Realtime {
       }
       this.handlers.forEach((h) => h(event as RealtimeEvent));
     };
-    socket.onclose = () => {
+    const onClosed = () => {
+      if (this.socket !== socket) return;
       this.cleanup();
       if (!this.wanted) return;
       this.setState("reconnecting");
@@ -98,13 +119,20 @@ class Realtime {
         void this.connect();
       }, delay);
     };
+    socket.onclose = onClosed;
   }
 
-  /** Sends a chat message over the socket; resolves with the stored message. */
-  sendChat(kind: string, targetId: string, body: string): Promise<ChatMessage> {
+  /** Sends a chat message over the socket; resolves with the stored message.
+   * `requestId` identifies the send: retried with the same id (e.g. over
+   * HTTP) the server never posts it twice. */
+  sendChat(
+    kind: string,
+    targetId: string,
+    body: string,
+    requestId: string = crypto.randomUUID(),
+  ): Promise<ChatMessage> {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("socket closed"));
-    const requestId = Math.random().toString(36).slice(2);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);

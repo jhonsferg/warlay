@@ -13,9 +13,12 @@ import type {
   InviteView,
   Me,
   Profile,
+  PublicKeyView,
+  ReceiptCursors,
   RoomSession,
   RoomView,
   Tokens,
+  UnreadSummary,
   UserWithPresence,
 } from "./types";
 
@@ -61,7 +64,8 @@ export const communities = {
 };
 
 export const rooms = {
-  list: () => api<RoomView[]>("GET", "/rooms"),
+  list: (query = "") =>
+    api<RoomView[]>("GET", query.trim() ? `/rooms?q=${encodeURIComponent(query.trim())}` : "/rooms"),
   current: () => api<RoomSession | null>("GET", "/rooms/current"),
   create: (body: { name: string; communityId?: string | null; password?: string; maxPlayers?: number }) =>
     api<RoomSession>("POST", "/rooms", body),
@@ -105,15 +109,36 @@ export const chat = {
         base,
       ),
     ),
-  send: async (kind: ChannelKind, id: string, body: string) => {
+  remove: (kind: ChannelKind, id: string, messageId: string) =>
+    onEdge((base) => api<void>("DELETE", `/chat/${kind}/${id}/messages/${messageId}`, undefined, base)),
+  send: async (kind: ChannelKind, id: string, body: string, requestId: string = crypto.randomUUID()) => {
+    // One id for every attempt: if the socket attempt did reach the server
+    // (it only timed out), the HTTP retry returns that same message.
+    // (An encrypted message is sealed under its id, so it is passed in.)
     try {
-      return await realtime.sendChat(kind, id, body);
+      return await realtime.sendChat(kind, id, body, requestId);
     } catch (error) {
       // A rejection by the server is final; a dead socket falls back to HTTP.
       if (error instanceof Error && !error.message.startsWith("socket")) throw error;
-      return onEdge((base) => api<ChatMessage>("POST", `/chat/${kind}/${id}/messages`, { body }, base));
+      return onEdge((base) => api<ChatMessage>("POST", `/chat/${kind}/${id}/messages`, { body, requestId }, base));
     }
   },
+};
+
+export const keys = {
+  /** Publishes this device's public key (replacing any previous one). */
+  publish: (publicKey: string) => api<PublicKeyView>("PUT", "/me/e2e-key", { publicKey }),
+  /** A friend's public key; rejects with a 404 when they have none yet. */
+  get: (userId: string) => api<PublicKeyView>("GET", `/users/${userId}/e2e-key`),
+};
+
+export const receipts = {
+  /** We received/read the conversation with `peerId` up to `upTo`. */
+  mark: (peerId: string, state: "delivered" | "read", upTo: string) =>
+    onEdge((base) => api<ReceiptCursors>("POST", `/chat/dm/${peerId}/receipt`, { state, upTo }, base)),
+  /** How far `peerId` has received and read what we sent. */
+  peer: (peerId: string) => onEdge((base) => api<ReceiptCursors>("GET", `/chat/dm/${peerId}/receipt`, undefined, base)),
+  unread: () => onEdge((base) => api<UnreadSummary[]>("GET", "/chat/unread", undefined, base)),
 };
 
 export const notifications = {

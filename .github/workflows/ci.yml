@@ -93,8 +93,11 @@ jobs:
         run: cargo test --workspace --locked
 
   docker:
-    name: Server image
+    name: Server image (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [main, helper, hub]
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -104,6 +107,7 @@ jobs:
         with:
           context: .
           file: server/Dockerfile
+          target: ${{ matrix.target }}
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max

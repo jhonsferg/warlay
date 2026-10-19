@@ -1,7 +1,9 @@
 import { watch } from "vue";
 import { native } from "../services/native";
+import { notifyOs } from "../services/osNotify";
 import { realtime } from "../services/realtime";
 import { useChat } from "./chat";
+import { useE2e } from "./e2e";
 import { useCommunities } from "./communities";
 import { useNotifications } from "./notifications";
 import { useRooms } from "./rooms";
@@ -31,13 +33,24 @@ async function start() {
         // A fresh socket (first connect, or after moving to another edge):
         // whatever was pushed while we weren't connected is lost, so
         // reload the state the events would have updated.
-        void Promise.allSettled([social.load(), notifications.load(), rooms.loadList(), communities.loadMine()]);
+        void Promise.allSettled([
+          social.load(),
+          notifications.load(),
+          rooms.loadList(),
+          communities.loadMine(),
+          rooms.resyncSession(),
+          chat.catchUp(),
+          chat.loadUnread(),
+        ]);
         break;
       case "presence":
         social.applyPresence(event.userId, event.presence);
         break;
       case "friendRequest":
         social.applyRequest(event.request, session.me?.id ?? "");
+        if (!("removed" in event.request) && event.request.to.id === session.me?.id) {
+          void notifyOs("Nueva solicitud de amistad", event.request.from.displayName);
+        }
         break;
       case "friendAdded":
         social.applyFriendAdded(event.friend);
@@ -60,6 +73,12 @@ async function start() {
       case "message":
         chat.receive(event.message);
         break;
+      case "messageDeleted":
+        chat.applyDeleted(event.channel, event.messageId);
+        break;
+      case "chatReceipt":
+        chat.applyReceipt(event.channel, event.userId, event.receipt);
+        break;
       case "roomUpdated":
         if (rooms.applyUpdated(event.room) === "kicked") toasts.error("Te expulsaron de la sala");
         break;
@@ -70,13 +89,15 @@ async function start() {
         if (rooms.applyClosed(event.roomId)) toasts.info("La sala se cerró");
         break;
       case "communityUpdated":
-        void communities.refresh(event.communityId);
+        communities.refreshSoon(event.communityId);
         break;
       case "sessionRevoked":
         void session.logout();
         break;
     }
   });
+  // Before the socket: its first messages may be encrypted.
+  void useE2e().init();
   realtime.connect();
 
   await Promise.allSettled([
@@ -98,6 +119,7 @@ function stop() {
   useCommunities().reset();
   useRooms().reset();
   useChat().reset();
+  useE2e().reset();
   useNotifications().reset();
 }
 

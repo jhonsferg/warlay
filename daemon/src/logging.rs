@@ -32,10 +32,7 @@ impl Write for SyncOnFlush {
 /// daemon's own logs alongside the desktop app's means the existing
 /// retention sweep (`log_cleanup`) already cleans these up too, for free.
 fn log_dir() -> std::path::PathBuf {
-    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    std::path::Path::new(&appdata)
-        .join("com.warlay.lanlauncher")
-        .join("logs")
+    crate::paths::data_dir().join("logs")
 }
 
 /// A "wnetd-" prefix keeps these visually and lexically separate from the

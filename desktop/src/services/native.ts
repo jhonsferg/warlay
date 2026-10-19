@@ -73,6 +73,14 @@ async function listen<T>(event: string, handler: (payload: T) => void): Promise<
 }
 
 export const native = {
+  /** End-to-end encryption: keys stay in the shell; only public keys and text cross. */
+  e2eIdentity: (userId: string) => invoke<string | undefined>("e2e_identity", { userIdText: userId }),
+  e2eEncrypt: (me: string, peerId: string, peerPublicKey: string, requestId: string, plaintext: string) =>
+    invoke<string>("e2e_encrypt", { me, peerId, peerPublicKey, requestId, plaintext }),
+  e2eDecrypt: (me: string, peerId: string, peerPublicKey: string, senderId: string, envelope: string) =>
+    invoke<{ plaintext: string; requestId: string }>("e2e_decrypt", { me, peerId, peerPublicKey, senderId, envelope }),
+  e2eSafetyNumber: (me: string, peerPublicKey: string) => invoke<string>("e2e_safety_number", { me, peerPublicKey }),
+
   ensureDaemonRunning: () => invoke<void>("ensure_daemon_running"),
 
   startRoomSession: (session: RoomSession) =>

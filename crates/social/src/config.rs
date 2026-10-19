@@ -22,7 +22,11 @@ pub struct MainSettings {
     /// app's webview, the dev server). Empty means any origin.
     pub cors_origins: Vec<String>,
     /// Grace period before a disconnected player is removed from its room.
+    /// A host is never removed: its room lives on until it closes it.
     pub disconnect_grace_secs: u64,
+    /// A room whose host has been gone this long is closed anyway, so
+    /// abandoned rooms don't pile up. Players keep playing meanwhile.
+    pub host_absence_close_secs: u64,
     /// Only the main server migrates the schema; helpers connect to an
     /// already migrated database.
     pub run_migrations: bool,
@@ -42,6 +46,7 @@ impl Default for MainSettings {
             room_ticket_ttl_secs: 12 * 60 * 60,
             cors_origins: Vec::new(),
             disconnect_grace_secs: 45,
+            host_absence_close_secs: 24 * 60 * 60,
             run_migrations: true,
             max_db_connections: 20,
         }

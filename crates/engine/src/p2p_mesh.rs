@@ -592,7 +592,7 @@ async fn run_peer_mesh(
     loop {
         tokio::select! {
             // The room moved to another helper (the old one died): register
-            // there. Established links don'"'"'t depend on the helper and are
+            // there. Established links don't depend on the helper and are
             // left alone; only new or broken ones go through the new one.
             Ok(()) = helper_rx.changed() => {
                 let next = helper_rx.borrow_and_update().0;
@@ -643,6 +643,17 @@ async fn run_peer_mesh(
                                             .or_insert_with(|| PeerEntry::new(peer.client_id, peer.addr, peer.is_host));
                                         drop(st);
                                         trigger_connection_attempts(ctx, &state, &socket);
+                                    }
+                                }
+                                // The helper restarted (or our public address
+                                // changed) and no longer knows us: register again
+                                // so newcomers can still find us. Links already
+                                // up don't depend on it and keep running.
+                                RendezvousMessage::RegisterAgain => {
+                                    if registered {
+                                        info!(%room_token, "rendezvous lost our registration, registering again");
+                                        registered = false;
+                                        let _ = socket.send_to(&reg_msg, rendezvous_addr).await;
                                     }
                                 }
                                 RendezvousMessage::PeerLeft { client_id } => {

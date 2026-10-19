@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use chrono::{DateTime, Utc};
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -32,6 +33,14 @@ pub struct RoomView {
     pub status: String,
     pub members: Vec<UserSummary>,
     pub created_at: DateTime<Utc>,
+    /// When the server read this state (microseconds since the epoch, taken
+    /// before the reads, so the state is at least this fresh). Room updates
+    /// are coalesced and can reach a client after a newer state it already
+    /// has (the reply to its own join): clients drop any older than theirs.
+    pub snapshot_at: i64,
+    /// The host is disconnected: the room lives on, and they can come back
+    /// and manage it.
+    pub host_away: bool,
 }
 
 /// Everything a member needs to start the P2P session: which helper does
@@ -59,6 +68,7 @@ struct RoomRow {
     game_port: i32,
     status: String,
     created_at: DateTime<Utc>,
+    host_away: bool,
 }
 
 #[derive(Deserialize)]
@@ -88,9 +98,11 @@ pub async fn load_rooms(state: &AppState, ids: &[Uuid]) -> ApiResult<Vec<RoomVie
     if ids.is_empty() {
         return Ok(Vec::new());
     }
+    let snapshot_at = Utc::now().timestamp_micros();
     let rows = sqlx::query_as::<_, RoomRow>(
         "SELECT r.id, r.name, r.community_id, c.name AS community_name, r.host_id,
-                r.password_hash IS NOT NULL AS has_password, r.max_players, r.game_port, r.status, r.created_at
+                r.password_hash IS NOT NULL AS has_password, r.max_players, r.game_port, r.status, r.created_at,
+                r.host_away_since IS NOT NULL AS host_away
          FROM rooms r LEFT JOIN communities c ON c.id = r.community_id
          WHERE r.id = ANY($1)",
     )
@@ -136,19 +148,39 @@ pub async fn load_rooms(state: &AppState, ids: &[Uuid]) -> ApiResult<Vec<RoomVie
                 status: row.status,
                 members: room_members,
                 created_at: row.created_at,
+                snapshot_at,
+                host_away: row.host_away,
             },
         );
     }
     Ok(ids.iter().filter_map(|id| views.remove(id)).collect())
 }
 
-/// Live rooms matching `clause` (which may reference `$1` = `param`).
-pub async fn list_rooms_where(state: &AppState, clause: &str, param: Option<Uuid>) -> ApiResult<Vec<RoomView>> {
+/// How many rooms one listing returns; narrow it down with a name search.
+const LIST_LIMIT: i64 = 100;
+
+/// Live rooms matching `clause` (which may reference `$1` = `param`) and,
+/// if given, whose name contains `name`. Rooms that can be joined come
+/// first, newest first.
+pub async fn list_rooms_where(
+    state: &AppState,
+    clause: &str,
+    param: Option<Uuid>,
+    name: Option<&str>,
+) -> ApiResult<Vec<RoomView>> {
+    let pattern = name.map(str::trim).filter(|n| !n.is_empty()).map(|n| {
+        // ILIKE's escape character is the backslash.
+        let escaped = n.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        format!("%{escaped}%")
+    });
     let ids: Vec<Uuid> = sqlx::query_scalar(&format!(
         "SELECT r.id FROM rooms r LEFT JOIN communities c ON c.id = r.community_id
-         WHERE r.status <> 'closed' AND {clause} ORDER BY r.created_at DESC LIMIT 100"
+         WHERE r.status <> 'closed' AND {clause} AND ($2::text IS NULL OR r.name ILIKE $2)
+         ORDER BY (r.status = 'open') DESC, r.created_at DESC LIMIT $3"
     ))
     .bind(param)
+    .bind(pattern)
+    .bind(LIST_LIMIT)
     .fetch_all(&state.db)
     .await?;
     load_rooms(state, &ids).await
@@ -180,9 +212,12 @@ async fn announce(state: &AppState, room: &RoomView, event: Event) -> ApiResult<
             targets.extend(room.members.iter().map(|m| m.id));
             targets.sort();
             targets.dedup();
-            state.realtime.emit(&targets, &event).await;
+            state
+                .realtime
+                .emit_coalesced(&targets, &event, Some(format!("room:{}", room.id)))
+                .await;
         }
-        None => state.realtime.emit_all(&event).await,
+        None => state.realtime.emit_all(&event, Some(format!("room:{}", room.id))).await,
     }
     Ok(())
 }
@@ -246,7 +281,121 @@ async fn session_for(state: &AppState, room_id: Uuid, user_id: Uuid) -> ApiResul
     })
 }
 
-/// Removes `user_id` from whatever room they're in; closes it if they host it.
+/// The room `user_id` hosts, if any. A host is always a member of it.
+async fn hosted_room(state: &AppState, user_id: Uuid) -> ApiResult<Option<Uuid>> {
+    Ok(
+        sqlx::query_scalar("SELECT id FROM rooms WHERE host_id = $1 AND status <> 'closed'")
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await?,
+    )
+}
+
+/// Joining or creating another room would close the one a user hosts, out
+/// from under its players: the host has to close it on purpose first.
+async fn ensure_not_hosting(state: &AppState, user_id: Uuid) -> ApiResult<()> {
+    if hosted_room(state, user_id).await?.is_some() {
+        return Err(ApiError::conflict(
+            "hosting",
+            "eres el anfitrión de una sala: ciérrala antes de entrar a otra",
+        ));
+    }
+    Ok(())
+}
+
+fn host_away_flag(user_id: Uuid) -> String {
+    format!("wl:hostaway:{user_id}")
+}
+
+/// A user's connection stayed down past the grace period. A player leaves
+/// their room; a host doesn't: the room keeps living so the others aren't
+/// thrown out, and the host can come back and carry on managing it.
+pub async fn disconnect_grace_expired(state: &AppState, user_id: Uuid) -> ApiResult<()> {
+    let Some(room_id) = hosted_room(state, user_id).await? else {
+        return leave_current_room(state, user_id).await;
+    };
+    let marked = sqlx::query("UPDATE rooms SET host_away_since = now() WHERE id = $1 AND host_away_since IS NULL")
+        .bind(room_id)
+        .execute(&state.db)
+        .await?
+        .rows_affected();
+    if marked > 0 {
+        let mut redis = state.redis.clone();
+        let _: Result<(), _> = redis.set_ex(host_away_flag(user_id), 1, 7 * 24 * 3600).await;
+        announce_updated(state, room_id).await?;
+    }
+    Ok(())
+}
+
+/// The host connected again: the room is theirs to manage as before.
+pub async fn host_came_back(state: &AppState, user_id: Uuid) -> ApiResult<()> {
+    let mut redis = state.redis.clone();
+    // Only hosts that were marked away have this flag: connecting is hot.
+    let was_away: i64 = redis.del(host_away_flag(user_id)).await?;
+    if was_away == 0 {
+        return Ok(());
+    }
+    clear_host_away(state, user_id).await
+}
+
+async fn clear_host_away(state: &AppState, user_id: Uuid) -> ApiResult<()> {
+    let room: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE rooms SET host_away_since = NULL
+         WHERE host_id = $1 AND host_away_since IS NOT NULL AND status <> 'closed' RETURNING id",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+    if let Some(room_id) = room {
+        announce_updated(state, room_id).await?;
+    }
+    Ok(())
+}
+
+/// Main-server job: closes rooms whose host has been away longer than
+/// `host_absence_close_secs`, so abandoned rooms don't pile up. A host that
+/// is in fact connected (the marker outlived a lost flag) is cleared, never
+/// closed on.
+async fn close_abandoned_rooms(state: &AppState) -> ApiResult<()> {
+    let mut redis = state.redis.clone();
+    let lock: Option<String> = redis::cmd("SET")
+        .arg("wl:lock:room-reaper")
+        .arg(1)
+        .arg("NX")
+        .arg("EX")
+        .arg(55)
+        .query_async(&mut redis)
+        .await?;
+    if lock.is_none() {
+        return Ok(());
+    }
+    reap_abandoned_rooms(state).await
+}
+
+/// One pass of the reaper, without the cluster-wide lock.
+pub async fn reap_abandoned_rooms(state: &AppState) -> ApiResult<()> {
+    let mut redis = state.redis.clone();
+    let abandoned: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT id, host_id FROM rooms
+         WHERE status <> 'closed' AND host_away_since < now() - make_interval(secs => $1)",
+    )
+    .bind(state.settings.host_absence_close_secs as f64)
+    .fetch_all(&state.db)
+    .await?;
+    for (room_id, host_id) in abandoned {
+        let connected: i64 = redis.hlen(crate::realtime::conns_key(host_id)).await.unwrap_or(0);
+        if connected > 0 {
+            clear_host_away(state, host_id).await?;
+        } else {
+            tracing::info!(%room_id, %host_id, "closing a room whose host never came back");
+            close_room(state, room_id).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Removes `user_id` from whatever room they're in; closes it if they host it
+/// (an explicit leave: the host asked for it).
 pub async fn leave_current_room(state: &AppState, user_id: Uuid) -> ApiResult<()> {
     let room_id: Option<Uuid> = sqlx::query_scalar("SELECT room_id FROM room_members WHERE user_id = $1")
         .bind(user_id)
@@ -283,21 +432,32 @@ async fn close_room(state: &AppState, room_id: Uuid) -> ApiResult<()> {
         .bind(room_id)
         .execute(&state.db)
         .await?;
+    // `announce` already reaches every member.
     announce(state, &room, Event::RoomClosed { room_id }).await?;
     for member in &room.members {
-        state.realtime.emit(&[member.id], &Event::RoomClosed { room_id }).await;
         broadcast_presence(state, member.id).await?;
     }
     Ok(())
 }
 
-pub async fn list(State(state): State<AppState>, auth: AuthUser) -> ApiResult<Json<Vec<RoomView>>> {
+#[derive(Deserialize, Default)]
+pub struct ListQuery {
+    /// Part of the room name, case-insensitive.
+    pub q: Option<String>,
+}
+
+pub async fn list(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(query): Query<ListQuery>,
+) -> ApiResult<Json<Vec<RoomView>>> {
     Ok(Json(
         list_rooms_where(
             &state,
             "(r.community_id IS NULL OR c.is_public OR EXISTS (
                 SELECT 1 FROM community_members m WHERE m.community_id = r.community_id AND m.user_id = $1))",
             Some(auth.user_id),
+            query.q.as_deref(),
         )
         .await?,
     ))
@@ -342,10 +502,11 @@ pub async fn create(
         }
     }
     let password_hash = match req.password.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-        Some(p) => Some(hash_password(p)?),
+        Some(p) => Some(hash_password(p).await?),
         None => None,
     };
     let helper = pick_helper(&state).await?;
+    ensure_not_hosting(&state, auth.user_id).await?;
     leave_current_room(&state, auth.user_id).await?;
 
     let id = Uuid::new_v4();
@@ -399,9 +560,6 @@ pub async fn join_room(
     if !invited && !can_see(state, user_id, &room).await? {
         return Err(ApiError::forbidden("no puedes unirte a esta sala"));
     }
-    if room.status == "in_game" {
-        return Err(ApiError::conflict("in_game", "la partida ya comenzó"));
-    }
     if room.members.len() as i32 >= room.max_players {
         return Err(ApiError::conflict("room_full", "la sala está llena"));
     }
@@ -410,7 +568,10 @@ pub async fn join_room(
             .bind(room_id)
             .fetch_one(&state.db)
             .await?;
-        let ok = matches!((hash, password), (Some(h), Some(p)) if verify_password(p, &h));
+        let ok = match (hash, password) {
+            (Some(h), Some(p)) => verify_password(p, Some(&h)).await?,
+            _ => false,
+        };
         if !ok {
             return Err(ApiError::new(
                 axum::http::StatusCode::FORBIDDEN,
@@ -419,12 +580,35 @@ pub async fn join_room(
             ));
         }
     }
+    ensure_not_hosting(state, user_id).await?;
     leave_current_room(state, user_id).await?;
+    // Capacity and status are checked again under the room's row lock:
+    // simultaneous joins otherwise all pass the check above and overfill it,
+    // or land in a room being closed.
+    let mut tx = state.db.begin().await?;
+    let locked: Option<(i32, String)> =
+        sqlx::query_as("SELECT max_players, status FROM rooms WHERE id = $1 FOR UPDATE")
+            .bind(room_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    // A running game doesn't close the room to newcomers: the room is a
+    // virtual LAN, and `in_game` is only a badge.
+    let Some((max_players, _)) = locked.filter(|(_, s)| s != "closed") else {
+        return Err(ApiError::not_found("la sala ya no existe"));
+    };
+    let members: i64 = sqlx::query_scalar("SELECT count(*) FROM room_members WHERE room_id = $1")
+        .bind(room_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if members >= i64::from(max_players) {
+        return Err(ApiError::conflict("room_full", "la sala está llena"));
+    }
     sqlx::query("INSERT INTO room_members (room_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
         .bind(room_id)
         .bind(user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     announce_updated(state, room_id).await?;
     broadcast_presence(state, user_id).await?;
     session_for(state, room_id, user_id).await
@@ -546,12 +730,14 @@ pub fn spawn_helper_watchdog(state: AppState) {
             if let Err(error) = reassign_orphaned_rooms(&state).await {
                 tracing::warn!(?error, "helper watchdog failed");
             }
+            if let Err(error) = close_abandoned_rooms(&state).await {
+                tracing::warn!(?error, "abandoned room reaper failed");
+            }
         }
     });
 }
 
 async fn reassign_orphaned_rooms(state: &AppState) -> ApiResult<()> {
-    use redis::AsyncCommands;
     let mut redis = state.redis.clone();
     let lock: Option<String> = redis::cmd("SET")
         .arg("wl:lock:helper-watchdog")
@@ -592,6 +778,14 @@ async fn reassign_orphaned_rooms(state: &AppState) -> ApiResult<()> {
             .emit(&members, &Event::RoomHelperChanged { room_id, helper })
             .await;
     }
-    let _: Result<(), _> = redis.del("wl:lock:helper-watchdog").await;
+    // Release it only if it's still ours: past its expiry another instance
+    // may already hold it.
+    let _: Result<i64, _> = redis::cmd("EVAL")
+        .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end")
+        .arg(1)
+        .arg("wl:lock:helper-watchdog")
+        .arg(state.realtime.node_id.to_string())
+        .query_async(&mut redis)
+        .await;
     Ok(())
 }

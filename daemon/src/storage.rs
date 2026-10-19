@@ -17,14 +17,9 @@ pub struct AgentStore {
     conn: Arc<Mutex<Connection>>,
 }
 
-/// Same AppData-path-without-an-app-handle trick as
-/// `desktop/src-tauri/src/log_cleanup.rs::log_dir` and this crate's own
-/// `logging::log_dir`.
+/// See `paths::data_dir` (on Windows, the same file the desktop app uses).
 fn db_path() -> std::path::PathBuf {
-    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    std::path::Path::new(&appdata)
-        .join("com.warlay.lanlauncher")
-        .join("warlay.db")
+    crate::paths::data_dir().join("warlay.db")
 }
 
 impl AgentStore {

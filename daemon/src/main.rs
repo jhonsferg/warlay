@@ -5,27 +5,31 @@
 // subsystem instead (same mechanism Tauri's own desktop.exe already uses),
 // so the daemon never shows a window regardless of how it's started; debug
 // builds keep the console since that's the only visibility into `tracing`'s
-// stdout output while developing.
+// stdout output while developing. (Ignored on other platforms.)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(windows)]
 mod autostart;
 mod handlers;
 mod ipc_server;
 mod lan;
 mod log_control;
 mod logging;
+mod paths;
+#[cfg(windows)]
 mod security;
 mod session;
 mod state;
 mod storage;
+#[cfg(unix)]
+mod unix_socket;
 
 use std::collections::HashMap;
 use std::io::Error;
 use std::sync::Arc;
 
-use tokio::net::windows::named_pipe::ServerOptions;
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::info;
 
 use state::DaemonState;
 use storage::AgentStore;
@@ -41,21 +45,19 @@ async fn main() -> Result<(), Error> {
 
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
+        #[cfg(windows)]
         Some("--install") => return autostart::install_autostart(),
+        #[cfg(windows)]
         Some("--uninstall") => return autostart::uninstall_autostart(),
+        #[cfg(not(windows))]
+        Some("--install" | "--uninstall") => {
+            eprintln!("auto-start is managed by the service manager here (e.g. a systemd unit running `wnetd`)");
+            return Ok(());
+        }
         _ => {}
     }
 
     info!("Warlay daemon started");
-
-    let pipe_name = r"\\.\pipe\warlay-daemon";
-    let pipe_sa_addr = security::build_pipe_security_attributes();
-
-    let mut server = unsafe {
-        ServerOptions::new()
-            .first_pipe_instance(true)
-            .create_with_security_attributes_raw(pipe_name, pipe_sa_addr as *mut std::ffi::c_void)
-    }?;
 
     let daemon_state = Arc::new(Mutex::new(DaemonState {
         connections: HashMap::new(),
@@ -75,6 +77,29 @@ async fn main() -> Result<(), Error> {
         agent_store,
         started_at: std::time::Instant::now(),
     }));
+
+    #[cfg(windows)]
+    serve_named_pipe(daemon_state).await?;
+    #[cfg(unix)]
+    unix_socket::serve(daemon_state).await?;
+
+    info!("Warlay daemon stopped");
+    Ok(())
+}
+
+#[cfg(windows)]
+async fn serve_named_pipe(daemon_state: Arc<Mutex<DaemonState>>) -> Result<(), Error> {
+    use tokio::net::windows::named_pipe::ServerOptions;
+    use tracing::warn;
+
+    let pipe_name = r"\\.\pipe\warlay-daemon";
+    let pipe_sa_addr = security::build_pipe_security_attributes();
+
+    let mut server = unsafe {
+        ServerOptions::new()
+            .first_pipe_instance(true)
+            .create_with_security_attributes_raw(pipe_name, pipe_sa_addr as *mut std::ffi::c_void)
+    }?;
 
     info!(%pipe_name, "listening on named pipe");
 
@@ -112,7 +137,5 @@ async fn main() -> Result<(), Error> {
             }
         }
     }
-
-    info!("Warlay daemon stopped");
     Ok(())
 }

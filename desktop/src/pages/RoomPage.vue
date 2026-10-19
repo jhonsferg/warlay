@@ -19,6 +19,7 @@ import type { UserSummary } from "../services/types";
 import { useRooms } from "../stores/rooms";
 import { useSession } from "../stores/session";
 import { useSettings } from "../stores/settings";
+import { useSocial } from "../stores/social";
 import { useToasts } from "../stores/toasts";
 import WAvatar from "../ui/atoms/WAvatar.vue";
 import WBadge from "../ui/atoms/WBadge.vue";
@@ -35,6 +36,7 @@ const router = useRouter();
 const rooms = useRooms();
 const session = useSession();
 const settings = useSettings();
+const social = useSocial();
 const toasts = useToasts();
 const inviting = ref(false);
 const launching = ref(false);
@@ -97,6 +99,21 @@ async function leave() {
   }
 }
 
+const isFriend = (id: string) => !!social.friend(id);
+const isPending = (id: string) => social.outgoing.some((r) => r.to.id === id);
+
+async function addFriend(member: UserSummary) {
+  try {
+    const status = await social.sendRequestById(member.id);
+    toasts.success(
+      status === "accepted" ? `Ahora eres amigo de ${member.displayName}` : "Solicitud enviada",
+      `@${member.username}`,
+    );
+  } catch (e) {
+    toasts.error("No se pudo enviar la solicitud", errorMessage(e));
+  }
+}
+
 async function kick(member: UserSummary) {
   try {
     await rooms.kick(member.id);
@@ -129,6 +146,7 @@ async function kick(member: UserSummary) {
               <WBadge v-if="room.status === 'in_game'" tone="game" dot>En partida</WBadge>
               <WBadge v-else tone="success" dot>Esperando jugadores</WBadge>
               <WBadge tone="neutral">{{ room.members.length }}/{{ room.maxPlayers }} jugadores</WBadge>
+              <WBadge v-if="room.hostAway" tone="danger" dot data-testid="host-away">Anfitrión desconectado</WBadge>
               <WBadge v-if="rooms.isHost" tone="warning"><Crown /> Eres el anfitrión</WBadge>
             </div>
             <h2>{{ room.name }}</h2>
@@ -167,6 +185,14 @@ async function kick(member: UserSummary) {
                 ><component :is="linkOf(m)!.icon" />{{ linkOf(m)!.label }}</WBadge
               >
             </div>
+            <WIconButton
+              v-if="m.id !== session.me?.id && !isFriend(m.id) && !isPending(m.id)"
+              label="Añadir amigo"
+              size="sm"
+              @click="addFriend(m)"
+              ><UserPlus
+            /></WIconButton>
+            <WBadge v-else-if="m.id !== session.me?.id && isPending(m.id)" tone="neutral">Solicitud enviada</WBadge>
             <WIconButton
               v-if="rooms.isHost && m.id !== session.me?.id"
               label="Expulsar"

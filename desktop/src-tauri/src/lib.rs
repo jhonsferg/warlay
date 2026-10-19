@@ -535,6 +535,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::daemon::check_daemon_ready,
             commands::daemon::ensure_daemon_running,
+            commands::e2e::e2e_identity,
+            commands::e2e::e2e_encrypt,
+            commands::e2e::e2e_decrypt,
+            commands::e2e::e2e_safety_number,
             commands::discovery::list_local_subnets,
             commands::discovery::discover_relays,
             commands::discovery::list_games,

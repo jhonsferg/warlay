@@ -38,6 +38,13 @@ export const useSocial = defineStore("social", () => {
     return res.status;
   }
 
+  /** Same as `sendRequest`, for someone we only know by id (a room's roster). */
+  async function sendRequestById(userId: string) {
+    const res = await friendsApi.requestById(userId);
+    await load();
+    return res.status;
+  }
+
   async function accept(id: string) {
     await friendsApi.accept(id);
     await load();
@@ -97,6 +104,7 @@ export const useSocial = defineStore("social", () => {
     load,
     friend,
     sendRequest,
+    sendRequestById,
     accept,
     decline,
     remove,

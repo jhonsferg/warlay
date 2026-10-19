@@ -131,10 +131,18 @@ pub async fn add_member(state: &AppState, community_id: Uuid, user_id: Uuid, rol
 
 async fn notify_changed(state: &AppState, community_id: Uuid) -> ApiResult<()> {
     crate::chat::invalidate(state, &format!("community:{community_id}")).await;
+    let key = format!("community:{community_id}");
+    // Already on its way: the refresh carries no data, and reloading every
+    // member id on each of a burst of joins is what made it quadratic.
+    if state.realtime.coalescing(&key) {
+        return Ok(());
+    }
     let members = member_ids(state, community_id).await?;
+    // Every member refetches the community on this: coalesced, a burst of
+    // joins costs one refetch per member, not one per join.
     state
         .realtime
-        .emit(&members, &Event::CommunityUpdated { community_id })
+        .emit_coalesced(&members, &Event::CommunityUpdated { community_id }, Some(key))
         .await;
     Ok(())
 }
@@ -242,15 +250,12 @@ pub async fn detail(
             .fetch_all(&state.db)
             .await?;
     let ids: Vec<Uuid> = roles.iter().map(|(u, _)| *u).collect();
+    let mut roles: std::collections::HashMap<Uuid, String> = roles.into_iter().collect();
     let users = with_presence(&state, load_summaries(&state, &ids).await?).await?;
     let mut members: Vec<CommunityMember> = users
         .into_iter()
         .map(|user| {
-            let role = roles
-                .iter()
-                .find(|(u, _)| *u == user.user.id)
-                .map(|(_, r)| r.clone())
-                .unwrap_or_else(|| "member".into());
+            let role = roles.remove(&user.user.id).unwrap_or_else(|| "member".into());
             CommunityMember { user, role }
         })
         .collect();
@@ -259,7 +264,7 @@ pub async fn detail(
         "admin" => 1,
         _ => 2,
     });
-    let rooms = list_rooms_where(&state, "r.community_id = $1", Some(id)).await?;
+    let rooms = list_rooms_where(&state, "r.community_id = $1", Some(id), None).await?;
     Ok(Json(CommunityDetail {
         summary,
         members,

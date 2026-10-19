@@ -9,7 +9,12 @@ use tracing::info;
 
 /// `(version, name, sql)`, in the order they must run. Never edit an
 /// applied migration: add a new one.
-const MIGRATIONS: &[(i64, &str, &str)] = &[(1, "initial", INITIAL)];
+const MIGRATIONS: &[(i64, &str, &str)] = &[
+    (1, "initial", INITIAL),
+    (2, "chat_receipts", CHAT_RECEIPTS),
+    (3, "room_host_absence", ROOM_HOST_ABSENCE),
+    (4, "user_e2e_keys", USER_E2E_KEYS),
+];
 
 /// Arbitrary constant identifying Warlay's migration lock.
 const LOCK_KEY: i64 = 0x5741_524C_4159;
@@ -174,4 +179,37 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, created_at DESC);
+"#;
+
+/// Message deletion (kept as a tombstone, so a message still queued for
+/// persisting can be marked too) and per-user read cursors for DMs.
+const CHAT_RECEIPTS: &str = r#"
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+-- Everything in `channel` up to `delivered_at` reached one of the user's
+-- devices, and up to `read_at` was seen. Cursors only move forward.
+CREATE TABLE IF NOT EXISTS chat_reads (
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel       TEXT NOT NULL,
+    delivered_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    read_at       TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    PRIMARY KEY (user_id, channel)
+);
+"#;
+
+/// A room outlives its host's connection: this is since when the host has
+/// been away (NULL while connected), so abandoned rooms can be closed.
+const ROOM_HOST_ABSENCE: &str = r#"
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS host_away_since TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS rooms_host_away_idx ON rooms(host_away_since) WHERE host_away_since IS NOT NULL;
+"#;
+
+/// Public keys for end-to-end encrypted direct messages. The server never
+/// sees private keys; this is only a directory.
+const USER_E2E_KEYS: &str = r#"
+CREATE TABLE IF NOT EXISTS user_keys (
+    user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    public_key  BYTEA NOT NULL CHECK (octet_length(public_key) = 32),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 "#;

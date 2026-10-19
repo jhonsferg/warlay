@@ -33,17 +33,7 @@ async fn main() -> Result<()> {
         }
         Mode::Helper(args) => {
             let mut config = helper::load(&args.config)?;
-            if let Ok(secret) = std::env::var("WARLAY_HELPER_SECRET") {
-                config.helper.helper_secret = secret;
-            }
-            if let Some(edge) = config.helper.edge.as_mut() {
-                if let Ok(v) = std::env::var("WARLAY_DATABASE_URL") {
-                    edge.database_url = v;
-                }
-                if let Ok(v) = std::env::var("WARLAY_REDIS_URL") {
-                    edge.redis_url = v;
-                }
-            }
+            helper::apply_env(&mut config);
             logging::init(args.log_level.as_deref().unwrap_or(&config.observability.log_level));
             helper::run(config).await
         }

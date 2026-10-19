@@ -27,6 +27,7 @@ const fill = computed(() => Math.round((props.room.members.length / props.room.m
       <WBadge v-if="room.status === 'in_game'" tone="game" dot>En partida</WBadge>
       <WBadge v-else tone="success" dot>Abierta</WBadge>
     </header>
+    <WBadge v-if="room.hostAway" tone="danger" dot>Anfitrión desconectado</WBadge>
 
     <div class="room-card__tags">
       <WBadge v-if="room.communityName" tone="accent">{{ room.communityName }}</WBadge>
@@ -40,13 +41,7 @@ const fill = computed(() => Math.round((props.room.members.length / props.room.m
         <span class="room-card__count"><Users :size="14" /> {{ room.members.length }}/{{ room.maxPlayers }}</span>
       </div>
       <WButton v-if="current" size="sm" variant="secondary" @click="$emit('open', room)">Abrir sala</WButton>
-      <WButton
-        v-else
-        size="sm"
-        :disabled="full || room.status === 'in_game'"
-        :loading="busy"
-        @click="$emit('join', room)"
-      >
+      <WButton v-else size="sm" :disabled="full" :loading="busy" @click="$emit('join', room)">
         {{ full ? "Llena" : "Unirse" }}
       </WButton>
     </footer>

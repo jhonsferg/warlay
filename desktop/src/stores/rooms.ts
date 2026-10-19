@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { rooms as api } from "../services/api";
+import { ApiError } from "../services/http";
 import { native, type PeerLinkStatus } from "../services/native";
 import type { HelperInfo, RoomSession, RoomView } from "../services/types";
 import { useSession } from "./session";
@@ -22,8 +23,8 @@ export const useRooms = defineStore("rooms", () => {
     return links.value.find((l) => l.clientId === userId);
   }
 
-  async function loadList() {
-    list.value = await api.list();
+  async function loadList(query = "") {
+    list.value = await api.list(query);
   }
 
   async function startNative(next: RoomSession) {
@@ -144,7 +145,21 @@ export const useRooms = defineStore("rooms", () => {
     }
   }
 
+  /** Room updates are coalesced on the server and can arrive after a newer
+   * state we already hold (e.g. the reply to our own join): an older
+   * snapshot must not overwrite it -- nor make us think we were kicked. */
+  function isStale(room: RoomView, known: RoomView | undefined) {
+    return room.snapshotAt !== undefined && known?.snapshotAt !== undefined && room.snapshotAt < known.snapshotAt;
+  }
+
   function upsert(room: RoomView) {
+    if (
+      isStale(
+        room,
+        list.value.find((r) => r.id === room.id),
+      )
+    )
+      return;
     if (room.status === "closed") {
       list.value = list.value.filter((r) => r.id !== room.id);
       return;
@@ -158,6 +173,7 @@ export const useRooms = defineStore("rooms", () => {
   function applyUpdated(room: RoomView) {
     upsert(room);
     if (session.value?.room.id === room.id) {
+      if (isStale(room, session.value.room)) return null;
       const me = useSession().me;
       if (me && !room.members.some((m) => m.id === me.id)) {
         void endLocal();
@@ -175,6 +191,31 @@ export const useRooms = defineStore("rooms", () => {
     if (session.value?.room.id !== roomId) return;
     session.value = { ...session.value, helper };
     void native.updateRoomHelper(helper).catch(() => {});
+  }
+
+  /** After the realtime socket comes back: a helper change pushed while it
+   * was down is lost -- and it's often down precisely because its edge was
+   * that same dead helper -- so ask the main server where the room is now. */
+  async function resyncSession() {
+    const current = session.value;
+    if (!current) return;
+    let fresh: RoomSession;
+    try {
+      fresh = await api.session(current.room.id);
+    } catch (e) {
+      // Closed, or we were removed, while we weren't listening.
+      if (
+        e instanceof ApiError &&
+        (e.status === 404 || e.status === 403) &&
+        session.value?.room.id === current.room.id
+      ) {
+        await endLocal();
+      }
+      return;
+    }
+    if (session.value?.room.id !== fresh.room.id) return;
+    upsert(fresh.room);
+    if (fresh.helper.id !== session.value.helper.id) applyHelperChanged(fresh.room.id, fresh.helper);
   }
 
   function applyClosed(roomId: string) {
@@ -201,6 +242,7 @@ export const useRooms = defineStore("rooms", () => {
     linkOf,
     loadList,
     restoreCurrent,
+    resyncSession,
     create,
     join,
     adopt,

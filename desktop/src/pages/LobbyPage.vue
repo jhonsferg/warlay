@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Gamepad2, Plus, Radio, Search, Swords, UserPlus } from "@lucide/vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ApiError, errorMessage } from "../services/http";
 import type { RoomView } from "../services/types";
@@ -74,7 +74,18 @@ async function join(room: RoomView, password?: string) {
   }
 }
 
-onMounted(() => void rooms.loadList().catch(() => {}));
+// The server lists a limited number of rooms: search there too, so a room
+// past that limit can still be found by name.
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(query, (q) => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => void rooms.loadList(q).catch(() => {}), 300);
+});
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer);
+});
+
+onMounted(() => void rooms.loadList(query.value).catch(() => {}));
 </script>
 
 <template>

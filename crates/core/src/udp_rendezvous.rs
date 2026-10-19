@@ -154,7 +154,8 @@ impl UdpRendezvous {
             RendezvousMessage::PeerList { .. }
             | RendezvousMessage::PeerJoined { .. }
             | RendezvousMessage::PeerLeft { .. }
-            | RendezvousMessage::ProbeReply { .. } => {
+            | RendezvousMessage::ProbeReply { .. }
+            | RendezvousMessage::RegisterAgain => {
                 debug!(%peer_addr, "received client-bound message on server, ignoring");
             }
         }
@@ -243,23 +244,28 @@ impl UdpRendezvous {
     }
 
     async fn handle_heartbeat(&self, room_token: Uuid, client_id: Uuid, peer_addr: SocketAddr) {
-        let mut rooms = self.rooms.lock().await;
-        if let Some(room) = rooms.get_mut(&room_token) {
-            if let Some(peer) = room.get_mut(&client_id) {
+        {
+            let mut rooms = self.rooms.lock().await;
+            match rooms.get_mut(&room_token).and_then(|room| room.get_mut(&client_id)) {
                 // With tickets, identity was proven at registration from that
                 // address; a heartbeat from anywhere else could be a hijack.
-                if self.ticket_secret.is_some() && peer.addr != peer_addr {
-                    debug!(%room_token, %client_id, %peer_addr, "heartbeat from an unregistered address, ignoring");
+                Some(peer) if self.ticket_secret.is_some() && peer.addr != peer_addr => {
+                    debug!(%room_token, %client_id, %peer_addr, "heartbeat from an unregistered address");
+                }
+                Some(peer) => {
+                    peer.last_seen = Instant::now();
+                    peer.addr = peer_addr;
+                    debug!(%room_token, %client_id, %peer_addr, "updated heartbeat last_seen");
                     return;
                 }
-                peer.last_seen = Instant::now();
-                peer.addr = peer_addr;
-                debug!(%room_token, %client_id, %peer_addr, "updated heartbeat last_seen");
-            } else {
-                debug!(%room_token, %client_id, "heartbeat for unregistered peer");
+                None => debug!(%room_token, %client_id, "heartbeat for an unregistered peer"),
             }
-        } else {
-            debug!(%room_token, %client_id, "heartbeat for unknown room");
+        }
+        // This hub restarted (and forgot the room) or the peer's public
+        // address changed: have it register again, proving who it is. The
+        // reply is smaller than the heartbeat, so it can't amplify anything.
+        if let Ok(bytes) = RendezvousMessage::RegisterAgain.encode() {
+            let _ = self.socket.send_to(&bytes, peer_addr).await;
         }
     }
 
@@ -476,6 +482,34 @@ mod tests {
             recv_msg(&client).await,
             RendezvousMessage::ProbeReply { observed: client_addr }
         );
+    }
+
+    #[tokio::test]
+    async fn heartbeat_it_cannot_place_asks_the_peer_to_register_again() {
+        let server_socket = UdpSocket::bind("127.0.0.1:0").await.expect("bind server");
+        let server_addr = server_socket.local_addr().expect("server addr");
+        Arc::new(UdpRendezvous::new(server_socket)).spawn();
+
+        // As after a restart: the hub never saw this room.
+        let client = UdpSocket::bind("127.0.0.1:0").await.expect("bind client");
+        let (room_token, client_id) = (Uuid::new_v4(), Uuid::new_v4());
+        let heartbeat = RendezvousMessage::Heartbeat { room_token, client_id };
+        client.send_to(&heartbeat.encode().unwrap(), server_addr).await.unwrap();
+        assert_eq!(recv_msg(&client).await, RendezvousMessage::RegisterAgain);
+
+        // Once registered, heartbeats are taken silently.
+        let reg = RendezvousMessage::Register {
+            room_token,
+            client_id,
+            is_host: true,
+        };
+        client.send_to(&reg.encode().unwrap(), server_addr).await.unwrap();
+        assert!(matches!(recv_msg(&client).await, RendezvousMessage::PeerList { .. }));
+        client.send_to(&heartbeat.encode().unwrap(), server_addr).await.unwrap();
+        let mut buf = [0_u8; 64];
+        assert!(timeout(Duration::from_millis(200), client.recv_from(&mut buf))
+            .await
+            .is_err());
     }
 
     #[tokio::test]

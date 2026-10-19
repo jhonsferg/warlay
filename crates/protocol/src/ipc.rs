@@ -1,4 +1,4 @@
-use crate::{ClientMessage, ServerMessage};
+use crate::ServerMessage;
 use serde::{Deserialize, Serialize};
 
 /// A request from the UI client to the daemon, tagged with a correlation id

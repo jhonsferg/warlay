@@ -110,6 +110,58 @@ docker save warlay-hub | gzip | ssh my-server 'gunzip | docker load'
 Build on a machine with more RAM and cores than a small VPS if you can; a
 release build of the workspace needs well over 1 GiB of memory.
 
+### Main server and helpers as separate containers
+
+The same Dockerfile builds one image per role, so the main server and each
+helper run in their own container and scale independently:
+
+```sh
+docker build --target main   -t warlay-main   -f server/Dockerfile .
+docker build --target helper -t warlay-helper -f server/Dockerfile .
+```
+
+The main server is stateless (everything lives in PostgreSQL and Redis), so
+it can run as several replicas behind a load balancer:
+
+```sh
+docker run -d --name warlay-main --restart unless-stopped -p 8080:8080 \
+  -e WARLAY_DATABASE_URL=postgres://warlay:secret@db:5432/warlay \
+  -e WARLAY_REDIS_URL=redis://redis:6379 \
+  -e WARLAY_HELPER_SECRET=<openssl rand -hex 32> \
+  warlay-main
+```
+
+A helper is configured entirely through the environment, so one image
+serves any number of them. Setting `WARLAY_EDGE_PUBLIC_URL` also makes it an
+edge (players' realtime socket and chat), which needs the shared PostgreSQL
+and Redis:
+
+```sh
+docker run -d --name warlay-helper-1 --restart unless-stopped \
+  -p 7779:7779/udp -p 7780:7780/udp -p 8090:8090/tcp \
+  -e WARLAY_HELPER_SECRET=<same as the main server> \
+  -e WARLAY_HELPER_NAME=helper-1 -e WARLAY_HELPER_REGION=sa-east \
+  -e WARLAY_MAIN_URL=https://warlay.example.com \
+  -e WARLAY_PUBLIC_RENDEZVOUS_ADDR=helper1.example.com:7779 \
+  -e WARLAY_PUBLIC_RELAY_ADDR=helper1.example.com:7780 \
+  -e WARLAY_EDGE_PUBLIC_URL=https://helper1.example.com \
+  -e WARLAY_DATABASE_URL=postgres://warlay:secret@db:5432/warlay \
+  -e WARLAY_REDIS_URL=redis://redis:6379 \
+  warlay-helper
+```
+
+| Variable                        | Role         | Overrides                                                             |
+| ------------------------------- | ------------ | --------------------------------------------------------------------- |
+| `WARLAY_DATABASE_URL`           | main, edge   | `main.database_url`, `helper.edge.database_url`                       |
+| `WARLAY_REDIS_URL`              | main, edge   | `main.redis_url`, `helper.edge.redis_url`                             |
+| `WARLAY_HELPER_SECRET`          | main, helper | `main.helper_secret`, `helper.helper_secret`                          |
+| `WARLAY_HELPER_NAME`            | helper       | `helper.name` (keep it stable: the helper's identity derives from it) |
+| `WARLAY_HELPER_REGION`          | helper       | `helper.region`                                                       |
+| `WARLAY_MAIN_URL`               | helper       | `helper.main_url`                                                     |
+| `WARLAY_PUBLIC_RENDEZVOUS_ADDR` | helper       | `helper.public_rendezvous_addr`                                       |
+| `WARLAY_PUBLIC_RELAY_ADDR`      | helper       | `helper.public_relay_addr`                                            |
+| `WARLAY_EDGE_PUBLIC_URL`        | helper       | `helper.edge.public_url` (turns the edge on)                          |
+
 ## TLS with a reverse proxy
 
 The hub itself speaks plain TCP; terminate TLS in front of it so players can
