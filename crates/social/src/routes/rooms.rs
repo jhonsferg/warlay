@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,11 @@ pub struct RoomView {
     pub status: String,
     pub members: Vec<UserSummary>,
     pub created_at: DateTime<Utc>,
+    /// When the server read this state (microseconds since the epoch, taken
+    /// before the reads, so the state is at least this fresh). Room updates
+    /// are coalesced and can reach a client after a newer state it already
+    /// has (the reply to its own join): clients drop any older than theirs.
+    pub snapshot_at: i64,
 }
 
 /// Everything a member needs to start the P2P session: which helper does
@@ -88,6 +93,7 @@ pub async fn load_rooms(state: &AppState, ids: &[Uuid]) -> ApiResult<Vec<RoomVie
     if ids.is_empty() {
         return Ok(Vec::new());
     }
+    let snapshot_at = Utc::now().timestamp_micros();
     let rows = sqlx::query_as::<_, RoomRow>(
         "SELECT r.id, r.name, r.community_id, c.name AS community_name, r.host_id,
                 r.password_hash IS NOT NULL AS has_password, r.max_players, r.game_port, r.status, r.created_at
@@ -136,19 +142,38 @@ pub async fn load_rooms(state: &AppState, ids: &[Uuid]) -> ApiResult<Vec<RoomVie
                 status: row.status,
                 members: room_members,
                 created_at: row.created_at,
+                snapshot_at,
             },
         );
     }
     Ok(ids.iter().filter_map(|id| views.remove(id)).collect())
 }
 
-/// Live rooms matching `clause` (which may reference `$1` = `param`).
-pub async fn list_rooms_where(state: &AppState, clause: &str, param: Option<Uuid>) -> ApiResult<Vec<RoomView>> {
+/// How many rooms one listing returns; narrow it down with a name search.
+const LIST_LIMIT: i64 = 100;
+
+/// Live rooms matching `clause` (which may reference `$1` = `param`) and,
+/// if given, whose name contains `name`. Rooms that can be joined come
+/// first, newest first.
+pub async fn list_rooms_where(
+    state: &AppState,
+    clause: &str,
+    param: Option<Uuid>,
+    name: Option<&str>,
+) -> ApiResult<Vec<RoomView>> {
+    let pattern = name.map(str::trim).filter(|n| !n.is_empty()).map(|n| {
+        // ILIKE's escape character is the backslash.
+        let escaped = n.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        format!("%{escaped}%")
+    });
     let ids: Vec<Uuid> = sqlx::query_scalar(&format!(
         "SELECT r.id FROM rooms r LEFT JOIN communities c ON c.id = r.community_id
-         WHERE r.status <> 'closed' AND {clause} ORDER BY r.created_at DESC LIMIT 100"
+         WHERE r.status <> 'closed' AND {clause} AND ($2::text IS NULL OR r.name ILIKE $2)
+         ORDER BY (r.status = 'open') DESC, r.created_at DESC LIMIT $3"
     ))
     .bind(param)
+    .bind(pattern)
+    .bind(LIST_LIMIT)
     .fetch_all(&state.db)
     .await?;
     load_rooms(state, &ids).await
@@ -180,9 +205,12 @@ async fn announce(state: &AppState, room: &RoomView, event: Event) -> ApiResult<
             targets.extend(room.members.iter().map(|m| m.id));
             targets.sort();
             targets.dedup();
-            state.realtime.emit(&targets, &event).await;
+            state
+                .realtime
+                .emit_coalesced(&targets, &event, Some(format!("room:{}", room.id)))
+                .await;
         }
-        None => state.realtime.emit_all(&event).await,
+        None => state.realtime.emit_all(&event, Some(format!("room:{}", room.id))).await,
     }
     Ok(())
 }
@@ -283,21 +311,32 @@ async fn close_room(state: &AppState, room_id: Uuid) -> ApiResult<()> {
         .bind(room_id)
         .execute(&state.db)
         .await?;
+    // `announce` already reaches every member.
     announce(state, &room, Event::RoomClosed { room_id }).await?;
     for member in &room.members {
-        state.realtime.emit(&[member.id], &Event::RoomClosed { room_id }).await;
         broadcast_presence(state, member.id).await?;
     }
     Ok(())
 }
 
-pub async fn list(State(state): State<AppState>, auth: AuthUser) -> ApiResult<Json<Vec<RoomView>>> {
+#[derive(Deserialize, Default)]
+pub struct ListQuery {
+    /// Part of the room name, case-insensitive.
+    pub q: Option<String>,
+}
+
+pub async fn list(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(query): Query<ListQuery>,
+) -> ApiResult<Json<Vec<RoomView>>> {
     Ok(Json(
         list_rooms_where(
             &state,
             "(r.community_id IS NULL OR c.is_public OR EXISTS (
                 SELECT 1 FROM community_members m WHERE m.community_id = r.community_id AND m.user_id = $1))",
             Some(auth.user_id),
+            query.q.as_deref(),
         )
         .await?,
     ))
@@ -342,7 +381,7 @@ pub async fn create(
         }
     }
     let password_hash = match req.password.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-        Some(p) => Some(hash_password(p)?),
+        Some(p) => Some(hash_password(p).await?),
         None => None,
     };
     let helper = pick_helper(&state).await?;
@@ -410,7 +449,10 @@ pub async fn join_room(
             .bind(room_id)
             .fetch_one(&state.db)
             .await?;
-        let ok = matches!((hash, password), (Some(h), Some(p)) if verify_password(p, &h));
+        let ok = match (hash, password) {
+            (Some(h), Some(p)) => verify_password(p, Some(&h)).await?,
+            _ => false,
+        };
         if !ok {
             return Err(ApiError::new(
                 axum::http::StatusCode::FORBIDDEN,
@@ -420,11 +462,34 @@ pub async fn join_room(
         }
     }
     leave_current_room(state, user_id).await?;
+    // Capacity and status are checked again under the room's row lock:
+    // simultaneous joins otherwise all pass the check above and overfill it,
+    // or land in a room being closed.
+    let mut tx = state.db.begin().await?;
+    let locked: Option<(i32, String)> =
+        sqlx::query_as("SELECT max_players, status FROM rooms WHERE id = $1 FOR UPDATE")
+            .bind(room_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some((max_players, status)) = locked.filter(|(_, s)| s != "closed") else {
+        return Err(ApiError::not_found("la sala ya no existe"));
+    };
+    if status == "in_game" {
+        return Err(ApiError::conflict("in_game", "la partida ya comenzó"));
+    }
+    let members: i64 = sqlx::query_scalar("SELECT count(*) FROM room_members WHERE room_id = $1")
+        .bind(room_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if members >= i64::from(max_players) {
+        return Err(ApiError::conflict("room_full", "la sala está llena"));
+    }
     sqlx::query("INSERT INTO room_members (room_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
         .bind(room_id)
         .bind(user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     announce_updated(state, room_id).await?;
     broadcast_presence(state, user_id).await?;
     session_for(state, room_id, user_id).await
@@ -551,7 +616,6 @@ pub fn spawn_helper_watchdog(state: AppState) {
 }
 
 async fn reassign_orphaned_rooms(state: &AppState) -> ApiResult<()> {
-    use redis::AsyncCommands;
     let mut redis = state.redis.clone();
     let lock: Option<String> = redis::cmd("SET")
         .arg("wl:lock:helper-watchdog")
@@ -592,6 +656,14 @@ async fn reassign_orphaned_rooms(state: &AppState) -> ApiResult<()> {
             .emit(&members, &Event::RoomHelperChanged { room_id, helper })
             .await;
     }
-    let _: Result<(), _> = redis.del("wl:lock:helper-watchdog").await;
+    // Release it only if it's still ours: past its expiry another instance
+    // may already hold it.
+    let _: Result<i64, _> = redis::cmd("EVAL")
+        .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end")
+        .arg(1)
+        .arg("wl:lock:helper-watchdog")
+        .arg(state.realtime.node_id.to_string())
+        .query_async(&mut redis)
+        .await;
     Ok(())
 }
