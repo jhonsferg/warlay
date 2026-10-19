@@ -1,8 +1,14 @@
 mod discovery_service;
 mod hub_address;
-// Raw-socket LAN capture is WinSock-only; everything else builds anywhere.
+// LAN capture is per platform (raw SIO_RCVALL socket on Windows, AF_PACKET
+// on Linux) behind one API; everything else builds anywhere.
 #[cfg(windows)]
 mod lan_capture;
+#[cfg(target_os = "linux")]
+#[path = "lan_capture_linux.rs"]
+mod lan_capture;
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+mod lan_filter;
 mod lan_rebroadcast;
 mod matchmaking_client;
 mod p2p_mesh;
@@ -15,7 +21,7 @@ mod w3gs_sniff;
 
 pub use discovery_service::{query_games, spawn_discovery, RelayInfo};
 pub use hub_address::HubAddress;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub use lan_capture::{spawn as spawn_lan_capture, LanCaptureHandle};
 pub use lan_rebroadcast::{spawn as spawn_lan_rebroadcast, LanRebroadcastHandle};
 pub use matchmaking_client::MatchmakingConnection;
