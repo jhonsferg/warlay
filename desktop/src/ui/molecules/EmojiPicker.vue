@@ -7,7 +7,10 @@ const GROUPS: { name: string; icon: string; emojis: string[] }[] = [
   {
     name: "Caras",
     icon: "😀",
-    emojis: "😀 😁 😂 🤣 😊 😍 😘 😎 🤩 🥳 😏 😅 😉 🙂 🙃 😋 😛 🤔 🤨 😐 😑 😴 😮 😱 😭 😢 😤 😡 🤯 🥶 🥵 🤢 😇 🤠 🤗 🫡".split(" "),
+    emojis:
+      "😀 😁 😂 🤣 😊 😍 😘 😎 🤩 🥳 😏 😅 😉 🙂 🙃 😋 😛 🤔 🤨 😐 😑 😴 😮 😱 😭 😢 😤 😡 🤯 🥶 🥵 🤢 😇 🤠 🤗 🫡".split(
+        " ",
+      ),
   },
   {
     name: "Gestos",
