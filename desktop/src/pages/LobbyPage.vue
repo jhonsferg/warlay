@@ -183,8 +183,7 @@ onMounted(() => void rooms.loadList(query.value).catch(() => {}));
   margin-bottom: var(--s-8);
   border-radius: var(--r-xl);
   border: 1px solid var(--line-2);
-  background:
-    radial-gradient(600px 300px at 100% 0%, rgba(34, 211, 238, 0.18), transparent 60%),
+  background: radial-gradient(600px 300px at 100% 0%, rgba(34, 211, 238, 0.18), transparent 60%),
     radial-gradient(700px 360px at 0% 100%, rgba(123, 97, 255, 0.3), transparent 60%),
     linear-gradient(135deg, #141130, #0c1424);
 
