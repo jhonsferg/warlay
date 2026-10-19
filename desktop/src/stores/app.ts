@@ -1,5 +1,6 @@
 import { watch } from "vue";
 import { native } from "../services/native";
+import { notifyOs } from "../services/osNotify";
 import { realtime } from "../services/realtime";
 import { useChat } from "./chat";
 import { useCommunities } from "./communities";
@@ -46,6 +47,9 @@ async function start() {
         break;
       case "friendRequest":
         social.applyRequest(event.request, session.me?.id ?? "");
+        if (!("removed" in event.request) && event.request.to.id === session.me?.id) {
+          void notifyOs("Nueva solicitud de amistad", event.request.from.displayName);
+        }
         break;
       case "friendAdded":
         social.applyFriendAdded(event.friend);
