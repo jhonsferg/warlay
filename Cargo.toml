@@ -64,7 +64,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Social backend (main server)
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "macros"] }
-redis = { version = "0.27", default-features = false, features = ["tokio-comp", "aio", "connection-manager", "streams"] }
+redis = { version = "1.7", default-features = false, features = ["tokio-comp", "aio", "connection-manager", "streams"] }
 argon2 = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
 tower-http = { version = "0.6", features = ["cors"] }
