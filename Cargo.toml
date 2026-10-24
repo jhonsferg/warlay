@@ -50,7 +50,7 @@ chacha20poly1305 = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"
 hmac = "0.12"
-getrandom = "0.3"
+getrandom = "0.4"
 constant_time_eq = "0.6"
 
 # Serialization and storage
