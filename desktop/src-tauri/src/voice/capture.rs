@@ -1,9 +1,12 @@
+use crate::agent::handlers::handle_request;
+use crate::agent::state::DaemonState;
 use crate::voice::codec::{create_encoder, SAMPLES_PER_FRAME};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
+use tokio::sync::Mutex as TokioMutex;
 use warlay::protocol::ipc::DaemonRequest;
 
 pub struct AudioCapture {
@@ -51,7 +54,13 @@ impl AudioCapture {
         self.self_muted.load(Ordering::SeqCst)
     }
 
-    pub fn start(&mut self, room_token: String, device_id: Option<String>) -> Result<(), String> {
+    pub fn start(
+        &mut self,
+        room_token: String,
+        device_id: Option<String>,
+        agent_state: Arc<TokioMutex<DaemonState>>,
+        app: AppHandle,
+    ) -> Result<(), String> {
         if self.running.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -146,10 +155,22 @@ impl AudioCapture {
                     payload.extend_from_slice(&seq.to_be_bytes());
                     payload.extend_from_slice(&opus_out[..encoded_len]);
 
-                    // Voice frames are handed to the agent's state directly
-                    // from the command layer; the audio callback only feeds
-                    // the local Opus encoder here.
-                    let _ = payload;
+                    // Enviar el frame de voz al agente del mismo proceso,
+                    // directamente sobre su estado (sin pipe ni segundo proceso).
+                    let agent_state = agent_state.clone();
+                    let app = app.clone();
+                    let token = room_token.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = handle_request(
+                            DaemonRequest::VoiceFrameOut {
+                                room_token: token,
+                                opus_bytes: payload,
+                            },
+                            agent_state,
+                            app,
+                        )
+                        .await;
+                    });
                 }
             }
         };

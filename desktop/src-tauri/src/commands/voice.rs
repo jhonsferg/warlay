@@ -1,7 +1,9 @@
+use crate::agent::state::DaemonState;
 use crate::core::error::AppError;
 use crate::state::AppState;
 use anyhow::anyhow;
 use tauri::{AppHandle, Emitter, State};
+use tokio::sync::Mutex as TokioMutex;
 
 #[tauri::command]
 pub fn push_voice_frame(state: State<'_, AppState>, from_client_id: String, opus_bytes: Vec<u8>) {
@@ -14,10 +16,17 @@ pub async fn start_voice_chat(
     room_token: String,
     input_device_id: Option<String>,
     output_device_id: Option<String>,
+    app: AppHandle,
 ) -> Result<(), AppError> {
+    let agent_state = state
+        .agent_state
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| AppError::Any(anyhow!("el agente no está iniciado")))?;
     state
         .voice_manager
-        .start_voice(room_token, input_device_id, output_device_id)
+        .start_voice(room_token, input_device_id, output_device_id, agent_state, app)
         .map_err(|e| AppError::Any(anyhow!(e)))?;
     Ok(())
 }

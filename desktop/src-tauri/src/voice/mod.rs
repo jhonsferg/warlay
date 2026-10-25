@@ -3,11 +3,14 @@ pub mod codec;
 pub mod jitter;
 pub mod playback;
 
+use crate::agent::state::DaemonState;
 use capture::AudioCapture;
 use playback::AudioPlayback;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
 use tauri_plugin_global_shortcut::Shortcut;
+use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Clone)]
 pub struct VoiceManager {
@@ -62,11 +65,13 @@ impl VoiceManager {
         room_token: String,
         input_device_id: Option<String>,
         output_device_id: Option<String>,
+        agent_state: Arc<TokioMutex<DaemonState>>,
+        app: AppHandle,
     ) -> Result<(), String> {
         let mut capture = self.capture.lock().map_err(|_| "poisoned lock")?;
         let mut playback = self.playback.lock().map_err(|_| "poisoned lock")?;
 
-        capture.start(room_token, input_device_id)?;
+        capture.start(room_token, input_device_id, agent_state, app)?;
         playback.start(output_device_id)?;
 
         Ok(())
