@@ -9,6 +9,9 @@ export const useSettings = defineStore("settings-v2", () => {
   const gameExecutablePath = ref("");
   const gameArgs = ref("");
   const voiceEnabled = ref(false);
+  /** Global hotkey that toggles the mic on/off — shown in the overlay and
+   *  registered with the OS so it works even while a game is fullscreen. */
+  const micToggleKey = ref("");
   /** The app's own file log level and how long log files are kept. */
   const fileLogLevel = ref("info");
   const logRetentionDays = ref(7);
@@ -20,6 +23,7 @@ export const useSettings = defineStore("settings-v2", () => {
     gameExecutablePath.value = String(loadedSettings.gameExecutablePath ?? "");
     gameArgs.value = String(loadedSettings.gameArgs ?? "");
     voiceEnabled.value = Boolean(loadedSettings.voiceEnabled);
+    micToggleKey.value = String(loadedSettings.micToggleKey ?? "");
     fileLogLevel.value = String(loadedSettings.fileLogLevel ?? "info");
     logRetentionDays.value = Number(loadedSettings.logRetentionDays ?? 7);
     loaded.value = true;
@@ -31,6 +35,7 @@ export const useSettings = defineStore("settings-v2", () => {
       gameExecutablePath: gameExecutablePath.value,
       gameArgs: gameArgs.value,
       voiceEnabled: voiceEnabled.value,
+      micToggleKey: micToggleKey.value,
     };
     await native.saveSettings(next);
     raw.value = next;
@@ -55,6 +60,7 @@ export const useSettings = defineStore("settings-v2", () => {
     gameExecutablePath,
     gameArgs,
     voiceEnabled,
+    micToggleKey,
     fileLogLevel,
     logRetentionDays,
     loaded,

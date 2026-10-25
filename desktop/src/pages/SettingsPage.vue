@@ -216,6 +216,9 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
           </div>
           <WSwitch v-model="settings.voiceEnabled" label="Chat de voz en las salas" />
         </div>
+        <FormField label="Atajo del micrófono" for="mic-toggle-key" hint="Tecla global para activar/silenciar el micrófono, incluso con el juego a pantalla completa.">
+          <span id="mic-toggle-key" class="settings__key">{{ settings.micToggleKey || "(ninguno)" }}</span>
+        </FormField>
         <div class="settings__actions">
           <WButton @click="saveGame">Guardar</WButton>
         </div>
@@ -381,6 +384,20 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
   &__actions {
     display: flex;
     justify-content: flex-end;
+  }
+  &__key {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    padding: 2px 8px;
+    border-radius: var(--r-sm);
+    background: var(--bg-3);
+    border: 1px solid var(--line-2);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    letter-spacing: 0.1em;
+    user-select: none;
   }
   &__muted {
     margin: 0;
