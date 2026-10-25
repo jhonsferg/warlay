@@ -221,6 +221,10 @@ export function setLogRetentionDays(days: number): Promise<void> {
   return invoke("set_log_retention_days", { days });
 }
 
+export function setMicToggleKey(key: string): Promise<void> {
+  return invoke("set_mic_toggle_key", { key });
+}
+
 // --- Hub mode events ---
 // Tagged with `serverId` since the app can be connected to several servers
 // at once — see `ServerStatusEvent`/`ServerPingEvent`/`ServerMessageEvent`.

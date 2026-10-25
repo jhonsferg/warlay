@@ -217,7 +217,12 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
           <WSwitch v-model="settings.voiceEnabled" label="Chat de voz en las salas" />
         </div>
         <FormField label="Atajo del micrófono" for="mic-toggle-key" hint="Tecla global para activar/silenciar el micrófono, incluso con el juego a pantalla completa.">
-          <span id="mic-toggle-key" class="settings__key">{{ settings.micToggleKey || "(ninguno)" }}</span>
+          <WInput
+            id="mic-toggle-key"
+            v-model="settings.micToggleKey"
+            placeholder="Ej: F4"
+            @change="native.setMicToggleKey(settings.micToggleKey)"
+          />
         </FormField>
         <div class="settings__actions">
           <WButton @click="saveGame">Guardar</WButton>

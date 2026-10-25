@@ -3,7 +3,7 @@ use crate::core::AppError;
 use crate::log_cleanup;
 use crate::log_control::{self, LogTarget};
 use crate::state::AppState;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError> {
@@ -20,6 +20,22 @@ pub fn save_settings(app: tauri::AppHandle, state: State<'_, AppState>, settings
         .lock()
         .expect("mic toggle shortcut lock poisoned") =
         crate::voice::register_shortcut(&app, old_mic_toggle_key.as_deref(), &settings.mic_toggle_key);
+    Ok(())
+}
+
+/// Sets the global mic-toggle hotkey at runtime (no restart needed).
+#[tauri::command]
+pub fn set_mic_toggle_key(app: tauri::AppHandle, state: State<'_, AppState>, key: String) -> Result<(), AppError> {
+    let previous = state.store.get_settings().ok();
+    let old_mic_toggle_key = previous.map(|s| s.mic_toggle_key);
+    let mut settings = state.store.get_settings()?;
+    settings.mic_toggle_key = key.clone();
+    state.store.save_settings(&settings)?;
+    *state
+        .mic_toggle_shortcut
+        .lock()
+        .expect("mic toggle shortcut lock poisoned") =
+        crate::voice::register_shortcut(&app, old_mic_toggle_key.as_deref(), &key);
     Ok(())
 }
 

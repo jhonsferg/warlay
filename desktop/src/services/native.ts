@@ -95,6 +95,7 @@ export const native = {
   saveAgentSettings: (settings: AgentSettings) => invoke<void>("save_agent_settings", { settings }),
   setLogLevel: (target: "console" | "file", level: string) => invoke<void>("set_log_level", { target, level }),
   setLogRetentionDays: (days: number) => invoke<void>("set_log_retention_days", { days }),
+  setMicToggleKey: (key: string) => invoke<void>("set_mic_toggle_key", { key }),
   logUsage: () => invoke<LogUsage | undefined>("get_log_usage"),
   cleanLogsNow: (allInactive: boolean) => invoke<LogUsage | undefined>("clean_logs_now", { allInactive }),
 
