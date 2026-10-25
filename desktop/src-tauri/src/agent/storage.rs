@@ -2,16 +2,11 @@ use rusqlite::{params, Connection};
 use std::sync::{Arc, Mutex};
 use warlay::protocol::ipc::AgentSettings;
 
-/// Persists the daemon's own configuration -- separate from
+/// Persists the agent's own configuration -- separate from
 /// `desktop/src-tauri/src/storage/mod.rs::ClientStore`, which is the
-/// desktop client's own store, even though both processes end up opening
-/// the *same* `warlay.db` file (see `db_path`, hardcoded independently
-/// here for the same reason `logging.rs::log_dir` is -- the daemon doesn't
-/// otherwise depend on desktop's crate). Living in a table named
+/// desktop client's own store. Living in a table named
 /// `agent_settings` rather than reusing the client's `settings` table is
-/// what keeps the two from stepping on each other; SQLite's own file
-/// locking already handles two processes touching the same file, and
-/// nothing here writes often enough for that to matter in practice.
+/// what keeps the two from stepping on each other.
 #[derive(Clone)]
 pub struct AgentStore {
     conn: Arc<Mutex<Connection>>,
@@ -27,7 +22,7 @@ impl AgentStore {
     /// log level itself comes from here), so there's nowhere good to
     /// report a failure yet. Falls back to an in-memory connection (still
     /// usable, just doesn't survive a restart) rather than panicking --
-    /// losing persistence for one session is fine, crashing the daemon
+    /// losing persistence for one session is fine, crashing the agent
     /// before it even opens its pipe is not.
     pub fn open() -> Self {
         let path = db_path();

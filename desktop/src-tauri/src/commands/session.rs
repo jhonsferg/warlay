@@ -1,6 +1,6 @@
 //! Room sessions of the new architecture: the frontend gets the room's
 //! session (helper + ticket) from the main server and hands it to the
-//! daemon, which links the players directly.
+//! agent, which links the players directly.
 
 use crate::agent::handlers::handle_request;
 use crate::core::error::AppError;

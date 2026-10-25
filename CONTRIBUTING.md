@@ -13,12 +13,11 @@ Security issues must be reported privately, see [SECURITY.md](SECURITY.md).
 | -------------------------------- | --------------- | ------------------------- |
 | [Rust](https://rustup.rs)        | stable          | every component           |
 | [Node.js](https://nodejs.org)    | 20 LTS or newer | `desktop/`                |
-| Windows 10/11 + MSVC build tools | -               | `daemon/` and `desktop/`  |
+| Windows 10/11 + MSVC build tools | -               | `desktop/`  |
 | Docker                           | optional        | building the server image |
 
 The server and the shared crates build on Linux, macOS and Windows. The
-daemon and the desktop client are Windows-only (raw LAN capture relies on
-Winsock `SIO_RCVALL`).
+desktop client is Windows-only (raw LAN capture relies on Winsock `SIO_RCVALL`).
 
 ```sh
 git clone https://github.com/jhonsferg/warlay.git
@@ -95,8 +94,8 @@ npx prettier@3.3.3 --write .       # TypeScript, Vue, SCSS, JSON, YAML, Markdown
 
 See [Repository layout](README.md#repository-layout) in the README. In short:
 shared logic lives in `crates/` -- including `crates/agent`, the network
-agent itself -- and `server/`, `daemon/` and `desktop/src-tauri/` are thin
-binaries on top of it, consumed through the `warlay` facade crate.
+agent itself -- and `server/` and `desktop/src-tauri/` are thin binaries on
+top of it, consumed through the `warlay` facade crate.
 
 ## Repository settings (maintainers)
 

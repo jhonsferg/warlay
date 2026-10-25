@@ -50,7 +50,7 @@ flowchart LR
 
     root --> backend["src-tauri/<br/>Rust backend: crate desktop,<br/>binary warlay"]
     backend --> commands["src/commands/<br/>Tauri command handlers, the only<br/>layer touching AppHandle and State"]
-    backend --> ipc["src/daemon_ipc.rs<br/>named pipe client for the agent"]
+    backend --> ipc["src/agent/events.rs<br/>Tauri event emitter for the agent"]
     backend --> clientStorage["src/storage/<br/>SQLite: client identity,<br/>servers and keys, settings"]
     backend --> voice["src/voice/<br/>audio capture and playback,<br/>Opus codec, jitter buffer"]
     backend --> network["src/network/<br/>lan-mesh discovery<br/>and relay client"]
@@ -99,13 +99,13 @@ npm run tauri dev
 ```
 
 `npm run tauri dev` starts Vite on port 1420 and opens the app against it.
-The client starts the agent itself when it opens (it spawns a second
-`warlay.exe --daemon` instance and waits for it on the named pipe), so there
-is nothing else to launch. To run the agent by hand instead:
+The client starts the agent itself when it opens (it runs a second instance
+of `warlay.exe --daemon` inside the same process), so there is nothing else
+to launch. To run the agent by hand instead:
 
 ```sh
-cargo run -p daemon        # the standalone wnetd, or:
-cargo run -p desktop -- --daemon   # the same binary in agent mode
+cargo run -p desktop -- --daemon   # the desktop binary in agent mode
+cargo run -p daemon                  # the standalone agent binary (dev only)
 ```
 
 Plain `cargo build` of `src-tauri` always targets the dev server URL; use

@@ -282,7 +282,7 @@ pub async fn stop_hub_tunnel(app: AppHandle, state: State<'_, AppState>) -> Resu
 
 /// Current truth for the active room's member roster, kept live by the
 /// agent's event pushes (see `src/agent/events.rs`) -- a plain local state
-/// read, no daemon round-trip needed. `OverlayApp.vue` calls this on mount as
+/// read, no agent round-trip needed. `OverlayApp.vue` calls this on mount as
 /// a fallback for whatever membership changes happened *before* the overlay
 /// window existed, since it can't read the main window's Pinia store
 /// (separate JS realm).

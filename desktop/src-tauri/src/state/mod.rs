@@ -27,11 +27,11 @@ pub struct AppState {
     /// server (the LAN-mesh relay callbacks) find the one server it should
     /// actually talk to.
     pub active_room_server: Mutex<Option<Uuid>>,
-    /// The active room's id + real member roster, kept current by
-    /// `daemon_ipc.rs` as `RoomCreated`/`JoinedRoom`/`RoomMembersChanged`/
-    /// `LeftRoom`/`RoomRemoved` hub messages pass through -- the single
-    /// source of truth `get_room_members` hands back on request. `None`
-    /// when there's no active room; the room id is kept alongside the
+    /// The active room's id + real member roster, kept current by hub
+    /// messages (`RoomCreated`/`JoinedRoom`/`RoomMembersChanged`/`LeftRoom`/
+    /// `RoomRemoved`) that pass through the agent's event pipeline -- the
+    /// single source of truth `get_room_members` hands back on request.
+    /// `None` when there's no active room; the room id is kept alongside the
     /// members (not just a bare `Vec`) so a `RoomRemoved` for some *other*
     /// room this client isn't in can't wrongly clear it -- same guard
     /// `store/bootstrap.ts` already does for the main window's own copy.

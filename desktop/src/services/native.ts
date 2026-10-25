@@ -1,4 +1,4 @@
-// Bridge to the desktop shell (Tauri) and, through it, the daemon that does
+// Bridge to the desktop shell (Tauri) and, through it, the agent that does
 // the actual networking. In a plain browser (vite dev, Playwright) there is
 // no shell: every call is recorded and answered by a harmless stand-in, so
 // the whole UI can be exercised and screenshotted without Windows.

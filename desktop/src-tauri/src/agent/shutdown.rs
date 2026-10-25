@@ -1,7 +1,7 @@
-//! A process-wide "please exit" signal. The daemon runs elevated, so the
+//! A process-wide "please exit" signal. The agent runs elevated, so the
 //! desktop app (which is not) can't terminate it from outside; instead it
 //! sends `DaemonRequest::Shutdown`, whose handler raises this signal and the
-//! accept loop in `main.rs` / `unix_socket.rs` stops, which ends the process.
+//! accept loop stops, which ends the process.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -23,13 +23,13 @@ pub async fn requested() {
     signal().notified().await;
 }
 
-/// Asks the daemon to exit.
+/// Asks the agent to exit.
 pub fn request() {
     signal().notify_one();
 }
 
 /// Like [`request`], after a moment: lets the handler that is answering the
-/// request deliver its reply first, so the caller learns the daemon accepted
+/// request deliver its reply first, so the caller learns the agent accepted
 /// the shutdown rather than just seeing the connection vanish.
 pub fn request_soon() {
     tokio::spawn(async {

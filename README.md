@@ -185,18 +185,15 @@ flowchart LR
     crates --> facade["warlay<br/>facade re-exporting the crates<br/>as warlay::*, feature-gated"]
 
     root --> server["server/<br/>hub binary warlay-server,<br/>Dockerfile, sample configs"]
-    root --> daemon["daemon/<br/>thin wnetd binary over crates/agent"]
     root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend, also runs<br/>the agent (--daemon)"]
     root --> github[".github/<br/>CI, release pipeline,<br/>issue and PR templates"]
 ```
 
-The binaries (`server`, `daemon`, `desktop/src-tauri`) stay thin: protocol,
-crypto and networking logic live in `crates/` and are consumed through the
-`warlay` facade with only the features each binary needs. The server never
-links the Windows-only `engine` crate. The agent itself is a library
-(`crates/agent`) with two entry points: the desktop client's
-`warlay.exe --daemon` branch, and the standalone `wnetd.exe` built from
-`daemon/`, so the two can never drift apart.
+The binaries (`server`, `desktop/src-tauri`) stay thin: protocol, crypto and
+networking logic live in `crates/` and are consumed through the `warlay`
+facade with only the features each binary needs. The server never links the
+Windows-only `engine` crate. The agent itself is a library (`crates/agent`)
+that runs inside `warlay.exe` when started with `--daemon`.
 
 ## Building from source
 
@@ -223,9 +220,8 @@ cd warlay
 ### Desktop client (Windows)
 
 One build produces one executable: `warlay.exe` is both the desktop client
-and the network agent (it starts itself in agent mode with `--daemon`, see
-[daemon/README.md](daemon/README.md)). No sidecar has to be built
-separately.
+and the network agent (it starts itself in agent mode with `--daemon`).
+No sidecar has to be built separately.
 
 **Development mode** - hot-reloading frontend on top of a debug build:
 
@@ -261,12 +257,15 @@ npm run build-portable-zip   # after npx tauri build
 # -> target/release/bundle/nsis/Warlay_X.Y.Z_x64-portable.zip
 ```
 
-**Standalone agent (optional)** - the agent as its own executable, useful
-for development or for running it outside the client:
+**Standalone agent (optional)** - the agent can also be built as its own
+executable for development or for running outside the client:
 
 ```powershell
-cargo build --release -p daemon   # -> target/release/wnetd.exe
+cargo build --release -p daemon   # dev-only standalone build of the agent
 ```
+
+This standalone build is kept for development convenience; the distributed
+desktop build runs the agent inside `warlay.exe` itself.
 
 Binaries link the MSVC runtime statically, so they run on a clean Windows
 installation. The version comes from `desktop/src-tauri/tauri.conf.json`

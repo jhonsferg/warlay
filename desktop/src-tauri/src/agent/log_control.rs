@@ -1,9 +1,9 @@
-//! Lets the daemon's log level (both the stdout layer -- dev builds only,
+//! Lets the agent's log level (both the stdout layer -- dev builds only,
 //! see `main.rs`'s `windows_subsystem` doc comment -- and the file layer)
 //! be changed while the process is running, with no restart. Mirrors
 //! `desktop/src-tauri/src/log_control.rs`'s `ReloadHandle`/`OnceLock`
 //! pattern, simplified to a single unified level: unlike the desktop
-//! client, the daemon has no visible console for a "console vs file" split
+//! client, the agent has no visible console for a "console vs file" split
 //! to mean anything -- one level, applied to both handles together.
 use std::sync::OnceLock;
 use tracing_subscriber::{reload, EnvFilter};

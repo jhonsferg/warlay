@@ -197,7 +197,7 @@ export function getAgentSettings(): Promise<AgentSettings> {
   return invoke("get_agent_settings");
 }
 
-/** Applies immediately on the daemon (log level reload, LAN discovery
+/** Applies immediately on the agent (log level reload, LAN discovery
  * toggle) and persists — see `crates/agent/src/log_control.rs` and
  * `crates/agent/src/storage.rs`. */
 export function saveAgentSettings(settings: AgentSettings): Promise<void> {
@@ -209,7 +209,7 @@ export function getAgentStatus(): Promise<AgentStatusSnapshot> {
 }
 
 /** Resets any P2P mesh peer stuck in "failed" back to "not_attempted" so
- * the daemon's own retry loop picks it up again, without leaving/rejoining
+ * the agent's own retry loop picks it up again, without leaving/rejoining
  * the room. */
 export function retryPeerMesh(): Promise<void> {
   return invoke("retry_peer_mesh");

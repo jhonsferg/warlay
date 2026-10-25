@@ -5,7 +5,7 @@ use tracing_subscriber::prelude::*;
 /// platform -- `write_all` already goes straight through `WriteFile`, so
 /// there's nothing buffered at the Rust level to flush. That's fine for
 /// getting bytes into the OS, but on Windows another process reading this
-/// same file (e.g. someone tailing the log live while the daemon runs)
+/// same file (e.g. someone tailing the log live while the agent runs)
 /// sees a stale/lagging file size for as long as this handle stays open --
 /// NTFS updates the visible end-of-file for *other* openers lazily, not on
 /// every write. `tracing_appender`'s worker thread calls `flush()` after
@@ -13,7 +13,7 @@ use tracing_subscriber::prelude::*;
 /// `sync_data()` (Windows' `FlushFileBuffers`) instead keeps the file's
 /// on-disk size honest for live tailing, not just after this process's
 /// handle finally closes (confirmed live logs were invisible until the
-/// daemon was killed -- this is why).
+/// process was killed -- this is why).
 struct SyncOnFlush(std::fs::File);
 
 impl Write for SyncOnFlush {
@@ -28,20 +28,20 @@ impl Write for SyncOnFlush {
 
 /// Same directory the desktop app logs to (see `desktop/src-tauri/src/log_cleanup.rs`'s
 /// `log_dir` -- hardcoded independently here rather than shared, since the
-/// daemon doesn't otherwise depend on desktop's crate) -- putting the
-/// daemon's own logs alongside the desktop app's means the existing
+/// agent doesn't otherwise depend on desktop's crate) -- putting the
+/// agent's own logs alongside the desktop app's means the existing
 /// retention sweep (`log_cleanup`) already cleans these up too, for free.
 fn log_dir() -> std::path::PathBuf {
     super::paths::data_dir().join("logs")
 }
 
-/// A "wnetd-" prefix keeps these visually and lexically separate from the
+/// A "warlaid-" prefix keeps these visually and lexically separate from the
 /// desktop app's "warlay-*.log" files in the same directory, while still
 /// being one file per process launch for the same reason desktop's are.
 fn log_file_name() -> String {
     let now = time::OffsetDateTime::now_utc();
     format!(
-        "wnetd-{:04}{:02}{:02}-{:02}{:02}{:02}.log",
+        "warlaid-{:04}{:02}{:02}-{:02}{:02}{:02}.log",
         now.year(),
         now.month() as u8,
         now.day(),
@@ -51,7 +51,7 @@ fn log_file_name() -> String {
     )
 }
 
-/// The daemon runs with no console window in release builds (see the
+/// The agent runs with no console window in release builds (see the
 /// `windows_subsystem` attribute on `main.rs`), so `tracing`'s default
 /// stdout writer had nowhere to go and every log line -- including whatever
 /// explains a crash -- was silently lost. This adds a same-shaped file

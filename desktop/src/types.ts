@@ -163,7 +163,7 @@ export interface PeerLinkStatus {
   state: "not_attempted" | "connecting" | "connected" | "failed";
 }
 
-/** Snapshot of what the daemon is doing right now — reply to
+/** Snapshot of what the agent is doing right now — reply to
  * `getAgentStatus`, polled while the "Agente" panel is open. */
 export interface AgentStatusSnapshot {
   uptimeSecs: number;
@@ -226,7 +226,7 @@ export interface ParsedServerAddress {
   secure: boolean;
 }
 
-/** Mirrors the daemon's `HubAddress`: a bare "host:port" (legacy, plain
+/** Mirrors the agent's `HubAddress`: a bare "host:port" (legacy, plain
  * ws) or a `ws://` / `wss://` URL. `null` when it's neither. */
 export function parseServerAddress(address: string): ParsedServerAddress | null {
   const trimmed = address.trim();

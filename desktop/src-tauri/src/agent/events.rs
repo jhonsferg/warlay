@@ -21,8 +21,8 @@ pub fn app_handle() -> Option<&'static AppHandle> {
 /// replacing the old `ipc_server::push_event` that wrote to a named pipe.
 ///
 /// Runs inside the same process as the GUI now, so there is no pipe to
-/// write to -- instead we emit the very same events the pipe client used to
-/// translate into Tauri events (see the old `daemon_ipc.rs` reader loop).
+/// write to -- instead we emit the very same events directly as Tauri
+/// events to the frontend.
 pub fn emit_agent_event(app: &AppHandle, response: &DaemonResponse) {
     match response {
         DaemonResponse::HubConnectionState { server_id, connected } => {

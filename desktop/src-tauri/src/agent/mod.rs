@@ -1,4 +1,5 @@
-//! The Warlay network agent -- everything `wnetd.exe` does, as a library.
+//! The Warlay network agent -- everything the old standalone agent did,
+//! as a library.
 //!
 //! The agent is the half of Warlay that needs elevated privileges or
 //! long-lived sockets: hub connections, LAN capture/replay, the P2P game
@@ -7,9 +8,8 @@
 //! [`warlay::engine`]; nothing in this crate re-implements either.
 //!
 //! The agent runs *inside* the desktop client process now
-//! (`desktop/src-tauri`). There is no separate `wnetd.exe` sidecar and no
-//! named pipe: the desktop client's commands call the agent's handlers
-//! directly.
+//! (`desktop/src-tauri`). There is no separate agent sidecar and no named
+//! pipe: the desktop client's commands call the agent's handlers directly.
 //!
 //! # Process-wide globals (read before touching this from a third host)
 //!
@@ -38,9 +38,12 @@ use warlay::protocol::ipc::AgentSettings;
 use self::state::DaemonState;
 use self::storage::AgentStore;
 
-/// Exit code used when the agent refuses to run without elevation. Kept for
-/// compatibility with the old standalone `wnetd.exe` entry point.
+/// Exit code used when the agent refuses to run without elevation.
 pub const EXIT_NOT_ELEVATED: i32 = 2;
+
+/// The prefix used for the agent's log files, so they can be told apart
+/// from the desktop client's own `warlay-*.log` files in the same directory.
+pub const LOG_FILE_PREFIX: &str = "warlaid";
 
 /// What a process was asked to do with the agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

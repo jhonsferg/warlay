@@ -22,7 +22,7 @@ watch(
 onMounted(() => {
   if (!isDesktop) return;
   // The network agent now runs inside this same process, so there is no
-  // separate daemon to start. The agent is ready as soon as the app opens.
+  // separate agent to start. The agent is ready as soon as the app opens.
 });
 </script>
 

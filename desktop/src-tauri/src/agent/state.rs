@@ -59,7 +59,7 @@ pub struct DaemonState {
     /// and never on the room's very first `CREATEGAME` (the flag starts
     /// `false`, so that one is a no-op).
     pub game_started: Arc<std::sync::atomic::AtomicBool>,
-    /// The daemon's own settings store -- see `storage.rs`'s doc comment
+    /// The agent's own settings store -- see `storage.rs`'s doc comment
     /// for why this is a separate table from the desktop client's own
     /// store, even though both share the same `warlay.db` file.
     pub agent_store: AgentStore,

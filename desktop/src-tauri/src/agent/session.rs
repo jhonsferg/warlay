@@ -1,5 +1,5 @@
 //! Room sessions of the new architecture: the main server hands the UI a
-//! room ticket and the helper assigned to the room; the daemon joins the
+//! room ticket and the helper assigned to the room; the agent joins the
 //! room's P2P mesh through that helper and carries the game, its LAN
 //! announcements and voice directly between the players.
 

@@ -58,7 +58,7 @@ export const useRooms = defineStore("rooms", () => {
         links.value = status?.meshPeers ?? [];
         tunnelActive.value = status?.tunnelActive ?? false;
       } catch {
-        /* daemon not reachable right now */
+        /* agent not reachable right now */
       }
     };
     void poll();

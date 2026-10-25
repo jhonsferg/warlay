@@ -1,9 +1,9 @@
-//! Where the daemon keeps its database and logs.
+//! Where the agent keeps its database and logs.
 //!
 //! Windows: `%APPDATA%\com.warlay.lanlauncher` -- the same directory the
-//! desktop app uses, hardcoded independently since the daemon doesn't
+//! desktop app uses, hardcoded independently since the agent doesn't
 //! depend on desktop's crate (and so the app's log retention sweep also
-//! cleans the daemon's logs). Linux: `$WARLAY_DATA_DIR`, else
+//! cleans the agent's logs). Linux: `$WARLAY_DATA_DIR`, else
 //! `$XDG_DATA_HOME/warlay`, else `~/.local/share/warlay`.
 
 use std::path::PathBuf;

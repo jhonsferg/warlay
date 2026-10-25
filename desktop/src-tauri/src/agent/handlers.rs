@@ -717,8 +717,8 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 Err(_) => return err("LaunchGame", "el ejecutable no existe"),
             }
 
-            // The daemon runs elevated (via the logon-scheduled task -- see
-            // main()'s docs), and a spawned child normally inherits that
+            // The agent runs elevated (via the manifest -- see
+            // build.rs), and a spawned child normally inherits that
             // elevated token, so the launched game runs elevated too. Full
             // de-elevation (CreateProcessAsUser with a stripped-integrity
             // token) is a real technique but a substantial addition for a

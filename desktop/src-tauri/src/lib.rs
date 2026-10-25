@@ -179,15 +179,10 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-/// The daemon is a separate process that runs elevated (see
-/// `commands::daemon::spawn_daemon_elevated`), so this app -- which is not --
-/// can neither kill it nor rely on it noticing we left: it would keep every
-/// hub connection, the room's mesh, the game tunnel and the LAN capture
-/// alive, and other players would keep seeing this user as present. "Salir"
-/// is meant to be a real quit, so the daemon is asked to shut itself down
-/// (it releases all of that, answers, and exits its process), and we wait
-/// -- bounded, so quitting can never hang -- until it is really gone before
-/// exiting ourselves.
+/// The agent now runs inside this same process, so there is no separate
+/// process to kill or wait for. "Salir" is meant to be a real quit: it
+/// closes every hub connection, the room's mesh, the game tunnel and the LAN
+/// capture, and other players will stop seeing this user as present.
 fn quit_app(app: &AppHandle) {
     app.exit(0);
 }
