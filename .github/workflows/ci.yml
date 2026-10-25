@@ -82,13 +82,6 @@ jobs:
       - name: Type-check and bundle frontend
         working-directory: desktop
         run: npm run build
-      - name: Stub the daemon sidecar
-        # tauri-build only checks that the externalBin exists; the real
-        # daemon is built and bundled by the release workflow.
-        shell: bash
-        run: |
-          mkdir -p desktop/src-tauri/binaries
-          touch desktop/src-tauri/binaries/wnetd-x86_64-pc-windows-msvc.exe
       - name: Test
         run: cargo test --workspace --locked
 
