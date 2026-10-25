@@ -119,7 +119,7 @@ onMounted(async () => {
           Más detalle significa archivos mucho más grandes. Los cambios se aplican al instante, sin reiniciar.
         </p>
         <FormField
-          label="Agente de red (wnetd)"
+          label="Agente de red"
           for="agent-log-level"
           hint="El que más registra: es quien ve el tráfico del juego."
         >

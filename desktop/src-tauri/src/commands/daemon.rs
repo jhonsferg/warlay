@@ -71,19 +71,28 @@ pub async fn check_daemon_ready(app: AppHandle, state: State<'_, AppState>) -> R
     Ok(try_attach(&app, &state).await)
 }
 
-/// Launches `wnetd.exe` requesting Windows' elevation prompt (the `runas`
-/// shell verb -- the same mechanism as right-click "Run as administrator"),
-/// rather than the silent, non-elevated spawn this used to do. A daemon
-/// spawned without elevation starts, answers pings, and looks perfectly
-/// healthy right up until the first LAN capture attempt, which fails with
-/// no visible symptom until then -- worth the one UAC prompt to avoid.
+/// Launches a *second instance of this very binary* in agent mode
+/// (`--daemon`), asking Windows for the elevation prompt (the `runas` shell
+/// verb - the same mechanism as right-click "Run as administrator") rather
+/// than the silent, non-elevated spawn this used to do.
+///
+/// A daemon started without elevation answers pings and looks perfectly
+/// healthy right up until the first LAN capture attempt, which fails with no
+/// visible symptom until then - worth a UAC prompt to avoid. warlay.exe's
+/// own `requireAdministrator` manifest already covers the normal path (an
+/// elevated caller spawning an elevated child asks for no further consent);
+/// the verb stays because it also covers a caller that somehow is not
+/// elevated, which plain `CreateProcess` would reject with
+/// `ERROR_ELEVATION_REQUIRED` instead.
 #[cfg(windows)]
-fn spawn_daemon_elevated(daemon_path: &std::path::Path) -> windows::core::Result<()> {
+fn spawn_daemon_elevated(exe_path: &std::path::Path) -> windows::core::Result<()> {
     use windows::core::HSTRING;
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-    let file = HSTRING::from(daemon_path.as_os_str());
+    let file = HSTRING::from(exe_path.as_os_str());
+    // Selects agent mode. Without it this would just open the UI again.
+    let parameters = HSTRING::from("--daemon");
     let verb = HSTRING::from("runas");
 
     let mut info = SHELLEXECUTEINFOW {
@@ -91,6 +100,7 @@ fn spawn_daemon_elevated(daemon_path: &std::path::Path) -> windows::core::Result
         fMask: SEE_MASK_NOASYNC,
         lpVerb: windows::core::PCWSTR(verb.as_ptr()),
         lpFile: windows::core::PCWSTR(file.as_ptr()),
+        lpParameters: windows::core::PCWSTR(parameters.as_ptr()),
         nShow: SW_SHOWNORMAL.0,
         ..Default::default()
     };
@@ -108,9 +118,10 @@ pub async fn ensure_daemon_running(app: AppHandle, state: State<'_, AppState>) -
         return Ok(());
     }
 
+    // The agent is in this very binary now, so there is no sidecar to
+    // resolve: the second instance is a `--daemon` copy of ourselves.
     let exe_path = std::env::current_exe()
         .map_err(|e| AppError::Any(anyhow::anyhow!("no se pudo resolver la ruta de este ejecutable: {e}")))?;
-    let daemon_path = exe_path.with_file_name("wnetd.exe");
 
     // ShellExecuteExW with SEE_MASK_NOASYNC blocks the calling thread until
     // the UAC prompt is resolved (however long the user takes to click
@@ -118,7 +129,7 @@ pub async fn ensure_daemon_running(app: AppHandle, state: State<'_, AppState>) -
     // the whole async runtime for that entire wait, including the WebView2
     // IPC that keeps the loading screen itself responsive. spawn_blocking
     // moves it to a dedicated thread instead.
-    tokio::task::spawn_blocking(move || spawn_daemon_elevated(&daemon_path))
+    tokio::task::spawn_blocking(move || spawn_daemon_elevated(&exe_path))
         .await
         .map_err(|e| AppError::Any(anyhow::anyhow!("el hilo de elevación falló: {e}")))?
         .map_err(|e| {
