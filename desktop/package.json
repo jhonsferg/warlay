@@ -8,7 +8,6 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "prepare-daemon-sidecar": "node scripts/prepare-daemon-sidecar.mjs",
     "build-portable-zip": "node scripts/build-portable-zip.mjs",
     "dist": "tauri build && npm run build-portable-zip"
   },
