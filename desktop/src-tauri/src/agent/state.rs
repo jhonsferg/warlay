@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tracing::info;
 
 use warlay::engine::MatchmakingConnection;
-use warlay::protocol::ipc::DaemonResponseEnvelope;
 
 use super::storage::AgentStore;
 
@@ -53,10 +52,6 @@ pub struct DaemonState {
     /// brand new room's state. Comparing this against the room ID actually
     /// named in the message closes that race.
     pub active_room_id: Option<uuid::Uuid>,
-    /// The pipe connection currently considered "the UI" for the purposes
-    /// of push events -- updated on every new connection so a UI restart
-    /// doesn't leave old callbacks writing into a dead channel.
-    pub current_tx: Option<tokio::sync::mpsc::Sender<DaemonResponseEnvelope>>,
     /// Set by the `COUNTDOWN_START` sniff (see `StartHostingTunnel`'s
     /// `on_game_started` callback), cleared by the `CREATEGAME` sniff (see
     /// `spawn_lan_mesh`'s capture callback) -- an atomic check-and-reset so
