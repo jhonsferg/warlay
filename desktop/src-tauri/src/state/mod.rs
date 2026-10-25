@@ -1,7 +1,12 @@
+use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
+
+use crate::agent::state::DaemonState;
 use crate::network::RelayClientHandle;
 use crate::storage::ClientStore;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
+use tauri::AppHandle;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -42,8 +47,14 @@ pub struct AppState {
     /// Watches the launched game process for exit so the UI can show "saliste
     /// de la partida" and auto-leave the room.
     pub game_exit_watcher: Mutex<Option<JoinHandle<()>>>,
-    /// IPC client to the Warlay background daemon
-    pub daemon_client: Mutex<Option<crate::daemon_ipc::DaemonClient>>,
+    /// The agent now runs inside this same process (see `src/agent/`): its
+    /// mutable state lives here, and commands talk to it directly instead of
+    /// over a named pipe. `None` until `.setup()` finishes booting it.
+    pub agent_state: Mutex<Option<Arc<TokioMutex<DaemonState>>>>,
+    /// Cloned `AppHandle` so the agent's event pushes (hub status, tunnel
+    /// status, voice frames, ...) can be emitted as Tauri events to the
+    /// frontend instead of being written to a pipe. Set in `.setup()`.
+    pub app_handle: Mutex<Option<AppHandle>>,
     /// The one shared source of truth for "is the configured game exe
     /// currently running", written by three independent code paths
     /// (`launch_game`'s optimistic emit, its exit-watcher, and the
@@ -84,7 +95,8 @@ impl AppState {
             active_room_server: Mutex::new(None),
             active_room: Mutex::new(None),
             game_exit_watcher: Mutex::new(None),
-            daemon_client: Mutex::new(None),
+            agent_state: Mutex::new(None),
+            app_handle: Mutex::new(None),
             game_running: AtomicBool::new(false),
             game_job: Mutex::new(None),
             voice_manager: crate::voice::VoiceManager::new(),

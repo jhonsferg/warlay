@@ -7,14 +7,14 @@ use tracing::info;
 use warlay::engine::MatchmakingConnection;
 use warlay::protocol::ipc::DaemonResponseEnvelope;
 
-use crate::storage::AgentStore;
+use super::storage::AgentStore;
 
 pub struct DaemonState {
     pub connections: HashMap<String, MatchmakingConnection>,
     pub game_tunnel: Option<warlay::engine::TunnelHandle>,
     pub peer_mesh: Option<Arc<warlay::engine::PeerMeshHandle>>,
     /// The active room session (new architecture: helper + ticket), if any.
-    pub room_session: Option<crate::session::RoomSessionInfo>,
+    pub room_session: Option<super::session::RoomSessionInfo>,
     pub voice_poll_task: Option<tokio::task::JoinHandle<()>>,
     pub lan_capture: Option<warlay::engine::LanCaptureHandle>,
     pub lan_rebroadcast: Option<warlay::engine::LanRebroadcastHandle>,

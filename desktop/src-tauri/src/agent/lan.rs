@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use crate::state::DaemonState;
+use super::state::DaemonState;
+use warlay::protocol::ipc::DaemonResponse;
 
 /// Starts this machine's LAN side of the room: the scoped capture, the
 /// rebroadcast socket, and the outbound relay to the other members.
@@ -110,8 +111,7 @@ pub async fn spawn_lan_mesh(
                 // The UI owns the room on the main server.
                 drop(s);
                 info!("CREATEGAME detectado: partida anterior terminó");
-                crate::ipc_server::push_event(&state_for_game_ended, warlay::protocol::ipc::DaemonResponse::GameEnded)
-                    .await;
+                super::events::emit_event(&DaemonResponse::GameEnded)
             } else if let Some(active_id) = &s.active_room_server {
                 if let Some(conn) = s.connections.get(active_id) {
                     info!(server_id = %active_id, "CREATEGAME detectado: partida anterior terminó, marcando sala disponible");

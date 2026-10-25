@@ -32,7 +32,7 @@ impl Write for SyncOnFlush {
 /// daemon's own logs alongside the desktop app's means the existing
 /// retention sweep (`log_cleanup`) already cleans these up too, for free.
 fn log_dir() -> std::path::PathBuf {
-    crate::paths::data_dir().join("logs")
+    super::paths::data_dir().join("logs")
 }
 
 /// A "wnetd-" prefix keeps these visually and lexically separate from the
@@ -64,7 +64,7 @@ fn log_file_name() -> String {
 /// caller before this runs -- same ordering constraint desktop's own
 /// `ClientStore`/subscriber setup has). `RUST_LOG`, if set, still wins over
 /// it, matching desktop's own precedence. Both layers are wrapped in a
-/// `reload::Layer` so `crate::log_control::set_level` can change the level
+/// `reload::Layer` so `super::log_control::set_level` can change the level
 /// live afterwards, no restart needed -- see that module's own docs.
 pub fn init_logging(initial_level: &str) {
     let dir = log_dir();
@@ -106,7 +106,7 @@ pub fn init_logging(initial_level: &str) {
                     .with_filter(file_filter),
             )
             .init();
-        crate::log_control::init(stdout_handle.into(), file_handle.into());
+        super::log_control::init(stdout_handle.into(), file_handle.into());
     } else {
         // Couldn't open the log file (e.g. the directory itself is
         // inaccessible) -- fall back to stdout-only rather than not
@@ -122,7 +122,7 @@ pub fn init_logging(initial_level: &str) {
                     .with_filter(stdout_filter),
             )
             .init();
-        crate::log_control::init(stdout_handle.clone().into(), stdout_handle.into());
+        super::log_control::init(stdout_handle.clone().into(), stdout_handle.into());
     }
 
     install_panic_hook(log_path);

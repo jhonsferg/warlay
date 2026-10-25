@@ -1,82 +1,64 @@
-use crate::core::error::AppError;
-use crate::daemon_ipc::DaemonClient;
-use crate::state::AppState;
-use tauri::State;
-use warlay::protocol::ipc::{AgentSettings, AgentStatusSnapshot, DaemonRequest, DaemonResponse};
+use std::sync::Arc;
+use tauri::async_runtime::Mutex as TokioMutex;
 
-/// Same pattern as `matchmaking.rs`'s own private `require_client` --
-/// duplicated rather than shared, matching this codebase's existing
-/// convention for this exact helper (see e.g. `crates/agent/src/logging.rs`'s
-/// `log_dir` doc comment for the same reasoning applied elsewhere).
-fn require_client(state: &State<'_, AppState>) -> Result<DaemonClient, AppError> {
-    state
-        .daemon_client
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| AppError::Any(anyhow::anyhow!("no hay conexión activa con el daemon")))
-}
+use anyhow::anyhow;
+use tauri::{AppHandle, State};
+
+use crate::agent::handlers::handle_request;
+use crate::agent::state::DaemonState;
+use crate::core::error::AppError;
+use crate::state::AppState;
+use warlay::protocol::ipc::{AgentSettings, AgentStatusSnapshot, DaemonRequest, DaemonResponse};
 
 fn success_or_err(resp: DaemonResponse) -> Result<(), AppError> {
     match resp {
         DaemonResponse::Success { .. } => Ok(()),
-        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow::anyhow!(message))),
-        other => Err(AppError::Any(anyhow::anyhow!(
-            "respuesta inesperada del daemon: {other:?}"
-        ))),
+        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow!(message))),
+        other => Err(AppError::Any(anyhow!("respuesta inesperada del agente: {other:?}"))),
     }
 }
 
+fn require_agent_state(state: &State<'_, AppState>) -> Result<Arc<TokioMutex<DaemonState>>, AppError> {
+    state
+        .agent_state
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| AppError::Any(anyhow!("el agente no está iniciado")))
+}
+
 #[tauri::command]
-pub async fn get_agent_settings(state: State<'_, AppState>) -> Result<AgentSettings, AppError> {
-    let client = require_client(&state)?;
-    match client
-        .call(DaemonRequest::GetAgentSettings)
-        .await
-        .map_err(|e| AppError::Any(anyhow::anyhow!(e)))?
-    {
+pub async fn get_agent_settings(state: State<'_, AppState>, app: AppHandle) -> Result<AgentSettings, AppError> {
+    let agent_state = require_agent_state(&state)?;
+    match handle_request(DaemonRequest::GetAgentSettings, agent_state, app).await {
         DaemonResponse::AgentSettings { settings } => Ok(settings),
-        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow::anyhow!(message))),
-        other => Err(AppError::Any(anyhow::anyhow!(
-            "respuesta inesperada del daemon: {other:?}"
-        ))),
+        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow!(message))),
+        other => Err(AppError::Any(anyhow!("respuesta inesperada del agente: {other:?}"))),
     }
 }
 
 #[tauri::command]
-pub async fn save_agent_settings(state: State<'_, AppState>, settings: AgentSettings) -> Result<(), AppError> {
-    let client = require_client(&state)?;
-    success_or_err(
-        client
-            .call(DaemonRequest::SetAgentSettings { settings })
-            .await
-            .map_err(|e| AppError::Any(anyhow::anyhow!(e)))?,
-    )
+pub async fn save_agent_settings(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    settings: AgentSettings,
+) -> Result<(), AppError> {
+    let agent_state = require_agent_state(&state)?;
+    success_or_err(handle_request(DaemonRequest::SetAgentSettings { settings }, agent_state, app).await)
 }
 
 #[tauri::command]
-pub async fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatusSnapshot, AppError> {
-    let client = require_client(&state)?;
-    match client
-        .call(DaemonRequest::GetAgentStatus)
-        .await
-        .map_err(|e| AppError::Any(anyhow::anyhow!(e)))?
-    {
+pub async fn get_agent_status(state: State<'_, AppState>, app: AppHandle) -> Result<AgentStatusSnapshot, AppError> {
+    let agent_state = require_agent_state(&state)?;
+    match handle_request(DaemonRequest::GetAgentStatus, agent_state, app).await {
         DaemonResponse::AgentStatus { status } => Ok(status),
-        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow::anyhow!(message))),
-        other => Err(AppError::Any(anyhow::anyhow!(
-            "respuesta inesperada del daemon: {other:?}"
-        ))),
+        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow!(message))),
+        other => Err(AppError::Any(anyhow!("respuesta inesperada del agente: {other:?}"))),
     }
 }
 
 #[tauri::command]
-pub async fn retry_peer_mesh(state: State<'_, AppState>) -> Result<(), AppError> {
-    let client = require_client(&state)?;
-    success_or_err(
-        client
-            .call(DaemonRequest::RetryPeerMesh)
-            .await
-            .map_err(|e| AppError::Any(anyhow::anyhow!(e)))?,
-    )
+pub async fn retry_peer_mesh(state: State<'_, AppState>, app: AppHandle) -> Result<(), AppError> {
+    let agent_state = require_agent_state(&state)?;
+    success_or_err(handle_request(DaemonRequest::RetryPeerMesh, agent_state, app).await)
 }

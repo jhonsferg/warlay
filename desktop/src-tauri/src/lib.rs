@@ -2,7 +2,6 @@ mod agent;
 mod commands;
 mod core;
 pub use warlay::crypto;
-mod daemon_ipc;
 mod launcher;
 mod log_bridge;
 mod log_cleanup;
@@ -190,40 +189,12 @@ fn show_main_window(app: &AppHandle) {
 /// -- bounded, so quitting can never hang -- until it is really gone before
 /// exiting ourselves.
 fn quit_app(app: &AppHandle) {
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let client = app_handle.state::<AppState>().daemon_client.lock().unwrap().clone();
-        if let Some(client) = client {
-            shutdown_daemon(&client).await;
-        }
-        app_handle.exit(0);
-    });
+    app.exit(0);
 }
 
-/// How long to wait for the daemon to accept the shutdown, and then to be
-/// gone.
+/// Cuánto se espera al agente para que acepte el apagado y libere sus
+/// recursos antes de que la app salga por su cuenta.
 const DAEMON_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
-const DAEMON_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-
-async fn shutdown_daemon(client: &daemon_ipc::DaemonClient) {
-    match tokio::time::timeout(DAEMON_ANSWER_TIMEOUT, client.call(DaemonRequest::Shutdown)).await {
-        Ok(Ok(warlay::protocol::ipc::DaemonResponse::Success { .. })) => {
-            if !commands::daemon::wait_until_daemon_gone(DAEMON_EXIT_TIMEOUT).await {
-                tracing::warn!("el agente aceptó apagarse pero sigue activo tras {DAEMON_EXIT_TIMEOUT:?}");
-            }
-        }
-        // An older daemon that doesn't know `Shutdown` (it answers with an
-        // error), or one that didn't answer in time: at least let go of
-        // everything it holds, as this quit always did.
-        other => {
-            tracing::warn!(
-                ?other,
-                "el agente no aceptó apagarse, se le pide solo soltar las conexiones"
-            );
-            let _ = tokio::time::timeout(DAEMON_ANSWER_TIMEOUT, client.call(DaemonRequest::DisconnectAll)).await;
-        }
-    }
-}
 
 /// Builds the system tray icon so the app can keep running in the
 /// background after the window's own close button is clicked (see `run()`'s
@@ -553,8 +524,6 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::daemon::check_daemon_ready,
-            commands::daemon::ensure_daemon_running,
             commands::devtools::open_devtools,
             commands::e2e::e2e_identity,
             commands::e2e::e2e_encrypt,

@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use tauri::async_runtime::Mutex;
+use tauri::AppHandle;
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 use warlay::engine::NetworkError;
 use warlay::protocol::ipc::{ConnectFailure, DaemonRequest, DaemonResponse};
 
-use crate::ipc_server::{err, push_event};
-use crate::lan::spawn_lan_mesh;
-use crate::state::{teardown_tunnel_and_lan, DaemonState};
+use super::events::{emit_agent_event, err};
+use super::lan::spawn_lan_mesh;
+use super::state::{teardown_tunnel_and_lan, DaemonState};
 
 const HUB_TCP_TUNNEL_PORT: u16 = 7778;
 
@@ -23,9 +24,9 @@ async fn hub_tunnel_endpoint(
 ) -> Result<warlay::engine::HubTunnelEndpoint, String> {
     let addr = tokio::net::lookup_host((hub_host, hub_tcp_port))
         .await
-        .map_err(|e| format!("no se pudo resolver la dirección del hub '{hub_host}': {e}"))?
+        .map_err(|e| format!("no se pudo resolver la direcciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n del hub '{hub_host}': {e}"))?
         .next()
-        .ok_or_else(|| format!("la dirección del hub '{hub_host}' no resolvió a ninguna IP"))?;
+        .ok_or_else(|| format!("la direcciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n del hub '{hub_host}' no resolviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ a ninguna IP"))?;
     if secure {
         warlay::engine::HubTunnelEndpoint::tls(addr, hub_host).map_err(|e| e.to_string())
     } else {
@@ -42,7 +43,8 @@ fn clear_peer_mesh(s: &mut DaemonState) {
     }
 }
 
-pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>) -> DaemonResponse {
+pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>, app: AppHandle) -> DaemonResponse {
+    let app = app.clone();
     match req {
         DaemonRequest::Ping => DaemonResponse::Pong,
 
@@ -59,19 +61,15 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             let client_id = match Uuid::parse_str(&client_id) {
                 Ok(id) => id,
                 Err(_) => {
-                    warn!(%server_id, "ConnectToHub rechazado: id de cliente inválido");
-                    return err("ConnectToHub", "id de cliente inválido");
+                    warn!(%server_id, "ConnectToHub rechazado: id de cliente invÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡lido");
+                    return err("ConnectToHub", "id de cliente invÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡lido");
                 }
             };
 
-            // `address` is stored (and shown in the UI) exactly as the user
-            // typed it -- legacy bare "host:port", or a ws:// / wss:// URL --
-            // but MatchmakingConnection::connect takes the full WebSocket URL
-            // of the hub's actual endpoint. HubAddress normalizes either form.
             let hub_address = match warlay::engine::HubAddress::parse(&address) {
                 Ok(parsed) => parsed,
                 Err(e) => {
-                    warn!(%server_id, %address, "ConnectToHub rechazado: dirección inválida");
+                    warn!(%server_id, %address, "ConnectToHub rechazado: direcciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n invÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡lida");
                     return DaemonResponse::ConnectFailed {
                         server_id,
                         failure: ConnectFailure::Other { message: e.to_string() },
@@ -84,15 +82,26 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             let server_id_msg = server_id.clone();
             let server_id_ping = server_id.clone();
             let server_id_disc = server_id.clone();
-
             let hub_host_msg = hub_host.clone();
             let client_id_msg = client_id;
 
+            let app_for_msg = app.clone();
+            let app_for_ping = app.clone();
+            let app_for_disc = app.clone();
             let state_for_msg = _state.clone();
             let state_for_ping = _state.clone();
             let state_for_lan = _state.clone();
             let state_for_disc = _state.clone();
 
+            let lan_loop_guard = {
+                let s = state_for_lan.lock().await;
+                s.lan_loop_guard.clone()
+            };
+            let lan_relay_tx = state_for_lan.lock().await.lan_relay_tx.clone();
+            let own_game_hosting = {
+                let s = state_for_lan.lock().await;
+                s.own_game_hosting.clone()
+            };
             let result = warlay::engine::MatchmakingConnection::connect(
                 &ws_url,
                 client_id,
@@ -101,6 +110,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                 move |message| {
                     let server_id_msg_clone = server_id_msg.clone();
                     let hub_host_msg_clone = hub_host_msg.clone();
+                    let app_for_msg_inner = app_for_msg.clone();
                     let state_ref = state_for_msg.clone();
                     tokio::spawn(async move {
                         match &message {
@@ -127,40 +137,34 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                                     let mesh_handle = Arc::new(mesh);
                                     s.peer_mesh = Some(mesh_handle.clone());
 
-                                    let state_for_voice = state_ref.clone();
+                                    let app_for_voice = app_for_msg_inner.clone();
                                     let voice_task = tokio::spawn(async move {
-                                        let mut interval = tokio::time::interval(std::time::Duration::from_millis(15));
-                                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                                        let mut interval =
+                                            tokio::time::interval(std::time::Duration::from_millis(15));
+                                        interval.set_missed_tick_behavior(
+                                            tokio::time::MissedTickBehavior::Skip,
+                                        );
                                         loop {
                                             interval.tick().await;
                                             let datagrams = mesh_handle.poll_datagrams();
                                             for (from_client_id, opus_bytes) in datagrams {
-                                                push_event(
-                                                    &state_for_voice,
-                                                    DaemonResponse::VoiceFrameIn {
+                                                emit_agent_event(
+                                                    &app_for_voice,
+                                                    &DaemonResponse::VoiceFrameIn {
                                                         from_client_id: from_client_id.to_string(),
                                                         opus_bytes,
                                                     },
-                                                )
-                                                .await;
+                                                );
                                             }
                                         }
                                     });
                                     s.voice_poll_task = Some(voice_task);
                                 } else {
-                                    warn!(%rv_str, "no se pudo resolver dirección de rendezvous para PeerMesh");
+                                    warn!(%rv_str, "no se pudo resolver direcciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n de rendezvous para PeerMesh");
                                 }
                             }
                             warlay::protocol::ServerMessage::RoomRemoved { room_id } => {
                                 let mut s = state_ref.lock().await;
-                                // Keyed on the room this message is actually
-                                // about, not just "is there some active room
-                                // on this server" -- see `active_room_id`'s
-                                // doc comment in `state.rs` for why: this
-                                // message can arrive late, after a newer
-                                // `RoomCreated` for a *different* room has
-                                // already landed, and must not clear that
-                                // newer room's state out from under it.
                                 if s.active_room_server == Some(server_id_msg_clone.clone())
                                     && s.active_room_id == Some(*room_id)
                                 {
@@ -181,63 +185,58 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                             }
                             _ => {}
                         }
-                        push_event(
-                            &state_ref,
-                            DaemonResponse::HubMessage {
+                        emit_agent_event(
+                            &app_for_msg_inner,
+                            &DaemonResponse::HubMessage {
                                 server_id: server_id_msg_clone,
                                 message,
                             },
-                        )
-                        .await;
+                        );
                     });
                 },
                 move |latency| {
                     let server_id_ping_clone = server_id_ping.clone();
+                    let app_for_ping_inner = app_for_ping.clone();
                     let state_ref = state_for_ping.clone();
                     tokio::spawn(async move {
-                        push_event(
-                            &state_ref,
-                            DaemonResponse::HubPing {
+                        emit_agent_event(
+                            &app_for_ping_inner,
+                            &DaemonResponse::HubPing {
                                 server_id: server_id_ping_clone,
                                 latency_ms: latency as u32,
                             },
-                        )
-                        .await;
+                        );
                     });
                 },
                 move |bytes| {
-                    let state_ref = state_for_lan.clone();
-                    tokio::spawn(async move {
-                        let s = state_ref.lock().await;
-                        s.lan_loop_guard.mark(&bytes);
-                        // Same gate as the room sessions (see `session.rs`):
-                        // while our own WC3 is hosting, replaying the other
-                        // members' game state onto the local network is
-                        // both useless (we're in our own lobby) and what
-                        // must not reach a WC3 that's mid-create.
-                        if s.own_game_hosting.load(std::sync::atomic::Ordering::Relaxed)
-                            && warlay::engine::contains_game_state(&bytes)
-                        {
-                            return;
-                        }
-                        if let Some(tx) = &s.lan_relay_tx {
-                            let _ = tx.send(bytes);
-                        }
-                    });
+                    lan_loop_guard.mark(&bytes);
+                    // Same gate as the room sessions (see `session.rs`):
+                    // while our own WC3 is hosting, replaying the other
+                    // members' game state onto the local network is
+                    // both useless (we're in our own lobby) and what
+                    // must not reach a WC3 that's mid-create.
+                    if own_game_hosting.load(std::sync::atomic::Ordering::Relaxed)
+                        && warlay::engine::contains_game_state(&bytes)
+                    {
+                        return;
+                    }
+                    if let Some(tx) = &lan_relay_tx {
+                        let _ = tx.send(bytes);
+                    }
                 },
                 move || {
                     let server_id_disc_clone = server_id_disc.clone();
+                    let app_for_disc_inner = app_for_disc.clone();
                     let state_ref = state_for_disc.clone();
                     tokio::spawn(async move {
-                        warn!(server_id = %server_id_disc_clone, "conexión con el hub perdida");
-                        push_event(
-                            &state_ref,
-                            DaemonResponse::HubConnectionState {
+                        warn!(server_id = %server_id_disc_clone, "conexiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n con el hub perdida");
+                        emit_agent_event(
+                            &app_for_disc_inner,
+                            &DaemonResponse::HubConnectionState {
                                 server_id: server_id_disc_clone,
                                 connected: false,
                             },
-                        )
-                        .await;
+                        );
                     });
                 },
             )
@@ -252,14 +251,13 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                         .send(warlay::protocol::ClientMessage::Authenticate { display_name });
                     s.connections.insert(server_id.clone(), outcome.connection);
                     drop(s);
-                    push_event(
-                        &_state,
-                        DaemonResponse::HubConnectionState {
+                    emit_agent_event(
+                        &app,
+                        &DaemonResponse::HubConnectionState {
                             server_id: server_id.clone(),
                             connected: true,
                         },
-                    )
-                    .await;
+                    );
                     DaemonResponse::Connected {
                         server_id,
                         remote_server_id: outcome.server_id.to_string(),
@@ -323,18 +321,18 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
         }
 
         DaemonRequest::Shutdown => {
-            info!("apagado solicitado por la app: cerrando conexiones, sala, túnel y captura");
+            info!("apagado solicitado por la app: cerrando conexiones, sala, tÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºnel y captura");
             {
                 let mut s = _state.lock().await;
                 s.connections.clear();
                 s.active_room_server = None;
                 s.active_room_id = None;
                 clear_peer_mesh(&mut s);
-                crate::session::clear_room_session(&mut s);
+                super::session::clear_room_session(&mut s);
                 teardown_tunnel_and_lan(&mut s);
             }
             // The reply goes out first; then the accept loop is told to stop.
-            crate::shutdown::request_soon();
+            super::shutdown::request_soon();
             DaemonResponse::Success {
                 request_type: "Shutdown".to_string(),
             }
@@ -347,12 +345,17 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
         } => {
             let room_uuid = match uuid::Uuid::parse_str(&room_id) {
                 Ok(id) => id,
-                Err(_) => return err("JoinRoom", "id de sala inválido"),
+                Err(_) => {
+                    return err(
+                        "JoinRoom",
+                        "id de sala invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido",
+                    )
+                }
             };
             let s = _state.lock().await;
             match s.connections.get(&server_id) {
                 Some(conn) => {
-                    info!(%server_id, %room_id, "uniéndose a sala");
+                    info!(%server_id, %room_id, "uniÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©ndose a sala");
                     conn.send(warlay::protocol::ClientMessage::JoinRoom {
                         room_id: room_uuid,
                         password,
@@ -362,8 +365,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                     }
                 }
                 None => {
-                    warn!(%server_id, %room_id, "JoinRoom sin conexión activa con ese servidor");
-                    err("JoinRoom", "no hay una conexión activa con ese servidor")
+                    warn!(%server_id, %room_id, "JoinRoom sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                    err(
+                        "JoinRoom",
+                        "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                    )
                 }
             }
         }
@@ -371,8 +377,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
         DaemonRequest::LeaveRoom { server_id } => {
             let mut s = _state.lock().await;
             let Some(conn) = s.connections.get(&server_id) else {
-                warn!(%server_id, "LeaveRoom sin conexión activa con ese servidor");
-                return err("LeaveRoom", "no hay una conexión activa con ese servidor");
+                warn!(%server_id, "LeaveRoom sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                return err(
+                    "LeaveRoom",
+                    "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                );
             };
             info!(%server_id, "saliendo de la sala");
             conn.send(warlay::protocol::ClientMessage::LeaveRoom);
@@ -407,8 +416,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                     }
                 }
                 None => {
-                    warn!(%server_id, "CreateRoom sin conexión activa con ese servidor");
-                    err("CreateRoom", "no hay una conexión activa con ese servidor")
+                    warn!(%server_id, "CreateRoom sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                    err(
+                        "CreateRoom",
+                        "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                    )
                 }
             }
         }
@@ -416,12 +428,20 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
         DaemonRequest::DeleteRoom { server_id, room_id } => {
             let room_uuid = match uuid::Uuid::parse_str(&room_id) {
                 Ok(id) => id,
-                Err(_) => return err("DeleteRoom", "id de sala inválido"),
+                Err(_) => {
+                    return err(
+                        "DeleteRoom",
+                        "id de sala invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido",
+                    )
+                }
             };
             let mut s = _state.lock().await;
             let Some(conn) = s.connections.get(&server_id) else {
-                warn!(%server_id, %room_id, "DeleteRoom sin conexión activa con ese servidor");
-                return err("DeleteRoom", "no hay una conexión activa con ese servidor");
+                warn!(%server_id, %room_id, "DeleteRoom sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                return err(
+                    "DeleteRoom",
+                    "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                );
             };
             info!(%server_id, %room_id, "eliminando sala");
             conn.send(warlay::protocol::ClientMessage::DeleteRoom { room_id: room_uuid });
@@ -447,8 +467,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                     }
                 }
                 None => {
-                    warn!(%server_id, "SetRoomInProgress sin conexión activa con ese servidor");
-                    err("SetRoomInProgress", "no hay una conexión activa con ese servidor")
+                    warn!(%server_id, "SetRoomInProgress sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                    err(
+                        "SetRoomInProgress",
+                        "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                    )
                 }
             }
         }
@@ -464,8 +487,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                     }
                 }
                 None => {
-                    warn!(%server_id, "SetRoomAvailable sin conexión activa con ese servidor");
-                    err("SetRoomAvailable", "no hay una conexión activa con ese servidor")
+                    warn!(%server_id, "SetRoomAvailable sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                    err(
+                        "SetRoomAvailable",
+                        "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                    )
                 }
             }
         }
@@ -474,7 +500,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             let s = _state.lock().await;
             match s.connections.get(&server_id) {
                 Some(conn) => {
-                    // Nunca se registra el contenido del mensaje, solo que se envió uno.
+                    // Nunca se registra el contenido del mensaje, solo que se enviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ uno.
                     debug!(%server_id, "enviando mensaje de chat");
                     conn.send(warlay::protocol::ClientMessage::ChatMessage { text });
                     DaemonResponse::Success {
@@ -482,8 +508,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                     }
                 }
                 None => {
-                    warn!(%server_id, "SendChatMessage sin conexión activa con ese servidor");
-                    err("SendChatMessage", "no hay una conexión activa con ese servidor")
+                    warn!(%server_id, "SendChatMessage sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                    err(
+                        "SendChatMessage",
+                        "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                    )
                 }
             }
         }
@@ -495,12 +524,17 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
         } => {
             let to_uuid = match uuid::Uuid::parse_str(&to_client_id) {
                 Ok(id) => id,
-                Err(_) => return err("SendPrivateMessage", "id de destinatario inválido"),
+                Err(_) => {
+                    return err(
+                        "SendPrivateMessage",
+                        "id de destinatario invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido",
+                    )
+                }
             };
             let s = _state.lock().await;
             match s.connections.get(&server_id) {
                 Some(conn) => {
-                    // Nunca se registra el contenido del mensaje, solo que se envió uno.
+                    // Nunca se registra el contenido del mensaje, solo que se enviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ uno.
                     debug!(%server_id, %to_client_id, "enviando mensaje privado");
                     conn.send(warlay::protocol::ClientMessage::PrivateMessage {
                         to_client_id: to_uuid,
@@ -511,8 +545,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                     }
                 }
                 None => {
-                    warn!(%server_id, "SendPrivateMessage sin conexión activa con ese servidor");
-                    err("SendPrivateMessage", "no hay una conexión activa con ese servidor")
+                    warn!(%server_id, "SendPrivateMessage sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
+                    err(
+                        "SendPrivateMessage",
+                        "no hay una conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor",
+                    )
                 }
             }
         }
@@ -530,7 +567,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             };
             let room_token = match uuid::Uuid::parse_str(&room_token) {
                 Ok(t) => t,
-                Err(_) => return err("StartHostingTunnel", "token de sala inválido"),
+                Err(_) => {
+                    return err(
+                        "StartHostingTunnel",
+                        "token de sala invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido",
+                    )
+                }
             };
 
             let mesh = _state.lock().await.peer_mesh.clone();
@@ -576,7 +618,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             }
 
             info!(%hub_tcp_addr, %room_token, game_port, "hosting tunnel started");
-            push_event(&_state, DaemonResponse::TunnelStatusChanged { running: true }).await;
+            emit_agent_event(&app, &DaemonResponse::TunnelStatusChanged { running: true });
             DaemonResponse::Success {
                 request_type: "StartHostingTunnel".to_string(),
             }
@@ -595,7 +637,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             };
             let room_token = match uuid::Uuid::parse_str(&room_token) {
                 Ok(t) => t,
-                Err(_) => return err("StartJoiningTunnel", "token de sala inválido"),
+                Err(_) => {
+                    return err(
+                        "StartJoiningTunnel",
+                        "token de sala invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido",
+                    )
+                }
             };
             let local_listen_addr = std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 0);
 
@@ -625,7 +672,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             }
 
             info!(%hub_tcp_addr, %room_token, game_port, actual_port, "joining tunnel started");
-            push_event(&_state, DaemonResponse::TunnelStatusChanged { running: true }).await;
+            emit_agent_event(&app, &DaemonResponse::TunnelStatusChanged { running: true });
             DaemonResponse::Success {
                 request_type: "StartJoiningTunnel".to_string(),
             }
@@ -636,7 +683,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             let mut s = _state.lock().await;
             teardown_tunnel_and_lan(&mut s);
             drop(s);
-            push_event(&_state, DaemonResponse::TunnelStatusChanged { running: false }).await;
+            emit_agent_event(&app, &DaemonResponse::TunnelStatusChanged { running: false });
             DaemonResponse::Success {
                 request_type: "StopHubTunnel".to_string(),
             }
@@ -711,8 +758,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
         }
 
         DaemonRequest::SetAgentSettings { settings } => {
-            if let Err(e) = crate::log_control::set_level(&settings.log_level) {
-                return err("SetAgentSettings", format!("nivel de log inválido: {e}"));
+            if let Err(e) = super::log_control::set_level(&settings.log_level) {
+                return err(
+                    "SetAgentSettings",
+                    format!("nivel de log invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido: {e}"),
+                );
             }
             let s = _state.lock().await;
             s.lan_discovery_enabled
@@ -720,10 +770,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             if let Err(e) = s.agent_store.save_settings(&settings) {
                 return err(
                     "SetAgentSettings",
-                    format!("no se pudo guardar la configuración del agente: {e}"),
+                    format!(
+                        "no se pudo guardar la configuraciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n del agente: {e}"
+                    ),
                 );
             }
-            info!(log_level = %settings.log_level, lan_discovery_enabled = settings.lan_discovery_enabled, "configuración del agente actualizada");
+            info!(log_level = %settings.log_level, lan_discovery_enabled = settings.lan_discovery_enabled, "configuraciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n del agente actualizada");
             DaemonResponse::Success {
                 request_type: "SetAgentSettings".to_string(),
             }
@@ -764,7 +816,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             let peer_mesh = _state.lock().await.peer_mesh.clone();
             match peer_mesh {
                 Some(mesh) => {
-                    info!("reintentando conexión P2P por pedido manual desde el panel Agente");
+                    info!("reintentando conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n P2P por pedido manual desde el panel Agente");
                     mesh.retry_failed_peers();
                     DaemonResponse::Success {
                         request_type: "RetryPeerMesh".to_string(),
@@ -772,7 +824,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
                 }
                 None => err(
                     "RetryPeerMesh",
-                    "no hay una malla P2P activa (¿hay una sala abierta ahora mismo?)",
+                    "no hay una malla P2P activa (ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿hay una sala abierta ahora mismo?)",
                 ),
             }
         }
@@ -785,17 +837,17 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>)
             relay_addr,
             ticket,
         } => {
-            crate::session::start_room_session(_state, room_id, user_id, is_host, rendezvous_addr, relay_addr, ticket)
+            super::session::start_room_session(_state, room_id, user_id, is_host, rendezvous_addr, relay_addr, ticket)
                 .await
         }
 
-        DaemonRequest::StopRoomSession => crate::session::stop_room_session(_state).await,
+        DaemonRequest::StopRoomSession => super::session::stop_room_session(_state).await,
 
-        DaemonRequest::StartGameTunnel { game_port } => crate::session::start_game_tunnel(_state, game_port).await,
+        DaemonRequest::StartGameTunnel { game_port } => super::session::start_game_tunnel(_state, game_port).await,
 
         DaemonRequest::UpdateRoomHelper {
             rendezvous_addr,
             relay_addr,
-        } => crate::session::update_room_helper(_state, rendezvous_addr, relay_addr).await,
+        } => super::session::update_room_helper(_state, rendezvous_addr, relay_addr).await,
     }
 }

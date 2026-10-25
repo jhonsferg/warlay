@@ -15,9 +15,9 @@ use uuid::Uuid;
 
 use warlay::protocol::ipc::DaemonResponse;
 
-use crate::ipc_server::{err, push_event};
-use crate::lan::spawn_lan_mesh;
-use crate::state::{teardown_tunnel_and_lan, DaemonState};
+use super::events::{emit_event, err};
+use super::lan::spawn_lan_mesh;
+use super::state::{teardown_tunnel_and_lan, DaemonState};
 
 pub struct RoomSessionInfo {
     pub room_id: Uuid,
@@ -60,14 +60,10 @@ pub fn spawn_voice_poll(state: Arc<Mutex<DaemonState>>, mesh: Arc<warlay::engine
         loop {
             interval.tick().await;
             for (from_client_id, opus_bytes) in mesh.poll_datagrams() {
-                push_event(
-                    &state,
-                    DaemonResponse::VoiceFrameIn {
-                        from_client_id: from_client_id.to_string(),
-                        opus_bytes,
-                    },
-                )
-                .await;
+                emit_event(&DaemonResponse::VoiceFrameIn {
+                    from_client_id: from_client_id.to_string(),
+                    opus_bytes,
+                });
             }
         }
     })
@@ -202,7 +198,7 @@ pub async fn stop_room_session(state: Arc<Mutex<DaemonState>>) -> DaemonResponse
     drop(s);
     if had_session {
         info!("sesión de sala P2P terminada");
-        push_event(&state, DaemonResponse::TunnelStatusChanged { running: false }).await;
+        emit_event(&DaemonResponse::TunnelStatusChanged { running: false });
     }
     DaemonResponse::Success {
         request_type: "StopRoomSession".to_string(),
@@ -233,7 +229,7 @@ pub async fn start_game_tunnel(state: Arc<Mutex<DaemonState>>, game_port: u16) -
                 .await
                 .game_started
                 .store(true, std::sync::atomic::Ordering::SeqCst);
-            push_event(&state, DaemonResponse::GameStarted).await;
+            emit_event(&DaemonResponse::GameStarted);
         });
     });
     // Join side: one dedicated local port per peer, bound on demand as
@@ -255,7 +251,7 @@ pub async fn start_game_tunnel(state: Arc<Mutex<DaemonState>>, game_port: u16) -
         return err("StartGameTunnel", e);
     }
     info!(%room_id, is_host, game_port, "túnel de juego P2P iniciado");
-    push_event(&state, DaemonResponse::TunnelStatusChanged { running: true }).await;
+    emit_event(&DaemonResponse::TunnelStatusChanged { running: true });
     DaemonResponse::Success {
         request_type: "StartGameTunnel".to_string(),
     }

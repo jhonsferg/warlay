@@ -1,6 +1,6 @@
 use tracing::warn;
 use windows::core::HSTRING;
-use windows::Win32::Foundation::{CloseHandle, BOOL, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Security::Authorization::{ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1};
 use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
 use windows::Win32::System::Pipes::GetNamedPipeClientProcessId;
@@ -33,7 +33,7 @@ pub fn build_pipe_security_attributes() -> usize {
     let sa = Box::new(SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0,
-        bInheritHandle: BOOL(0),
+        ..Default::default()
     });
     Box::into_raw(sa) as usize
 }

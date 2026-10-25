@@ -19,7 +19,7 @@ pub struct AgentStore {
 
 /// See `paths::data_dir` (on Windows, the same file the desktop app uses).
 fn db_path() -> std::path::PathBuf {
-    crate::paths::data_dir().join("warlay.db")
+    super::paths::data_dir().join("warlay.db")
 }
 
 impl AgentStore {

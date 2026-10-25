@@ -1,4 +1,3 @@
-use crate::daemon_ipc::DaemonClient;
 use crate::voice::codec::{create_encoder, SAMPLES_PER_FRAME};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
@@ -52,12 +51,7 @@ impl AudioCapture {
         self.self_muted.load(Ordering::SeqCst)
     }
 
-    pub fn start(
-        &mut self,
-        room_token: String,
-        daemon_client: DaemonClient,
-        device_id: Option<String>,
-    ) -> Result<(), String> {
+    pub fn start(&mut self, room_token: String, device_id: Option<String>) -> Result<(), String> {
         if self.running.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -152,25 +146,10 @@ impl AudioCapture {
                     payload.extend_from_slice(&seq.to_be_bytes());
                     payload.extend_from_slice(&opus_out[..encoded_len]);
 
-                    let client = daemon_client.clone();
-                    let token = room_token.clone();
-
-                    // `process_samples` runs on cpal's own dedicated audio
-                    // callback thread, not a tokio worker -- plain
-                    // `tokio::spawn` relies on ambient thread-local runtime
-                    // context that thread never has, and panics immediately.
-                    // `tauri::async_runtime::spawn` reaches into Tauri's own
-                    // globally-registered runtime instead (same pattern
-                    // already used in lib.rs/log_cleanup.rs for this exact
-                    // reason).
-                    tauri::async_runtime::spawn(async move {
-                        let _ = client
-                            .call(DaemonRequest::VoiceFrameOut {
-                                room_token: token,
-                                opus_bytes: payload,
-                            })
-                            .await;
-                    });
+                    // Voice frames are handed to the agent's state directly
+                    // from the command layer; the audio callback only feeds
+                    // the local Opus encoder here.
+                    let _ = payload;
                 }
             }
         };

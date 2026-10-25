@@ -3,7 +3,6 @@ pub mod codec;
 pub mod jitter;
 pub mod playback;
 
-use crate::daemon_ipc::DaemonClient;
 use capture::AudioCapture;
 use playback::AudioPlayback;
 use std::collections::HashSet;
@@ -61,14 +60,13 @@ impl VoiceManager {
     pub fn start_voice(
         &self,
         room_token: String,
-        daemon_client: DaemonClient,
         input_device_id: Option<String>,
         output_device_id: Option<String>,
     ) -> Result<(), String> {
         let mut capture = self.capture.lock().map_err(|_| "poisoned lock")?;
         let mut playback = self.playback.lock().map_err(|_| "poisoned lock")?;
 
-        capture.start(room_token, daemon_client, input_device_id)?;
+        capture.start(room_token, input_device_id)?;
         playback.start(output_device_id)?;
 
         Ok(())

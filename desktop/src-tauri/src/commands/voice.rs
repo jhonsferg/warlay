@@ -1,5 +1,6 @@
 use crate::core::error::AppError;
 use crate::state::AppState;
+use anyhow::anyhow;
 use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
@@ -14,16 +15,10 @@ pub async fn start_voice_chat(
     input_device_id: Option<String>,
     output_device_id: Option<String>,
 ) -> Result<(), AppError> {
-    let client = state
-        .daemon_client
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| AppError::Any(anyhow::anyhow!("no hay conexión activa con el daemon")))?;
     state
         .voice_manager
-        .start_voice(room_token, client, input_device_id, output_device_id)
-        .map_err(|e| AppError::Any(anyhow::anyhow!(e)))?;
+        .start_voice(room_token, input_device_id, output_device_id)
+        .map_err(|e| AppError::Any(anyhow!(e)))?;
     Ok(())
 }
 
