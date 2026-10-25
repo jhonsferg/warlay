@@ -14,11 +14,15 @@ mod storage;
 pub use warlay::transport;
 pub mod voice;
 
+use agent::state::DaemonState;
+use agent::storage::AgentStore;
 use state::AppState;
 use storage::ClientStore;
+use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tokio::sync::Mutex as TokioMutex;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use warlay::protocol::ipc::DaemonRequest;
 
@@ -386,6 +390,12 @@ pub fn run() {
             let mic_toggle_key = settings.mic_toggle_key.clone();
             app.manage(AppState::new(store));
             let state = app.state::<AppState>();
+            // Initialize the agent state (runs in-process, no separate daemon
+            // process). The agent's networking, LAN capture, tunnels, and hub
+            // connections all operate on this shared DaemonState.
+            let agent_state = Arc::new(TokioMutex::new(DaemonState::new()));
+            *state.agent_state.lock().unwrap() = Some(agent_state.clone());
+            *state.app_handle.lock().unwrap() = Some(app.handle().clone());
             *state
                 .mic_toggle_shortcut
                 .lock()

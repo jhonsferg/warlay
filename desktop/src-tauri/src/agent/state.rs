@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tracing::info;
 
-use warlay::engine::MatchmakingConnection;
+use warlay::engine::{CapturePorts, LoopGuard, MatchmakingConnection};
 
 use super::storage::AgentStore;
 
@@ -77,6 +78,31 @@ pub struct DaemonState {
 /// running for the active session. Shared by every request that tears one
 /// down (`DisconnectFromHub`, `LeaveRoom`, `DeleteRoom`, `StopHubTunnel`,
 /// and now graceful shutdown) -- previously copy-pasted four times.
+impl DaemonState {
+    pub fn new() -> Self {
+        Self {
+            connections: HashMap::new(),
+            game_tunnel: None,
+            peer_mesh: None,
+            room_session: None,
+            voice_poll_task: None,
+            lan_capture: None,
+            lan_rebroadcast: None,
+            lan_relay_tx: None,
+            lan_loop_guard: Arc::new(LoopGuard::new(Duration::from_secs(2))),
+            lan_capture_ports: CapturePorts::default(),
+            own_game_hosting: Arc::new(AtomicBool::new(false)),
+            game_gateway: None,
+            active_room_server: None,
+            active_room_id: None,
+            game_started: Arc::new(AtomicBool::new(false)),
+            agent_store: AgentStore::open(),
+            lan_discovery_enabled: Arc::new(AtomicBool::new(true)),
+            started_at: Instant::now(),
+        }
+    }
+}
+
 pub fn teardown_tunnel_and_lan(s: &mut DaemonState) {
     let had_tunnel = s.game_tunnel.is_some();
     let had_capture = s.lan_capture.is_some();
