@@ -84,14 +84,6 @@ export function onRelayStatusChanged(handler: (status: RelayStatus) => void): Pr
 // --- Daemon lifecycle (the startup loading screen calls these before
 // showing the rest of the UI) ---
 
-export function checkDaemonReady(): Promise<boolean> {
-  return invoke("check_daemon_ready");
-}
-
-export function ensureDaemonRunning(): Promise<void> {
-  return invoke("ensure_daemon_running");
-}
-
 // --- Hub mode (VPS matchmaking, multi-server) commands ---
 
 export function listServers(): Promise<ServerInfo[]> {

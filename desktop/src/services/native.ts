@@ -106,8 +106,6 @@ export const native = {
     invoke<{ plaintext: string; requestId: string }>("e2e_decrypt", { me, peerId, peerPublicKey, senderId, envelope }),
   e2eSafetyNumber: (me: string, peerPublicKey: string) => invoke<string>("e2e_safety_number", { me, peerPublicKey }),
 
-  ensureDaemonRunning: () => invoke<void>("ensure_daemon_running"),
-
   startRoomSession: (session: RoomSession) =>
     invoke<void>("start_room_session", {
       roomId: session.room.id,
