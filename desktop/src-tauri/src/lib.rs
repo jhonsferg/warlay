@@ -44,7 +44,7 @@ fn client_db_path() -> std::path::PathBuf {
 /// batch of lines it drains, so routing that through `sync_data()`
 /// (Windows' `FlushFileBuffers`) instead keeps the on-disk size honest for
 /// live tailing, not just after this process's handle finally closes.
-/// Same fix, same reasoning, as `daemon/src/logging.rs`'s equivalent.
+/// Same fix, same reasoning, as `crates/agent/src/logging.rs`'s equivalent.
 struct SyncOnFlush(std::fs::File);
 
 impl std::io::Write for SyncOnFlush {

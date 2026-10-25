@@ -227,7 +227,7 @@ impl DaemonRequest {
 
 /// The daemon's own persisted configuration — distinct from the desktop
 /// client's `AppSettings` (different process, different SQLite table, see
-/// `daemon/src/storage.rs`).
+/// `crates/agent/src/storage.rs`).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSettings {

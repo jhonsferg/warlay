@@ -146,9 +146,9 @@ export interface AppSettings {
  * shown next to the "Motor gráfico" selector so the user has something to
  * go on. Windows-only for now; on other platforms every numeric field comes
  * back 0 and the GPU fields come back null. */
-/** The daemon's (wnetd.exe) own persisted configuration — separate from
+/** The agent's own persisted configuration — separate from
  * `AppSettings`, which is the desktop client's own settings. See
- * `daemon/src/storage.rs`. */
+ * `crates/agent/src/storage.rs`. */
 export interface AgentSettings {
   logLevel: LogLevel;
   lanDiscoveryEnabled: boolean;

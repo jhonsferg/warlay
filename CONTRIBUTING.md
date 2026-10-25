@@ -94,9 +94,9 @@ npx prettier@3.3.3 --write .       # TypeScript, Vue, SCSS, JSON, YAML, Markdown
 ## Project layout
 
 See [Repository layout](README.md#repository-layout) in the README. In short:
-shared logic lives in `crates/`, and `server/`, `daemon/` and
-`desktop/src-tauri/` are thin binaries on top of it, consumed through the
-`warlay` facade crate.
+shared logic lives in `crates/` -- including `crates/agent`, the network
+agent itself -- and `server/`, `daemon/` and `desktop/src-tauri/` are thin
+binaries on top of it, consumed through the `warlay` facade crate.
 
 ## Repository settings (maintainers)
 

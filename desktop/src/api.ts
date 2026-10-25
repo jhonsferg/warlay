@@ -206,8 +206,8 @@ export function getAgentSettings(): Promise<AgentSettings> {
 }
 
 /** Applies immediately on the daemon (log level reload, LAN discovery
- * toggle) and persists — see `daemon/src/log_control.rs` and
- * `daemon/src/storage.rs`. */
+ * toggle) and persists — see `crates/agent/src/log_control.rs` and
+ * `crates/agent/src/storage.rs`. */
 export function saveAgentSettings(settings: AgentSettings): Promise<void> {
   return invoke("save_agent_settings", { settings });
 }

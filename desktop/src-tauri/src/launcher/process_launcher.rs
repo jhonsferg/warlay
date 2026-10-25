@@ -227,7 +227,7 @@ pub fn launch(
 /// Originally this also opened each name-matching process
 /// (`OpenProcess`/`QueryFullProcessImageNameW`) and required its full image
 /// path to equal `executable_path` exactly, mirroring the identity check the
-/// daemon does for its pipe clients (`daemon/src/security.rs`'s
+/// daemon does for its pipe clients (`crates/agent/src/security.rs`'s
 /// `verify_client_process`) -- appropriate there since that's a real
 /// security boundary, but wrong here: it went permanently blind for exactly
 /// the case `launch_game`'s own `MIN_REAL_SESSION` comment already

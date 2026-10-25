@@ -13,7 +13,7 @@ body:
       label: Component
       options:
         - Desktop client
-        - Daemon (wnetd)
+        - Network agent (warlay.exe --daemon / wnetd)
         - Server (hub)
         - Release / installer
         - Other

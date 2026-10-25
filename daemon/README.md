@@ -5,9 +5,17 @@ everything needing elevated privileges or long-lived sockets, on behalf of the
 [desktop client](../desktop/README.md). It has no window; the client talks to
 it over a local named pipe.
 
-It also builds and runs on Linux (`wnetd`), with the same requests, handlers
-and behavior: the IPC endpoint is a Unix socket instead of the named pipe and
-LAN capture uses an `AF_PACKET` socket instead of `SIO_RCVALL` (see
+**This directory is only a thin binary.** The agent itself lives in
+[`crates/agent`](../crates/agent), and `daemon/` wraps its entry point in a
+few lines so the agent can still be built and run on its own. The player-facing
+build does not need that binary: `warlay.exe --daemon` runs the *same library*
+in a second process of the client itself (see
+[Single binary](#single-binary)), which is why both entry points can never
+drift apart.
+
+The agent also builds and runs on Linux (`wnetd`), with the same requests,
+handlers and behavior: the IPC endpoint is a Unix socket instead of the named
+pipe and LAN capture uses an `AF_PACKET` socket instead of `SIO_RCVALL` (see
 [Linux](#linux)).
 
 ## Responsibilities
@@ -26,7 +34,7 @@ LAN capture uses an `AF_PACKET` socket instead of `SIO_RCVALL` (see
 - **Game launch** - starts Warcraft III with the user's configured
   executable.
 
-The networking logic lives in [`crates/engine`](../crates/engine); the daemon
+The networking logic lives in [`crates/engine`](../crates/engine); the agent
 wires it to the IPC protocol defined in
 [`crates/protocol/src/ipc.rs`](../crates/protocol/src/ipc.rs).
 
@@ -34,28 +42,69 @@ wires it to the IPC protocol defined in
 
 ```mermaid
 flowchart LR
-    src["daemon/src/"]
-    src --> main["main.rs<br/>entry point, --install and --uninstall,<br/>pipe server bootstrap"]
-    src --> ipc["ipc_server.rs<br/>named pipe server: JSON requests,<br/>responses and pushed events"]
-    src --> handlers["handlers.rs<br/>one handler per DaemonRequest"]
-    src --> lan["lan.rs<br/>LAN capture and replay<br/>for the active room"]
-    src --> state["state.rs<br/>shared state: connections,<br/>tunnel, mesh"]
-    src --> security["security.rs<br/>pipe ACL and connecting<br/>process verification (Windows)"]
-    src --> unix["unix_socket.rs<br/>Unix socket server and<br/>peer-credential check (Linux)"]
-    src --> paths["paths.rs<br/>data and log directory<br/>per platform"]
-    src --> storage["storage.rs<br/>daemon settings in SQLite"]
-    src --> autostart["autostart.rs<br/>logon Scheduled Task registration (Windows)"]
-    src --> logging["logging.rs and log_control.rs<br/>rotating file logs and<br/>runtime log levels"]
+    bin["daemon/src/ (binary)"]
+    bin --> main["main.rs<br/>--daemon, --install, --uninstall<br/>delegated to the agent crate"]
+
+    lib["crates/agent/src/ (library)"]
+    lib --> entry["lib.rs<br/>Invocation, bootstrap,<br/>pipe server, elevation check"]
+    lib --> ipc["ipc_server.rs<br/>named pipe server: JSON requests,<br/>responses and pushed events"]
+    lib --> handlers["handlers.rs<br/>one handler per DaemonRequest"]
+    lib --> lan["lan.rs<br/>LAN capture and replay<br/>for the active room"]
+    lib --> state["state.rs<br/>shared state: connections,<br/>tunnel, mesh"]
+    lib --> security["security.rs<br/>pipe ACL and connecting<br/>process verification (Windows)"]
+    lib --> elevation["elevation.rs<br/>is_elevated() guard (Windows)"]
+    lib --> unix["unix_socket.rs<br/>Unix socket server and<br/>peer-credential check (Linux)"]
+    lib --> paths["paths.rs<br/>data and log directory<br/>per platform"]
+    lib --> storage["storage.rs<br/>agent settings in SQLite"]
+    lib --> autostart["autostart.rs<br/>logon Scheduled Task registration (Windows)"]
+    lib --> logging["logging.rs and log_control.rs<br/>rotating file logs and<br/>runtime log levels"]
 ```
+
+## Single binary
+
+One PE carries one manifest, so `warlay.exe` ships with a
+`requireAdministrator` manifest written in
+[`desktop/src-tauri/windows-app-manifest.xml`](../desktop/src-tauri/windows-app-manifest.xml)
+and the agent inherits that elevation without any extra step:
+
+1. Windows refuses to start `warlay.exe` unelevated, so the second instance
+   it spawns is elevated too.
+2. The client checks whether an agent is answering the pipe on startup and,
+   if not, launches **itself** with `--daemon` (via `ShellExecuteExW`'s
+   `runas` verb, which stays as a safety net for callers that somehow are not
+   elevated).
+3. `warlay.exe --daemon` runs the agent before Tauri, its webview, tray,
+   tracing subscriber or panic hook get a chance to touch anything: the agent
+   owns all of those process-wide, and a second subscriber would panic.
+4. As a last line of defence,
+   [`elevation::is_elevated()`](../crates/agent/src/elevation.rs) refuses to
+   open the pipe when the token is not elevated, so the failure surfaces as
+   "the agent is not responding" instead of a game that silently misses
+   broadcasts.
+
+Consequences worth knowing: the client runs elevated (it inherits the same
+manifest), and so does the Warcraft III process it launches. The standalone
+`wnetd.exe` built from this directory keeps its own manifest in
+[`daemon/build.rs`](build.rs) and remains useful for development or for
+running the agent without the client.
 
 ## Usage
 
-The desktop client starts the daemon (elevated) every time it launches, so
-most players never run it by hand. To start it at logon instead:
+The desktop client starts the agent (elevated) every time it launches, so
+most players never run anything by hand. To start it at logon instead:
+
+```sh
+warlay.exe --install    # register auto-start at logon (run as administrator)
+warlay.exe --uninstall  # remove the auto-start task
+```
+
+The standalone build understands the same flags (plus running the agent with
+no arguments at all):
 
 ```sh
 wnetd.exe              # run the agent (asks for elevation)
-wnetd.exe --install    # register auto-start at logon (run as administrator)
+wnetd.exe --daemon     # same, the explicit form warlay.exe uses
+wnetd.exe --install    # register auto-start at logon
 wnetd.exe --uninstall  # remove the auto-start task
 ```
 
@@ -68,23 +117,25 @@ individual LAN packets are logged at `debug`, and their hex dumps at `trace`
 while the daemon runs, from Ajustes > Registros in the app or with a
 `SetAgentSettings` request; it is saved and applied at once, no restart.
 
-**Old logs.** The app deletes log files (its own and the daemon's) older than
+**Old logs.** The app deletes log files (its own and the agent's) older than
 the retention chosen in Ajustes > Registros, when it starts and every hour
 after, and never one that is being written.
 
-**Shutdown.** The daemon runs elevated, so the app can't terminate it from
+**Shutdown.** The agent runs elevated, so the app can't terminate it from
 outside. When you quit from the tray icon the app sends `Shutdown`: the
-daemon drops its hub connections, leaves the room, closes the tunnel and the
+agent drops its hub connections, leaves the room, closes the tunnel and the
 LAN capture, answers, and exits; the app waits until it is gone. Closing the
-window only hides it and leaves the daemon running.
+window only hides it and leaves the agent running.
 
 ## Security
 
-The daemon must run as administrator because Windows only allows
+The agent must run as administrator because Windows only allows
 `SIO_RCVALL` raw capture to elevated processes. To keep that privilege from
 being abused, the pipe is created with an ACL that only admits interactive
 users, `SYSTEM` and Administrators, and every connecting process's
-executable is verified before requests are accepted (`security.rs`).
+executable is verified before requests are accepted (`security.rs`). That
+check resolves the expected client as `warlay.exe` next to the running
+agent, which holds for both entry points because both live in that file.
 
 ## Building
 
@@ -93,9 +144,8 @@ cargo build --release -p daemon   # -> target/release/wnetd.exe
 ```
 
 Release builds use the Windows GUI subsystem (no console window) and embed a
-manifest requesting elevation (`build.rs`). For a client build, run
-`npm run prepare-daemon-sidecar` in `desktop/`, which builds the daemon and
-copies it where Tauri bundles it.
+manifest requesting elevation (`build.rs`). No sidecar step exists any more:
+the client is built with `npx tauri build` and carries the agent inside it.
 
 ## Linux
 
@@ -120,5 +170,9 @@ client that speaks it can drive either build.
 ## Tests
 
 ```sh
-cargo test -p daemon    # from an elevated shell: the test binary carries the elevation manifest
+cargo test -p agent    # the agent's library: request parsing, shutdown, IPC
+cargo test -p daemon   # the thin wrapper has no tests of its own; nothing to run
 ```
+
+Neither requires an elevated shell: the bin targets are built with
+`test = false`, so the elevation manifest never reaches a test harness.

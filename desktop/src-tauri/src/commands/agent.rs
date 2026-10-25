@@ -6,7 +6,7 @@ use warlay::protocol::ipc::{AgentSettings, AgentStatusSnapshot, DaemonRequest, D
 
 /// Same pattern as `matchmaking.rs`'s own private `require_client` --
 /// duplicated rather than shared, matching this codebase's existing
-/// convention for this exact helper (see e.g. `daemon/src/logging.rs`'s
+/// convention for this exact helper (see e.g. `crates/agent/src/logging.rs`'s
 /// `log_dir` doc comment for the same reasoning applied elsewhere).
 fn require_client(state: &State<'_, AppState>) -> Result<DaemonClient, AppError> {
     state
