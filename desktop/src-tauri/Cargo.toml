@@ -40,10 +40,8 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-warlay = { workspace = true, features = ["transport", "core", "protocol", "crypto"] }
-# The network agent, embedded so warlay.exe can *be* the daemon it used to
-# ship as a separate wnetd.exe (`warlay.exe --daemon`).
-warlay-agent = { workspace = true }
+warlay = { workspace = true, features = ["transport", "core", "protocol", "crypto", "engine"] }
+base64 = { workspace = true }
 anyhow = { workspace = true }
 if-addrs = { workspace = true }
 rusqlite = { workspace = true }
@@ -71,4 +69,4 @@ audiopus = "0.2"
 cpal = "0.15"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_Networking_WinSock", "Win32_System_IO", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_System_Registry", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_SystemInformation", "Win32_System_Diagnostics_ToolHelp", "Win32_Graphics_Gdi", "Win32_System_JobObjects", "Win32_Security", "Win32_System_Threading"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Cryptography", "Win32_System_Threading", "Win32_System_Pipes", "Win32_System_IO", "Win32_System_SystemInformation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi"] }

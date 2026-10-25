@@ -45,8 +45,6 @@ pub mod session;
 pub mod shutdown;
 pub mod state;
 pub mod storage;
-#[cfg(unix)]
-pub mod unix_socket;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -55,8 +53,8 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 use warlay::protocol::ipc::AgentSettings;
 
-use state::DaemonState;
-use storage::AgentStore;
+use self::state::DaemonState;
+use self::storage::AgentStore;
 
 /// Exit code used when the agent refuses to run without elevation. The
 /// desktop client doesn't inspect it (it only ever sees "the pipe never

@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/*",
     "server",
-    "daemon",
     "desktop/src-tauri",
 ]
 
@@ -17,7 +16,6 @@ repository = "https://github.com/jhonsferg/warlay"
 [workspace.dependencies]
 # Internal crates
 warlay = { path = "crates/warlay" }
-warlay-agent = { path = "crates/agent", package = "agent" }
 warlay-config = { path = "crates/config", package = "config" }
 warlay-core = { path = "crates/core", package = "core" }
 warlay-crypto = { path = "crates/crypto", package = "crypto" }
