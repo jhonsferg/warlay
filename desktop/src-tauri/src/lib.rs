@@ -396,6 +396,7 @@ pub fn run() {
             let agent_state = Arc::new(TokioMutex::new(DaemonState::new()));
             *state.agent_state.lock().unwrap() = Some(agent_state.clone());
             *state.app_handle.lock().unwrap() = Some(app.handle().clone());
+            agent::events::set_app_handle(app.handle().clone());
             *state
                 .mic_toggle_shortcut
                 .lock()
