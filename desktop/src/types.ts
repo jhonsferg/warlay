@@ -132,14 +132,6 @@ export interface AppSettings {
   /** Log files older than this many days are deleted once at every launch,
    * and again immediately when this changes — see `LogLevelSection.vue`. */
   logRetentionDays: number;
-  voiceEnabled: boolean;
-  microphoneDeviceId: string;
-  /** Toggles the microphone on/off on press — the only voice control key.
-   * The mic always starts off; this turns it on, pressing it again mutes
-   * back. See `AudioSettingsSection.vue`. */
-  micToggleKey: string;
-  voiceInputVolume: number;
-  voiceOutputVolume: number;
 }
 
 /** Read-only hardware snapshot from `get_system_info` — informational only,

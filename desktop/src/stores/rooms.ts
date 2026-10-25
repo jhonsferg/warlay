@@ -5,7 +5,6 @@ import { ApiError } from "../services/http";
 import { native, type PeerLinkStatus } from "../services/native";
 import type { HelperInfo, RoomSession, RoomView } from "../services/types";
 import { useSession } from "./session";
-import { useSettings } from "./settings";
 
 /** Lobby rooms, plus the room this player is in and its P2P session. */
 export const useRooms = defineStore("rooms", () => {
@@ -32,9 +31,6 @@ export const useRooms = defineStore("rooms", () => {
     try {
       await native.startRoomSession(next);
       syncOverlay(next.room);
-      const settings = useSettings();
-      if (!settings.loaded) await settings.load().catch(() => {});
-      if (settings.voiceEnabled) await native.startVoiceChat(next.room.id).catch(() => {});
     } finally {
       startPolling();
     }
@@ -76,7 +72,6 @@ export const useRooms = defineStore("rooms", () => {
     session.value = null;
     stopPolling();
     syncOverlay(null);
-    await native.stopVoiceChat().catch(() => {});
     try {
       await native.stopRoomSession();
     } catch {

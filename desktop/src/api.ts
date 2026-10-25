@@ -259,54 +259,8 @@ export function onLogLine(handler: (line: string) => void): Promise<UnlistenFn> 
   return listen<string>("log://line", (event) => handler(event.payload));
 }
 
-// --- Voice chat commands & events ---
-
-export function onVoiceFrameIn(
-  handler: (event: { fromClientId: string; opusBytes: number[] }) => void,
-): Promise<UnlistenFn> {
-  return listen<{ fromClientId: string; opusBytes: number[] }>("voice://frame-in", (event) => handler(event.payload));
-}
-
-export function pushVoiceFrame(fromClientId: string, opusBytes: number[]): Promise<void> {
-  return invoke("push_voice_frame", { fromClientId, opusBytes });
-}
-
-export function startVoiceChat(
-  roomToken: string,
-  inputDeviceId: string | null,
-  outputDeviceId: string | null,
-): Promise<void> {
-  return invoke("start_voice_chat", { roomToken, inputDeviceId, outputDeviceId });
-}
-
-export function stopVoiceChat(): Promise<void> {
-  return invoke("stop_voice_chat");
-}
 
 export function setOverlayInteractive(interactive: boolean): Promise<void> {
   return invoke("set_overlay_interactive", { interactive });
 }
 
-export function toggleMutePeer(clientId: string): Promise<void> {
-  return invoke("toggle_mute_peer", { clientId });
-}
-
-export function getMutedPeers(): Promise<string[]> {
-  return invoke("get_muted_peers");
-}
-
-export function onMuteChanged(handler: (mutedClientIds: string[]) => void): Promise<UnlistenFn> {
-  return listen<string[]>("voice://mute-changed", (event) => handler(event.payload));
-}
-
-export function toggleSelfMicMute(): Promise<boolean> {
-  return invoke("toggle_self_mic_mute");
-}
-
-export function isSelfMicMuted(): Promise<boolean> {
-  return invoke("is_self_mic_muted");
-}
-
-export function onSelfMuteChanged(handler: (muted: boolean) => void): Promise<UnlistenFn> {
-  return listen<boolean>("voice://self-mute-changed", (event) => handler(event.payload));
-}

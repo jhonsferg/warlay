@@ -74,16 +74,6 @@ pub struct AppState {
     /// a job handle to in that case, so the older filename-match fallback
     /// (`launcher::is_process_running_at`) is used instead.
     pub game_job: Mutex<Option<crate::launcher::GameJob>>,
-    pub voice_manager: crate::voice::VoiceManager,
-    /// The mic on/off toggle's currently-registered global shortcut --
-    /// the sole way to turn the mic on or off (the mic always starts off,
-    /// see `voice::capture::AudioCapture`). The plugin dispatches every
-    /// fired shortcut through one shared `.with_handler` closure (see
-    /// `lib.rs`), which compares the fired `Shortcut` against this to know
-    /// it's the one to act on. `None` until `.setup()` registers whatever
-    /// key (if any) is saved in settings, and updated again on every
-    /// `save_settings` that changes the key.
-    pub mic_toggle_shortcut: Mutex<Option<tauri_plugin_global_shortcut::Shortcut>>,
 }
 
 impl AppState {
@@ -99,8 +89,6 @@ impl AppState {
             app_handle: Mutex::new(None),
             game_running: AtomicBool::new(false),
             game_job: Mutex::new(None),
-            voice_manager: crate::voice::VoiceManager::new(),
-            mic_toggle_shortcut: Mutex::new(None),
         }
     }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Activity, FolderOpen, Gamepad2, KeyRound, Mic, Palette, RefreshCw, Server, Settings, User } from "@lucide/vue";
+import { Activity, FolderOpen, Gamepad2, KeyRound, Palette, RefreshCw, Server, Settings, User } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth } from "../services/api";
 import { errorMessage, mainServerUrl, setMainServerUrl } from "../services/http";
@@ -13,7 +13,7 @@ import WAvatar from "../ui/atoms/WAvatar.vue";
 import WBadge from "../ui/atoms/WBadge.vue";
 import WButton from "../ui/atoms/WButton.vue";
 import WInput from "../ui/atoms/WInput.vue";
-import WSwitch from "../ui/atoms/WSwitch.vue";
+
 import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
@@ -208,22 +208,6 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
         <FormField label="Argumentos" for="args" hint="Por ejemplo: -window -opengl">
           <WInput id="args" v-model="settings.gameArgs" placeholder="-window" />
         </FormField>
-        <div class="settings__toggle">
-          <Mic />
-          <div>
-            <strong>Chat de voz en las salas</strong>
-            <p>Habla con tus compañeros; la voz viaja directo entre jugadores.</p>
-          </div>
-          <WSwitch v-model="settings.voiceEnabled" label="Chat de voz en las salas" />
-        </div>
-        <FormField label="Atajo del micrófono" for="mic-toggle-key" hint="Tecla global para activar/silenciar el micrófono, incluso con el juego a pantalla completa.">
-          <WInput
-            id="mic-toggle-key"
-            v-model="settings.micToggleKey"
-            placeholder="Ej: F4"
-            @change="native.setMicToggleKey(settings.micToggleKey)"
-          />
-        </FormField>
         <div class="settings__actions">
           <WButton @click="saveGame">Guardar</WButton>
         </div>
@@ -389,20 +373,6 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
   &__actions {
     display: flex;
     justify-content: flex-end;
-  }
-  &__key {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s-1);
-    padding: 2px 8px;
-    border-radius: var(--r-sm);
-    background: var(--bg-3);
-    border: 1px solid var(--line-2);
-    color: var(--text-2);
-    font-size: var(--fs-sm);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    letter-spacing: 0.1em;
-    user-select: none;
   }
   &__muted {
     margin: 0;

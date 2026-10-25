@@ -52,23 +52,6 @@ pub fn clear_room_session(s: &mut DaemonState) {
     teardown_tunnel_and_lan(s);
 }
 
-/// Forwards voice frames received over the mesh to the UI.
-pub fn spawn_voice_poll(state: Arc<Mutex<DaemonState>>, mesh: Arc<warlay::engine::PeerMeshHandle>) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(15));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            interval.tick().await;
-            for (from_client_id, opus_bytes) in mesh.poll_datagrams() {
-                emit_event(&DaemonResponse::VoiceFrameIn {
-                    from_client_id: from_client_id.to_string(),
-                    opus_bytes,
-                });
-            }
-        }
-    })
-}
-
 #[allow(clippy::too_many_arguments)]
 pub async fn start_room_session(
     state: Arc<Mutex<DaemonState>>,
@@ -111,7 +94,7 @@ pub async fn start_room_session(
         relay_addr: relay,
     }));
     s.peer_mesh = Some(mesh.clone());
-    s.voice_poll_task = Some(spawn_voice_poll(state.clone(), mesh.clone()));
+    s.voice_poll_task = None;
 
     let inbound_state = state.clone();
     let inbound_mesh = mesh.clone();

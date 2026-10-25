@@ -1,11 +1,9 @@
 use std::sync::OnceLock;
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
-use crate::core::dto::{ServerMessageEvent, ServerPingEvent, ServerStatusEvent, VoiceFrameEvent};
-use crate::state::AppState;
+use crate::core::dto::{ServerMessageEvent, ServerPingEvent, ServerStatusEvent};
 use warlay::protocol::ipc::DaemonResponse;
-use warlay::protocol::ServerMessage;
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -60,18 +58,6 @@ pub fn emit_agent_event(app: &AppHandle, response: &DaemonResponse) {
         }
         DaemonResponse::TunnelStatusChanged { running } => {
             let _ = app.emit("hubTunnel://status-changed", *running);
-        }
-        DaemonResponse::VoiceFrameIn {
-            from_client_id,
-            opus_bytes,
-        } => {
-            let _ = app.emit(
-                "voice://frame-in",
-                &VoiceFrameEvent {
-                    from_client_id: from_client_id.clone(),
-                    opus_bytes: opus_bytes.clone(),
-                },
-            );
         }
         _ => {
             // Success / Error / Pong / Connected / ConnectFailed with no

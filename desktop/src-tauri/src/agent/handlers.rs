@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tauri::async_runtime::Mutex;
 use tauri::AppHandle;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use warlay::engine::NetworkError;
@@ -146,16 +146,6 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                                         );
                                         loop {
                                             interval.tick().await;
-                                            let datagrams = mesh_handle.poll_datagrams();
-                                            for (from_client_id, opus_bytes) in datagrams {
-                                                emit_agent_event(
-                                                    &app_for_voice,
-                                                    &DaemonResponse::VoiceFrameIn {
-                                                        from_client_id: from_client_id.to_string(),
-                                                        opus_bytes,
-                                                    },
-                                                );
-                                            }
                                         }
                                     });
                                     s.voice_poll_task = Some(voice_task);
@@ -735,20 +725,6 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
             DaemonResponse::Success {
                 request_type: "LaunchGame".to_string(),
-            }
-        }
-
-        DaemonRequest::VoiceFrameOut { room_token, opus_bytes } => {
-            let peer_mesh = _state.lock().await.peer_mesh.clone();
-            if let Some(mesh) = peer_mesh {
-                let connected = mesh.connected_peers();
-                trace!(%room_token, peer_count = connected.len(), bytes_len = opus_bytes.len(), "enviando frame de voz a peers");
-                for (peer_id, _) in connected {
-                    mesh.send_datagram_to(peer_id, opus_bytes.clone());
-                }
-            }
-            DaemonResponse::Success {
-                request_type: "VoiceFrameOut".to_string(),
             }
         }
 

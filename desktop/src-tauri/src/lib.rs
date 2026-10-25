@@ -12,10 +12,9 @@ pub use warlay::protocol;
 mod state;
 mod storage;
 pub use warlay::transport;
-pub mod voice;
+
 
 use agent::state::DaemonState;
-use agent::storage::AgentStore;
 use state::AppState;
 use storage::ClientStore;
 use std::sync::Arc;
@@ -24,7 +23,6 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tokio::sync::Mutex as TokioMutex;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use warlay::protocol::ipc::DaemonRequest;
 
 /// Same AppData-path-without-an-app-handle trick as `log_cleanup::log_dir` — the
 /// local database needs to be open *before* the tracing subscriber is built
@@ -363,31 +361,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    use tauri_plugin_global_shortcut::ShortcutState;
-                    let state = app.state::<AppState>();
-                    let is_mic_toggle = state
-                        .mic_toggle_shortcut
-                        .lock()
-                        .expect("mic toggle shortcut lock poisoned")
-                        .as_ref()
-                        == Some(shortcut);
-                    // Toggle on press only -- this shortcut is a switch, not
-                    // a hold, so the release event (which still fires) is
-                    // ignored to avoid toggling twice per key press.
-                    if is_mic_toggle && event.state() == ShortcutState::Pressed {
-                        let current = state.voice_manager.is_self_mic_muted();
-                        let new_state = !current;
-                        state.voice_manager.set_self_mic_muted(new_state);
-                        let _ = app.emit("voice://self-mute-changed", new_state);
-                    }
-                })
-                .build(),
-        )
         .setup(move |app| {
-            let mic_toggle_key = settings.mic_toggle_key.clone();
             app.manage(AppState::new(store));
             let state = app.state::<AppState>();
             // Initialize the agent state (runs in-process, no separate daemon
@@ -397,11 +371,6 @@ pub fn run() {
             *state.agent_state.lock().unwrap() = Some(agent_state.clone());
             *state.app_handle.lock().unwrap() = Some(app.handle().clone());
             agent::events::set_app_handle(app.handle().clone());
-            *state
-                .mic_toggle_shortcut
-                .lock()
-                .expect("mic toggle shortcut lock poisoned") =
-                voice::register_shortcut(app.handle(), None, &mic_toggle_key);
             // Non-fatal on purpose: the overlay is a cosmetic add-on, and
             // the rest of the app (matchmaking, LAN, chat) has no reason to
             // fail to start just because this window couldn't be created.
@@ -571,13 +540,6 @@ pub fn run() {
             commands::settings::clean_logs_now,
             commands::system_info::get_system_info,
             commands::overlay::set_overlay_interactive,
-            commands::voice::push_voice_frame,
-            commands::voice::start_voice_chat,
-            commands::voice::stop_voice_chat,
-            commands::voice::toggle_mute_peer,
-            commands::voice::get_muted_peers,
-            commands::voice::toggle_self_mic_mute,
-            commands::voice::is_self_mic_muted,
             commands::agent::get_agent_settings,
             commands::agent::save_agent_settings,
             commands::agent::get_agent_status,

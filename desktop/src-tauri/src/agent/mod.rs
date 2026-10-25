@@ -32,12 +32,6 @@ pub mod shutdown;
 pub mod state;
 pub mod storage;
 
-use tracing::{error, info};
-use warlay::protocol::ipc::AgentSettings;
-
-use self::state::DaemonState;
-use self::storage::AgentStore;
-
 /// Exit code used when the agent refuses to run without elevation.
 pub const EXIT_NOT_ELEVATED: i32 = 2;
 

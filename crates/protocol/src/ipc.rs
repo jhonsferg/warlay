@@ -133,11 +133,6 @@ pub enum DaemonRequest {
         args: Vec<String>,
     },
 
-    VoiceFrameOut {
-        room_token: String,
-        opus_bytes: Vec<u8>,
-    },
-
     /// Reads the daemon's own persisted configuration (log level, LAN
     /// discovery toggle, ...) — separate from `AppSettings`, which is the
     /// desktop client's own settings and lives in a different table.
@@ -212,7 +207,6 @@ impl DaemonRequest {
             DaemonRequest::StartJoiningTunnel { .. } => "StartJoiningTunnel",
             DaemonRequest::StopHubTunnel => "StopHubTunnel",
             DaemonRequest::LaunchGame { .. } => "LaunchGame",
-            DaemonRequest::VoiceFrameOut { .. } => "VoiceFrameOut",
             DaemonRequest::GetAgentSettings => "GetAgentSettings",
             DaemonRequest::SetAgentSettings { .. } => "SetAgentSettings",
             DaemonRequest::GetAgentStatus => "GetAgentStatus",
@@ -340,11 +334,6 @@ pub enum DaemonResponse {
 
     TunnelStatusChanged {
         running: bool,
-    },
-
-    VoiceFrameIn {
-        from_client_id: String,
-        opus_bytes: Vec<u8>,
     },
 
     /// Direct reply to `GetAgentSettings`.

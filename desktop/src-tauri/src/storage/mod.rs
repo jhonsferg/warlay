@@ -186,11 +186,6 @@ impl ClientStore {
             graphics_api: String::new(),
             audio_output_device_id: String::new(),
             log_retention_days: 7,
-            voice_enabled: false,
-            microphone_device_id: String::new(),
-            mic_toggle_key: String::new(),
-            voice_input_volume: 1.0,
-            voice_output_volume: 1.0,
         })
     }
 

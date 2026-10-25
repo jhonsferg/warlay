@@ -95,7 +95,6 @@ export const native = {
   saveAgentSettings: (settings: AgentSettings) => invoke<void>("save_agent_settings", { settings }),
   setLogLevel: (target: "console" | "file", level: string) => invoke<void>("set_log_level", { target, level }),
   setLogRetentionDays: (days: number) => invoke<void>("set_log_retention_days", { days }),
-  setMicToggleKey: (key: string) => invoke<void>("set_mic_toggle_key", { key }),
   logUsage: () => invoke<LogUsage | undefined>("get_log_usage"),
   cleanLogsNow: (allInactive: boolean) => invoke<LogUsage | undefined>("clean_logs_now", { allInactive }),
 
@@ -121,9 +120,6 @@ export const native = {
     invoke<void>("update_room_helper", { rendezvousAddr: helper.rendezvousAddr, relayAddr: helper.relayAddr }),
   setOverlayRoster: (roomId: string | null, members: { clientId: string; displayName: string }[]) =>
     invoke<void>("set_overlay_roster", { roomId, members }),
-  startVoiceChat: (roomToken: string) =>
-    invoke<void>("start_voice_chat", { roomToken, inputDeviceId: null, outputDeviceId: null }),
-  stopVoiceChat: () => invoke<void>("stop_voice_chat"),
   startGameTunnel: (gamePort: number) => invoke<void>("start_game_tunnel", { gamePort }),
 
   launchGame: (path: string, args: string[]) =>

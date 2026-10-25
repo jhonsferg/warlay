@@ -71,14 +71,6 @@ pub struct ServerMessageEvent {
     pub server_id: String,
     pub message: ServerMessage,
 }
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct VoiceFrameEvent {
-    pub from_client_id: String,
-    pub opus_bytes: Vec<u8>,
-}
-
 fn default_master_volume() -> f32 {
     1.0
 }
@@ -124,18 +116,4 @@ pub struct AppSettings {
     // once at every launch, and again immediately whenever this changes.
     #[serde(default = "default_log_retention_days")]
     pub log_retention_days: u32,
-    #[serde(default)]
-    pub voice_enabled: bool,
-    #[serde(default)]
-    pub microphone_device_id: String,
-    // Toggles the microphone on/off on press -- the *only* voice control
-    // key. The mic always starts off (see `voice::capture::AudioCapture`);
-    // this is what turns it on, and pressing it again mutes back. See
-    // `voice::register_shortcut` and its two call sites.
-    #[serde(default)]
-    pub mic_toggle_key: String,
-    #[serde(default = "default_master_volume")]
-    pub voice_input_volume: f32,
-    #[serde(default = "default_master_volume")]
-    pub voice_output_volume: f32,
 }
