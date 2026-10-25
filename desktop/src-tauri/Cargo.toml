@@ -14,9 +14,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # The crate/package stays "desktop" (so `cargo build -p desktop` and the
 # workspace member path keep working unchanged) -- only the produced binary
 # is renamed, to "warlay.exe".
+#
+# `test = false`: main.rs holds no unit tests (the agent's live in
+# `crates/agent`), so the harness cargo would build for this binary has
+# nothing to run.
 [[bin]]
 name = "warlay"
 path = "src/main.rs"
+test = false
 
 [features]
 # Without this, tauri::generate_context!() has no feature to check and
@@ -34,6 +39,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 warlay = { workspace = true, features = ["transport", "core", "protocol", "crypto"] }
+# The network agent, embedded so warlay.exe can *be* the daemon it used to
+# ship as a separate wnetd.exe (`warlay.exe --daemon`).
+warlay-agent = { workspace = true }
 anyhow = { workspace = true }
 if-addrs = { workspace = true }
 rusqlite = { workspace = true }

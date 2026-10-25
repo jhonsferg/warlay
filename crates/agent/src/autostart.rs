@@ -15,12 +15,14 @@ fn silent_command(program: &str) -> std::process::Command {
 }
 
 /// Registers a Scheduled Task that starts this exact binary at logon with
-/// the user's highest available privileges. Does not launch it immediately:
-/// the desktop app's own startup loading screen is what starts the daemon
-/// (with a real, visible UAC prompt if elevation is needed) the first time
-/// it's actually needed -- the installer eagerly launching one of its own,
-/// non-interactively, would race with that and give no way to surface an
-/// elevation failure to the user.
+/// the user's highest available privileges, always in `--daemon` mode: the
+/// binary is warlay.exe itself now (the daemon is embedded in it), so
+/// without the flag the task would open the desktop UI at every logon
+/// instead of the agent. Does not launch it immediately: the desktop app's
+/// own startup loading screen is what starts the agent (elevated, through
+/// the manifest) the first time it's actually needed -- the installer
+/// eagerly launching one of its own, non-interactively, would race with that
+/// and give no way to surface an elevation failure to the user.
 ///
 /// A Scheduled Task rather than a true SCM Windows Service deliberately:
 /// a service would run as `LocalSystem` before any user logs in, and
@@ -43,7 +45,9 @@ pub fn install_autostart() -> std::io::Result<()> {
             "/tn",
             AUTOSTART_TASK_NAME,
             "/tr",
-            &format!("\"{exe_path_str}\""),
+            // Quoted because Program Files paths contain spaces; the flag
+            // selects agent mode (see `parse_invocation`).
+            &format!("\"{exe_path_str}\" --daemon"),
             "/sc",
             "onlogon",
             "/rl",

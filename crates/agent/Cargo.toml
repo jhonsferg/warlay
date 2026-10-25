@@ -1,0 +1,39 @@
+[package]
+name = "agent"
+description = "Warlay network agent: everything wnetd.exe does, as a library"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# The whole `wnetd` daemon lives here as a library so it can run in two
+# places: the standalone `wnetd.exe` binary (the `daemon/` package, a thin
+# wrapper kept for development, CI and the occasional manual run) and
+# `warlay.exe` itself, which dispatches to it on `--daemon` -- that is what
+# makes a single distributed binary possible. One implementation, two hosts:
+# nothing about the daemon can drift between them because there is only one
+# copy of it.
+#
+# There is deliberately no `build.rs` here: the elevation manifest
+# (`requireAdministrator`) belongs to whichever *binary* embeds this crate,
+# never to the library. Keep it that way -- a manifest on a lib crate leaks
+# into that package's own test binaries and forces every `cargo test` to run
+# from an elevated shell.
+[lib]
+name = "warlay_agent"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+time = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+rusqlite = { workspace = true }
+base64 = { workspace = true }
+warlay = { workspace = true, features = ["protocol", "engine"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }

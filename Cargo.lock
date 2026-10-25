@@ -19,6 +19,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent"
+version = "0.4.2"
+dependencies = [
+ "base64 0.23.1",
+ "rusqlite",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "uuid",
+ "warlay",
+ "windows 0.59.0",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1158,20 +1175,8 @@ dependencies = [
 name = "daemon"
 version = "0.4.2"
 dependencies = [
- "anyhow",
- "base64 0.23.1",
- "rusqlite",
- "serde",
- "serde_json",
+ "agent",
  "tauri-winres",
- "time",
- "tokio",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "uuid",
- "warlay",
- "windows 0.59.0",
 ]
 
 [[package]]
@@ -1307,6 +1312,7 @@ dependencies = [
 name = "desktop"
 version = "0.4.2"
 dependencies = [
+ "agent",
  "anyhow",
  "audiopus",
  "cpal",

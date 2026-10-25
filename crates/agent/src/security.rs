@@ -50,9 +50,11 @@ pub fn build_pipe_security_attributes() -> usize {
 /// client -- nothing here trusts anything the other end says about itself)
 /// which process actually holds the far end of the pipe via
 /// `GetNamedPipeClientProcessId`, then verify its full image path is
-/// exactly this installation's `warlay.exe`, sitting next to this very
-/// `wnetd.exe` binary (the installer always places both in the same
-/// directory). Doesn't stop every conceivable attack -- code injected into
+/// exactly this installation's `warlay.exe`. That file is the client *and*
+/// the agent (it runs itself in agent mode with `--daemon`), so the expected
+/// path is the same file we are running from, whether this process was
+/// started as `warlay.exe --daemon` or as the standalone `wnetd.exe` sitting
+/// next to it. Doesn't stop every conceivable attack -- code injected into
 /// an already-running, legitimate `warlay.exe` would still pass -- but it
 /// closes the trivial case of "any other process running as this user
 /// talks to our pipe and asks us to do something privileged on its
