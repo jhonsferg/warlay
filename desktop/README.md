@@ -135,7 +135,5 @@ Windows 10 and 11.
 ```sh
 npm run build                         # vue-tsc type-check + Vite bundle
 npm run test:unit                     # frontend unit tests (src/services/*.test.ts)
-npx playwright test --config e2e/playwright.config.ts e2e/network-status.spec.ts
-                                      # browser specs; flows.spec.ts also needs a main server
 cargo test -p desktop -p protocol     # backend unit tests (from the repo root)
 ```
