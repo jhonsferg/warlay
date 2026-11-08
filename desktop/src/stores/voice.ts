@@ -5,6 +5,7 @@ import { VoiceEngine, voiceSupported } from "../services/voice";
 import { speakingNow } from "../services/voiceJitter";
 import { classifyMicError } from "../services/voicePrefs";
 import { useSettings } from "./settings";
+import { useToasts } from "./toasts";
 
 function fromBase64(text: string): Uint8Array {
   const bin = atob(text);
@@ -20,6 +21,7 @@ export type MicDialog = "ask" | "blocked" | null;
 /** In-room voice chat: mic on/off like Meet, and who is speaking. */
 export const useVoice = defineStore("voice", () => {
   const settings = useSettings();
+  const toasts = useToasts();
   /** The microphone/engine is open (the user joined voice). */
   const active = ref(false);
   const muted = ref(true);
@@ -109,6 +111,9 @@ export const useVoice = defineStore("voice", () => {
       engine.setMuted(false);
       muted.value = false;
       active.value = true;
+      if (settings.noiseSuppression === "strong" && engine.noiseFallbackReason) {
+        toasts.info("Supresión fuerte no disponible", "Se usa la estándar del navegador.");
+      }
       // Mute toggle while the game has focus; a taken key is not fatal.
       await native.registerVoiceShortcut().catch((e) => {
         error.value = e instanceof Error ? e.message : String(e);
