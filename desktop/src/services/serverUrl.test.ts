@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEV_SERVER_URL, parseServerUrl, resolveServerUrl, serverUrlProblem } from "./serverUrl.ts";
+import {
+  DEV_SERVER_URL,
+  LEGACY_SERVER_OVERRIDE_KEY,
+  parseServerUrl,
+  removeLegacyServerOverride,
+  resolveServerUrl,
+  serverUrlProblem,
+} from "./serverUrl.ts";
 
 test("a plain http(s) address is accepted and normalised", () => {
   assert.equal(parseServerUrl("https://warlay.example.com"), "https://warlay.example.com");
@@ -52,4 +59,15 @@ test("without an address only development falls back to a local server", () => {
 
 test("a malformed address fails even in development instead of hiding the mistake", () => {
   assert.throws(() => resolveServerUrl("warlay.example.com", true), /plain http\(s\) address/);
+});
+
+test("a server address typed in an older version is forgotten", () => {
+  const data = new Map([
+    [LEGACY_SERVER_OVERRIDE_KEY, "https://old.example.com"],
+    ["warlay.tokens", "keep me"],
+  ]);
+  removeLegacyServerOverride({ removeItem: (key) => void data.delete(key) });
+  assert.equal(data.has(LEGACY_SERVER_OVERRIDE_KEY), false);
+  assert.equal(data.get("warlay.tokens"), "keep me", "nothing else is touched");
+  removeLegacyServerOverride({ removeItem: (key) => void data.delete(key) }); // idempotent
 });
