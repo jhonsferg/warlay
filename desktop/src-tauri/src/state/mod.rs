@@ -27,23 +27,6 @@ pub struct AppState {
     /// server (the LAN-mesh relay callbacks) find the one server it should
     /// actually talk to.
     pub active_room_server: Mutex<Option<Uuid>>,
-    /// The active room's id + real member roster, kept current by hub
-    /// messages (`RoomCreated`/`JoinedRoom`/`RoomMembersChanged`/`LeftRoom`/
-    /// `RoomRemoved`) that pass through the agent's event pipeline -- the
-    /// single source of truth `get_room_members` hands back on request.
-    /// `None` when there's no active room; the room id is kept alongside the
-    /// members (not just a bare `Vec`) so a `RoomRemoved` for some *other*
-    /// room this client isn't in can't wrongly clear it -- same guard
-    /// `store/bootstrap.ts` already does for the main window's own copy.
-    ///
-    /// Exists because the overlay window is a separate JS realm from the
-    /// main window's Pinia store (see `OverlayApp.vue`'s own doc comment)
-    /// and, unlike the overlay's other state, had nothing to query on
-    /// mount: it only ever learned about members from *new* push events,
-    /// so a game launched after the room already had members (the common
-    /// case) showed "Sin jugadores en sala" forever despite real members
-    /// being present.
-    pub active_room: Mutex<Option<(Uuid, Vec<warlay::protocol::RoomMember>)>>,
     /// Watches the launched game process for exit so the UI can show "saliste
     /// de la partida" and auto-leave the room.
     pub game_exit_watcher: Mutex<Option<JoinHandle<()>>>,
@@ -85,7 +68,6 @@ impl AppState {
             relay_client: Mutex::new(None),
             game_poller: Mutex::new(None),
             active_room_server: Mutex::new(None),
-            active_room: Mutex::new(None),
             game_exit_watcher: Mutex::new(None),
             agent_state: Mutex::new(None),
             app_handle: Mutex::new(None),
