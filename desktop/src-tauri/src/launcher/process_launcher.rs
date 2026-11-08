@@ -223,19 +223,13 @@ pub fn launch(
 /// Checks whether any currently running process' image name matches
 /// `executable_path`'s filename.
 ///
-/// Originally this also opened each name-matching process
-/// (`OpenProcess`/`QueryFullProcessImageNameW`) and required its full image
-/// path to equal `executable_path` exactly, mirroring the identity check the
-/// agent does for its pipe clients (`crates/agent/src/security.rs`'s
-/// `verify_client_process`) -- appropriate there since that's a real
-/// security boundary, but wrong here: it went permanently blind for exactly
-/// the case `launch_game`'s own `MIN_REAL_SESSION` comment already
-/// documents ("many real-world game installs, Battle.net-wrapped Warcraft
-/// III among them, run the launched .exe only as a stub that spawns the
-/// actual game process"). The stub is what's configured/launched; the real,
-/// still-running game process lives at a *different* path, so the strict
-/// check reported "detenido" while the user was actively in a match.
-/// Matching on the filename alone is what actually holds across that
+/// Only the filename is compared, not the full image path: `launch_game`'s
+/// own `MIN_REAL_SESSION` comment documents that many real-world game
+/// installs (Battle.net-wrapped Warcraft III among them) run the launched
+/// .exe only as a stub that spawns the actual game process. The stub is what
+/// is configured and launched; the real, still-running game process lives at
+/// a *different* path, so a strict path check would report "detenido" while
+/// the user is actively in a match. The filename holds across that
 /// indirection -- the same tolerance the exit side already needed.
 #[cfg(windows)]
 pub fn is_process_running_at(executable_path: &Path) -> bool {
