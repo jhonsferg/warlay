@@ -30,11 +30,12 @@ pub fn snapshot(s: &AgentState) -> NetworkStatus {
         .map(|mesh| {
             mesh.peer_statuses()
                 .into_iter()
-                .map(|(client_id, is_host, p2p_addr, state)| PeerLinkStatus {
+                .map(|(client_id, is_host, p2p_addr, state, rtt_ms)| PeerLinkStatus {
                     client_id: client_id.to_string(),
                     is_host,
                     p2p_addr: p2p_addr.map(|a| a.to_string()),
                     state: state.to_string(),
+                    rtt_ms,
                 })
                 .collect()
         })

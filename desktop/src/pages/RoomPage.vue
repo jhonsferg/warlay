@@ -9,6 +9,7 @@ import {
   Radio,
   Repeat2,
   ShieldCheck,
+  Signal,
   UserMinus,
   UserPlus,
   Waypoints,
@@ -17,6 +18,7 @@ import {
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { errorMessage } from "../services/http";
+import { pingLabel } from "../services/networkStatus";
 import type { UserSummary } from "../services/types";
 import { useRooms } from "../stores/rooms";
 import { useSession } from "../stores/session";
@@ -78,6 +80,13 @@ function linkOf(member: UserSummary): Link | null {
       return { label: "Esperando", tone: "neutral", icon: Radio };
   }
 }
+
+/** The ping to this player: only members with a live link have one. */
+function pingOf(member: UserSummary) {
+  return pingLabel(rooms.linkOf(member.id)?.rttMs);
+}
+
+const isSpeaking = (m: UserSummary) => voice.speaking.includes(m.id);
 
 const directCount = computed(() => rooms.links.filter((l) => l.state === "connected").length);
 const relayCount = computed(() => rooms.links.filter((l) => l.state === "relayed").length);
@@ -196,19 +205,51 @@ async function kick(member: UserSummary) {
             v-for="m in room.members"
             :key="m.id"
             class="slot"
-            :class="{ 'slot--speaking': voice.speaking.includes(m.id) }"
+            :class="{ 'slot--speaking': isSpeaking(m) }"
             :data-member="m.username"
           >
-            <WAvatar :name="m.displayName" :color="m.avatarColor" size="lg" />
+            <span
+              class="slot__avatar"
+              :class="{ 'slot__avatar--speaking': voice.speaking.includes(m.id) }"
+              :style="{ '--level': voice.levels[m.id] ?? 0 }"
+              :data-speaking="voice.speaking.includes(m.id)"
+            >
+              <WAvatar :name="m.displayName" :color="m.avatarColor" size="lg" />
+              <span
+                v-if="voice.members[m.id] === 'muted'"
+                class="slot__mic slot__mic--muted"
+                data-testid="mic-muted"
+                title="Micrófono silenciado"
+                ><MicOff :size="12"
+              /></span>
+              <span
+                v-else-if="voice.members[m.id] === 'live'"
+                class="slot__mic slot__mic--live"
+                data-testid="mic-live"
+                title="En la llamada de voz"
+                ><Mic :size="12"
+              /></span>
+            </span>
             <div class="slot__info">
               <strong>
                 {{ m.displayName }}
                 <Crown v-if="m.id === room.host.id" class="slot__crown" :size="14" />
+                <span
+                  v-if="isSpeaking(m)"
+                  class="slot__wave"
+                  data-testid="speaking-wave"
+                  aria-label="Hablando"
+                  :style="{ '--level': voice.levels[m.id] ?? 0 }"
+                  ><i /><i /><i
+                /></span>
               </strong>
               <span v-if="m.id === session.me?.id" class="slot__you">Tú</span>
-              <WBadge v-else-if="linkOf(m)" :tone="linkOf(m)!.tone"
-                ><component :is="linkOf(m)!.icon" />{{ linkOf(m)!.label }}</WBadge
-              >
+              <div v-else-if="linkOf(m)" class="slot__badges">
+                <WBadge :tone="linkOf(m)!.tone"><component :is="linkOf(m)!.icon" />{{ linkOf(m)!.label }}</WBadge>
+                <WBadge v-if="pingOf(m)" :tone="pingOf(m)!.tone" data-testid="ping"
+                  ><Signal />{{ pingOf(m)!.text }}</WBadge
+                >
+              </div>
             </div>
             <WIconButton
               v-if="m.id !== session.me?.id && !isFriend(m.id) && !isPending(m.id)"
@@ -368,10 +409,28 @@ async function kick(member: UserSummary) {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  transition: box-shadow 0.12s;
 
+  // The ring only exists while the member is speaking and grows with their
+  // volume (--level 0..1), like Meet and Teams. It lights up at once and
+  // fades out gently.
   &--speaking {
-    box-shadow: 0 0 0 2px var(--success, #3ecf8e);
+    border-color: rgba(62, 207, 142, 0.5);
+  }
+
+  &__avatar {
+    position: relative;
+    flex-shrink: 0;
+    display: inline-flex;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 transparent;
+    transition: box-shadow 0.35s ease-out;
+
+    &--speaking {
+      box-shadow:
+        0 0 0 2px var(--success, #3ecf8e),
+        0 0 calc(4px + var(--level, 0) * 12px) calc(var(--level, 0) * 4px) rgba(62, 207, 142, 0.55);
+      transition: box-shadow 0.06s linear;
+    }
   }
 
   &__info {
@@ -388,6 +447,56 @@ async function kick(member: UserSummary) {
       gap: 6px;
       max-width: 100%;
     }
+  }
+  // Mic state on the corner of the avatar, like Meet and Teams.
+  &__mic {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 2px solid var(--bg-2);
+    color: #fff;
+
+    &--muted {
+      background: var(--danger, #ef4444);
+    }
+    &--live {
+      background: var(--success, #3ecf8e);
+      color: #06281a;
+    }
+  }
+
+  // Three bars that move with the member's volume, like Teams.
+  &__wave {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 14px;
+    color: var(--success, #3ecf8e);
+
+    i {
+      width: 3px;
+      height: calc(4px + var(--level, 0) * 10px);
+      border-radius: 2px;
+      background: currentColor;
+      transition: height 0.06s linear;
+    }
+    i:nth-child(1) {
+      height: calc(3px + var(--level, 0) * 6px);
+    }
+    i:nth-child(3) {
+      height: calc(3px + var(--level, 0) * 8px);
+    }
+  }
+
+  &__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
   }
   &__crown {
     color: var(--in-room);

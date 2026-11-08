@@ -1,6 +1,7 @@
 import { chooseCaptureTrack, type CaptureChoice } from "./captureChain";
 import { createRnnoiseFilter } from "./noiseSuppression";
 import { audioConstraints, type MicPrefs } from "./voicePrefs";
+import { rms, VoiceGate } from "./voiceActivity";
 import { PlaybackClock } from "./voiceJitter";
 
 /**
@@ -27,8 +28,23 @@ export function voiceSupported(): boolean {
   );
 }
 
+/** Level (0..1) of one captured frame. If it cannot be read the frame counts
+ * as loud: better to send silence than to cut someone's voice. */
+function levelOf(data: any): number {
+  try {
+    const samples = new Float32Array(data.numberOfFrames);
+    data.copyTo(samples, { planeIndex: 0, format: "f32-planar" });
+    return rms(samples);
+  } catch {
+    return 1;
+  }
+}
+
 export interface VoiceTransport {
   send(frame: Uint8Array): void;
+  /** Level (RMS, 0..1) of a frame being sent (`from` null: this microphone)
+   * or just decoded from a member. Drives the speaking rings. */
+  onLevel?(from: string | null, level: number): void;
 }
 
 export class VoiceEngine {
@@ -44,6 +60,7 @@ export class VoiceEngine {
   private readonly desktopPeers = new Map<string, { decoder: any; clock: PlaybackClock; ts: number }>();
   private muted = true;
   private running = false;
+  private readonly gate = new VoiceGate();
 
   constructor(private readonly transport: VoiceTransport) {}
 
@@ -105,8 +122,15 @@ export class VoiceEngine {
       while (this.running) {
         const { value, done } = await this.reader.read();
         if (done || !value) break;
-        // While muted nothing is encoded or sent at all.
-        if (!this.muted && this.encoder?.state === "configured") this.encoder.encode(value);
+        // While muted nothing is encoded or sent at all; unmuted but silent,
+        // nothing is sent either, so the others only see who is really talking.
+        if (!this.muted && this.encoder?.state === "configured") {
+          const level = levelOf(value);
+          if (this.gate.pass(level)) {
+            this.transport.onLevel?.(null, level);
+            this.encoder.encode(value);
+          }
+        }
         value.close();
       }
     } catch (e) {
@@ -116,6 +140,7 @@ export class VoiceEngine {
 
   setMuted(muted: boolean) {
     this.muted = muted;
+    this.gate.reset();
     // Also tell the OS the mic is not in use (the browser's recording
     // indicator goes off while muted, like Meet).
     this.stream?.getAudioTracks().forEach((t) => (t.enabled = !muted));
@@ -201,6 +226,7 @@ export class VoiceEngine {
     data.copyTo(samples, { planeIndex: 0, format: "f32-planar" });
     const duration = data.numberOfFrames / data.sampleRate;
     data.close();
+    this.transport.onLevel?.(from, rms(samples));
     const start = peer.clock.schedule(ctx.currentTime, duration);
     if (start === null) return;
     const buffer = ctx.createBuffer(CHANNELS, samples.length, SAMPLE_RATE);

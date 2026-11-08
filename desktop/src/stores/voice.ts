@@ -2,8 +2,18 @@ import { defineStore } from "pinia";
 import { onScopeDispose, ref } from "vue";
 import { native } from "../services/native";
 import { VoiceEngine, voiceSupported } from "../services/voice";
+import { meterLevel, smoothLevel } from "../services/voiceActivity";
 import { speakingNow } from "../services/voiceJitter";
+import {
+  decodeStateFrame,
+  encodeStateFrame,
+  HEARTBEAT_MS,
+  VoicePresence,
+  type VoiceAnnouncement,
+  type VoiceState,
+} from "../services/voicePresence";
 import { classifyMicError } from "../services/voicePrefs";
+import { useSession } from "./session";
 import { useSettings } from "./settings";
 import { useToasts } from "./toasts";
 
@@ -21,6 +31,7 @@ export type MicDialog = "ask" | "blocked" | null;
 /** In-room voice chat: mic on/off like Meet, and who is speaking. */
 export const useVoice = defineStore("voice", () => {
   const settings = useSettings();
+  const session = useSession();
   const toasts = useToasts();
   /** The microphone/engine is open (the user joined voice). */
   const active = ref(false);
@@ -33,10 +44,46 @@ export const useVoice = defineStore("voice", () => {
   /** This PC's sound is being shared with the room right now. */
   const sharingDesktop = ref(false);
 
+  /** Smoothed 0..1 volume of whoever is speaking, for the rings' size. */
+  const levels = ref<Record<string, number>>({});
+
+  /** Who is in voice and whether their mic is muted (the mic icons). Members
+   * not listed are not in voice. Includes this user. */
+  const members = ref<Record<string, VoiceState>>({});
+  const presence = new VoicePresence();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+  /** Tells the room this user's state (a control packet on the voice channel). */
+  function announce(what: VoiceAnnouncement) {
+    void native.sendVoiceFrame(encodeStateFrame(what)).catch(() => {});
+  }
+  function announceState() {
+    announce(muted.value ? "muted" : "live");
+  }
+  /** Sent twice: a lost datagram would leave a stale icon until the heartbeat. */
+  function announceChange() {
+    announceState();
+    setTimeout(() => active.value && announceState(), 120);
+  }
+
   const lastFrameAt = new Map<string, number>();
+  const rawLevel = new Map<string, number>();
+  const shownLevel = new Map<string, number>();
+
+  /** A voice was just heard: the ring lights up at once, not on the next tick. */
+  function heard(id: string, level: number) {
+    lastFrameAt.set(id, performance.now());
+    rawLevel.set(id, Math.max(rawLevel.get(id) ?? 0, meterLevel(level)));
+    if (!speaking.value.includes(id)) speaking.value = [...speaking.value, id];
+  }
+
   const engine = new VoiceEngine({
     send: (frame) => {
       void native.sendVoiceFrame(frame).catch(() => {});
+    },
+    onLevel: (from, level) => {
+      const id = from ?? session.me?.id;
+      if (id) heard(id, level);
     },
   });
   let unlistenFrames: (() => void) | null = null;
@@ -50,8 +97,17 @@ export const useVoice = defineStore("voice", () => {
       unlistenFrames = await native.onVoiceFrames((batch) => {
         const now = performance.now();
         for (const { from, data } of batch) {
+          const bytes = fromBase64(data);
+          const control = decodeStateFrame(bytes);
+          if (control) {
+            if (control === "left") presence.forget(from);
+            else presence.update(from, control, now);
+            continue;
+          }
+          // The ring lights up on arrival; its size follows the decoded level.
           lastFrameAt.set(from, now);
-          engine.push(from, fromBase64(data));
+          if (!speaking.value.includes(from)) speaking.value = [...speaking.value, from];
+          engine.push(from, bytes);
         }
       });
     }
@@ -64,7 +120,21 @@ export const useVoice = defineStore("voice", () => {
       speakingTimer = setInterval(() => {
         const next = speakingNow(lastFrameAt, performance.now());
         if (next.join() !== speaking.value.join()) speaking.value = next;
-      }, 150);
+        // Meter: rises at once, falls gradually (like Meet and Teams).
+        const out: Record<string, number> = {};
+        for (const id of next) {
+          const level = smoothLevel(shownLevel.get(id) ?? 0, rawLevel.get(id) ?? 0);
+          shownLevel.set(id, level);
+          out[id] = Math.round(level * 100) / 100;
+        }
+        for (const id of [...shownLevel.keys()]) if (!next.includes(id)) shownLevel.delete(id);
+        rawLevel.clear();
+        levels.value = out;
+        const mine = session.me?.id;
+        const nextMembers = presence.snapshot(performance.now());
+        if (mine && active.value) nextMembers[mine] = muted.value ? "muted" : "live";
+        if (JSON.stringify(nextMembers) !== JSON.stringify(members.value)) members.value = nextMembers;
+      }, 60);
     }
   }
 
@@ -121,6 +191,7 @@ export const useVoice = defineStore("voice", () => {
     if (active.value) {
       muted.value = !muted.value;
       engine.setMuted(muted.value);
+      announceChange();
       return;
     }
     if (!voiceSupported()) {
@@ -145,6 +216,8 @@ export const useVoice = defineStore("voice", () => {
       engine.setMuted(false);
       muted.value = false;
       active.value = true;
+      announceChange();
+      heartbeat ??= setInterval(announceState, HEARTBEAT_MS);
       if (settings.noiseSuppression === "strong" && engine.noiseFallbackReason) {
         toasts.info("Supresión fuerte no disponible", "Se usa la estándar del navegador.");
       }
@@ -171,6 +244,9 @@ export const useVoice = defineStore("voice", () => {
   }
 
   async function leave() {
+    if (active.value) announce("left");
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
     if (sharingDesktop.value) {
       await native.stopDesktopAudio().catch(() => {});
       sharingDesktop.value = false;
@@ -180,7 +256,12 @@ export const useVoice = defineStore("voice", () => {
     active.value = false;
     muted.value = true;
     speaking.value = [];
+    levels.value = {};
+    members.value = {};
+    presence.clear();
     lastFrameAt.clear();
+    rawLevel.clear();
+    shownLevel.clear();
     // A failing unlisten must never leave voice half torn down.
     for (const stop of [unlistenFrames, unlistenDesktop, unlistenToggle]) {
       try {
@@ -205,6 +286,8 @@ export const useVoice = defineStore("voice", () => {
     error,
     dialog,
     speaking,
+    levels,
+    members,
     sharingDesktop,
     syncDesktopShare,
     toggle,
