@@ -195,3 +195,24 @@ fn the_capture_stops_when_the_handle_is_dropped() {
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(*calls.lock().unwrap(), after_stop, "frames kept arriving after the stop");
 }
+
+/// Against a REAL running Warlay (see .claude/scripts/webview_real.py): that
+/// app's WebView2 plays 440 Hz (standing for the other players' voices) and a
+/// sibling process plays 880 Hz (standing for the game). Reads the app's PID
+/// from `WARLAY_E2E_PID`.
+#[test]
+#[ignore = "driven by .claude/scripts/webview_real.py with a real Warlay running"]
+fn the_real_webview_is_excluded_and_a_sibling_game_is_shared() {
+    let app: u32 = std::env::var("WARLAY_E2E_PID")
+        .expect("WARLAY_E2E_PID")
+        .parse()
+        .expect("numeric pid");
+    let webview = super::process::child_process_named(app, "msedgewebview2.exe")
+        .expect("the app has no msedgewebview2.exe child: the exclusion would fall back to the whole app");
+    println!("excluding the WebView2 browser process {webview} (child of {app})");
+    let pcm = capture(webview, Duration::from_secs(4));
+    let (voice, game) = (loudest_tone(&pcm, 440.0), loudest_tone(&pcm, 880.0));
+    println!("REAL WEBVIEW: 440 Hz (in the webview) {voice:.0}; 880 Hz (sibling) {game:.0}");
+    assert!(game > AUDIBLE, "the sibling 'game' must be shared ({game:.0})");
+    assert!(voice < ABSENT, "the real WebView2 audio leaked into the shared stream ({voice:.0})");
+}
