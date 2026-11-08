@@ -4,7 +4,7 @@
 //! replayed onto the local network.
 //!
 //! Kept free of sockets and of any UI/runtime types so the exact same code
-//! runs in the desktop agent, in the lab CLI and in unit tests.
+//! runs in the desktop client, in the lab CLI and in unit tests.
 
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
