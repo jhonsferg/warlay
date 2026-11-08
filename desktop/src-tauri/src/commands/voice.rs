@@ -44,6 +44,31 @@ pub async fn send_voice_frame(request: Request<'_>, state: State<'_, AppState>) 
     Ok(mesh.map(|mesh| mesh.broadcast_voice_frame(&frame)).unwrap_or(0))
 }
 
+/// Remembers (or withdraws) the user's answer to Warlay's own microphone
+/// dialog. Must be set BEFORE the webview calls `getUserMedia`: the
+/// permission policy (`permissions::decide`) reads it.
+#[tauri::command]
+pub fn set_mic_consent(state: State<'_, AppState>, granted: bool) -> Result<(), AppError> {
+    state.store.set_mic_consent(granted)?;
+    Ok(())
+}
+
+/// Opens Windows' "Microphone" privacy page, for when the OS itself blocks
+/// desktop apps from the microphone (nothing Warlay can override).
+#[tauri::command]
+pub fn open_mic_privacy_settings() -> Result<(), AppError> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", "ms-settings:privacy-microphone"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()?;
+    }
+    Ok(())
+}
+
 /// Default global mute toggle, usable while the game has focus.
 pub const DEFAULT_MUTE_SHORTCUT: &str = "Ctrl+Shift+M";
 
