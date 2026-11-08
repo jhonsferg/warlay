@@ -1,6 +1,11 @@
 import { fileURLToPath, URL } from "node:url";
 import vue from "@vitejs/plugin-vue";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
+
+const { version } = JSON.parse(readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf8")) as {
+  version: string;
+};
 
 // Every component's own scoped SCSS needs the shared design tokens
 // ($gold, $border-iron, etc.) without every single file remembering to
@@ -15,7 +20,14 @@ const mixinsPath = fileURLToPath(new URL("./src/styles/_mixins.scss", import.met
 // Tauri expects a fixed, predictable dev server port and no automatic
 // browser opening; it drives the webview itself.
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // Stamps the app version into the splash screen in index.html.
+    {
+      name: "splash-version",
+      transformIndexHtml: (html: string) => html.replace("%APP_VERSION%", version),
+    },
+  ],
   clearScreen: false,
   css: {
     preprocessorOptions: {
