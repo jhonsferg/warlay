@@ -1004,7 +1004,9 @@ async fn offline_friends_report_when_they_were_last_seen() {
     })
     .await;
     let offline = find(&friends, b.id);
-    let seen = offline["presence"]["lastSeenAt"].as_str().expect("lastSeenAt for an offline friend");
+    let seen = offline["presence"]["lastSeenAt"]
+        .as_str()
+        .expect("lastSeenAt for an offline friend");
     let seen = chrono::DateTime::parse_from_rfc3339(seen).expect("RFC 3339 timestamp");
     let age = chrono::Utc::now().signed_duration_since(seen).num_seconds();
     assert!((0..60).contains(&age), "seen {age}s ago");
@@ -1027,8 +1029,10 @@ async fn notifications_can_be_cleared_one_by_one_or_all_at_once() {
     let c = s.register("nt_c").await;
 
     // B receives two friend requests; A keeps one of its own.
-    s.ok("POST", "/friends/requests", &a, Some(json!({ "username": b.username }))).await;
-    s.ok("POST", "/friends/requests", &c, Some(json!({ "username": b.username }))).await;
+    s.ok("POST", "/friends/requests", &a, Some(json!({ "username": b.username })))
+        .await;
+    s.ok("POST", "/friends/requests", &c, Some(json!({ "username": b.username })))
+        .await;
     let requests = s.ok("GET", "/friends/requests", &b, None).await;
     let from_a = requests["incoming"]
         .as_array()
@@ -1039,7 +1043,8 @@ async fn notifications_can_be_cleared_one_by_one_or_all_at_once() {
         .as_str()
         .unwrap()
         .to_string();
-    s.ok("POST", &format!("/friends/requests/{from_a}/accept"), &b, None).await;
+    s.ok("POST", &format!("/friends/requests/{from_a}/accept"), &b, None)
+        .await;
 
     let before_b = s.ok("GET", "/notifications", &b, None).await;
     assert_eq!(before_b.as_array().unwrap().len(), 2);
@@ -1056,12 +1061,23 @@ async fn notifications_can_be_cleared_one_by_one_or_all_at_once() {
     // Nobody can delete somebody else's notification.
     let others = before_a[0]["id"].as_str().unwrap().to_string();
     s.ok("DELETE", &format!("/notifications/{others}"), &b, None).await;
-    assert_eq!(s.ok("GET", "/notifications", &a, None).await.as_array().unwrap().len(), 1);
+    assert_eq!(
+        s.ok("GET", "/notifications", &a, None).await.as_array().unwrap().len(),
+        1
+    );
 
     // All at once, only mine.
     s.ok("DELETE", "/notifications", &b, None).await;
-    assert!(s.ok("GET", "/notifications", &b, None).await.as_array().unwrap().is_empty());
-    assert_eq!(s.ok("GET", "/notifications", &a, None).await.as_array().unwrap().len(), 1);
+    assert!(s
+        .ok("GET", "/notifications", &b, None)
+        .await
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        s.ok("GET", "/notifications", &a, None).await.as_array().unwrap().len(),
+        1
+    );
 
     // Clearing the bell never discards what still needs an answer: C's
     // friend request to B is still pending.
@@ -1079,21 +1095,47 @@ async fn deleting_a_community_removes_it_and_its_pending_invites_for_everyone() 
     s.befriend(&owner, &invited).await;
 
     let community = s
-        .ok("POST", "/communities", &owner, Some(json!({ "name": unique("Borrable"), "isPublic": false })))
+        .ok(
+            "POST",
+            "/communities",
+            &owner,
+            Some(json!({ "name": unique("Borrable"), "isPublic": false })),
+        )
         .await;
     let id = community["id"].as_str().unwrap().to_string();
-    s.ok("POST", &format!("/communities/{id}/invites"), &owner, Some(json!({ "userId": member.id }))).await;
+    s.ok(
+        "POST",
+        &format!("/communities/{id}/invites"),
+        &owner,
+        Some(json!({ "userId": member.id })),
+    )
+    .await;
     let invite = s.ok("GET", "/invites", &member, None).await;
     let invite_id = invite[0]["id"].as_str().unwrap().to_string();
-    s.ok("POST", &format!("/invites/{invite_id}/accept"), &member, None).await;
+    s.ok("POST", &format!("/invites/{invite_id}/accept"), &member, None)
+        .await;
     // A second invite stays unanswered.
-    s.ok("POST", &format!("/communities/{id}/invites"), &owner, Some(json!({ "userId": invited.id }))).await;
-    assert_eq!(s.ok("GET", "/invites", &invited, None).await.as_array().unwrap().len(), 1);
+    s.ok(
+        "POST",
+        &format!("/communities/{id}/invites"),
+        &owner,
+        Some(json!({ "userId": invited.id })),
+    )
+    .await;
+    assert_eq!(
+        s.ok("GET", "/invites", &invited, None).await.as_array().unwrap().len(),
+        1
+    );
 
     // Only the owner may delete it.
-    let (status, _) = s.call("DELETE", &format!("/communities/{id}"), Some(&member.token), None).await;
+    let (status, _) = s
+        .call("DELETE", &format!("/communities/{id}"), Some(&member.token), None)
+        .await;
     assert_eq!(status, 403);
-    assert_eq!(s.ok("GET", &format!("/communities/{id}"), &member, None).await["memberCount"], 2);
+    assert_eq!(
+        s.ok("GET", &format!("/communities/{id}"), &member, None).await["memberCount"],
+        2
+    );
 
     let mut ws_member = s.socket(&member).await;
     s.ok("DELETE", &format!("/communities/{id}"), &owner, None).await;
@@ -1102,12 +1144,23 @@ async fn deleting_a_community_removes_it_and_its_pending_invites_for_everyone() 
     let event = wait_for(&mut ws_member, "communityUpdated").await;
     assert_eq!(event["communityId"], id.as_str());
     for user in [&owner, &member] {
-        let (status, _) = s.call("GET", &format!("/communities/{id}"), Some(&user.token), None).await;
+        let (status, _) = s
+            .call("GET", &format!("/communities/{id}"), Some(&user.token), None)
+            .await;
         assert_eq!(status, 404, "{} still sees the community", user.username);
-        assert!(s.ok("GET", "/communities", user, None).await.as_array().unwrap().is_empty());
+        assert!(s
+            .ok("GET", "/communities", user, None)
+            .await
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
     assert!(
-        s.ok("GET", "/invites", &invited, None).await.as_array().unwrap().is_empty(),
+        s.ok("GET", "/invites", &invited, None)
+            .await
+            .as_array()
+            .unwrap()
+            .is_empty(),
         "the pending invite to a deleted community must disappear"
     );
 }
