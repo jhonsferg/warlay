@@ -1,3 +1,4 @@
+import { audioConstraints, type MicPrefs } from "./voicePrefs";
 import { PlaybackClock } from "./voiceJitter";
 
 /**
@@ -44,20 +45,11 @@ export class VoiceEngine {
   }
 
   /** Opens the microphone and starts encoding. Starts muted-state per `muted`. */
-  async start(deviceId?: string): Promise<void> {
+  async start(prefs: MicPrefs = { deviceId: "", noise: "standard" }): Promise<void> {
     if (this.running) return;
     if (!voiceSupported()) throw new Error("Este entorno no soporta WebCodecs/Opus para voz.");
 
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-        channelCount: CHANNELS,
-        sampleRate: SAMPLE_RATE,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(prefs) });
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: "interactive" });
 
     const Encoder = g.AudioEncoder as AnyCtor;
