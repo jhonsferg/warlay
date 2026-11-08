@@ -17,7 +17,7 @@ Use Conventional Commits: `feat: ...`, `fix: ...`, `docs: ...`, `feat!: ...`
 ## Components affected
 
 - [ ] `server` (hub)
-- [ ] `desktop` (client UI / Tauri backend, including the network agent)
+- [ ] `desktop` (client UI / Tauri backend, including its network runtime)
 - [ ] Shared crates (`crates/`)
 - [ ] CI / release pipeline
 
