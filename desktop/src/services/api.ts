@@ -145,4 +145,8 @@ export const notifications = {
   list: () => api<AppNotification[]>("GET", "/notifications"),
   read: (id: string) => api<void>("POST", `/notifications/${id}/read`),
   readAll: () => api<void>("POST", "/notifications/read-all"),
+  /** Removes one notification from the bell. */
+  remove: (id: string) => api<void>("DELETE", `/notifications/${id}`),
+  /** Clears the whole list (pending requests and invitations are not part of it). */
+  clear: () => api<void>("DELETE", "/notifications"),
 };
