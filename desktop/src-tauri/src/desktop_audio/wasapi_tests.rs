@@ -40,7 +40,9 @@ pub(super) fn tone_amplitude(pcm: &[i16], hz: f64) -> f64 {
 /// The strongest amplitude of `hz` over any 0.5 s block of `pcm`.
 pub(super) fn loudest_tone(pcm: &[i16], hz: f64) -> f64 {
     let half_second = (SAMPLE_RATE as usize / 2) * CHANNELS;
-    pcm.chunks(half_second).map(|c| tone_amplitude(c, hz)).fold(0.0, f64::max)
+    pcm.chunks(half_second)
+        .map(|c| tone_amplitude(c, hz))
+        .fold(0.0, f64::max)
 }
 
 /// A WAV of a `hz` tone, `seconds` long, 48 kHz stereo 16-bit, half scale.
@@ -93,7 +95,10 @@ fn play_under_a_wrapper(wav: &std::path::Path) -> Child {
     Command::new("cmd")
         .args([
             "/C",
-            &format!("powershell -NoProfile -NonInteractive -Command \"{}\"", player_command(wav)),
+            &format!(
+                "powershell -NoProfile -NonInteractive -Command \"{}\"",
+                player_command(wav)
+            ),
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -136,7 +141,10 @@ fn audio_from_another_process_is_captured() {
     let _ = other.kill();
     let tone = loudest_tone(&pcm, 440.0);
     println!("440 Hz amplitude (excluding an unrelated process): {tone:.0}");
-    assert!(tone > AUDIBLE, "the tone played by another process was not heard ({tone:.0})");
+    assert!(
+        tone > AUDIBLE,
+        "the tone played by another process was not heard ({tone:.0})"
+    );
 }
 
 #[test]
@@ -148,7 +156,10 @@ fn audio_from_the_excluded_process_is_not_captured() {
     let _ = player.kill();
     let tone = loudest_tone(&pcm, 440.0);
     println!("440 Hz amplitude (excluding the player): {tone:.0}");
-    assert!(tone < ABSENT, "the excluded process leaked into the capture ({tone:.0})");
+    assert!(
+        tone < ABSENT,
+        "the excluded process leaked into the capture ({tone:.0})"
+    );
 }
 
 #[test]
@@ -167,8 +178,14 @@ fn excluding_a_process_excludes_its_children_but_not_its_siblings() {
     let _ = webview.kill();
     let (voice_tone, game_tone) = (loudest_tone(&pcm, 440.0), loudest_tone(&pcm, 880.0));
     println!("excluded subtree 440 Hz: {voice_tone:.0}; sibling 880 Hz: {game_tone:.0}");
-    assert!(game_tone > AUDIBLE, "the sibling (the game) must be shared ({game_tone:.0})");
-    assert!(voice_tone < ABSENT, "the excluded subtree (the voices) must not be ({voice_tone:.0})");
+    assert!(
+        game_tone > AUDIBLE,
+        "the sibling (the game) must be shared ({game_tone:.0})"
+    );
+    assert!(
+        voice_tone < ABSENT,
+        "the excluded subtree (the voices) must not be ({voice_tone:.0})"
+    );
 }
 
 #[test]
@@ -180,7 +197,10 @@ fn the_room_has_no_pure_440_hz_without_a_player() {
     let _ = other.kill();
     let tone = loudest_tone(&pcm, 440.0);
     println!("baseline 440 Hz amplitude with nothing of ours playing: {tone:.0}");
-    assert!(tone < ABSENT, "a 440 Hz tone was already present before we played anything");
+    assert!(
+        tone < ABSENT,
+        "a 440 Hz tone was already present before we played anything"
+    );
 }
 
 #[test]
@@ -193,7 +213,11 @@ fn the_capture_stops_when_the_handle_is_dropped() {
     drop(handle); // joins the capture thread
     let after_stop = *calls.lock().unwrap();
     std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(*calls.lock().unwrap(), after_stop, "frames kept arriving after the stop");
+    assert_eq!(
+        *calls.lock().unwrap(),
+        after_stop,
+        "frames kept arriving after the stop"
+    );
 }
 
 /// Against a REAL running Warlay (see .claude/scripts/webview_real.py): that
@@ -214,5 +238,8 @@ fn the_real_webview_is_excluded_and_a_sibling_game_is_shared() {
     let (voice, game) = (loudest_tone(&pcm, 440.0), loudest_tone(&pcm, 880.0));
     println!("REAL WEBVIEW: 440 Hz (in the webview) {voice:.0}; 880 Hz (sibling) {game:.0}");
     assert!(game > AUDIBLE, "the sibling 'game' must be shared ({game:.0})");
-    assert!(voice < ABSENT, "the real WebView2 audio leaked into the shared stream ({voice:.0})");
+    assert!(
+        voice < ABSENT,
+        "the real WebView2 audio leaked into the shared stream ({voice:.0})"
+    );
 }
