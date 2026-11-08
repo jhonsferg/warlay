@@ -9,7 +9,7 @@ use crate::state::AppState;
 use anyhow::anyhow;
 use tauri::{AppHandle, State};
 use uuid::Uuid;
-use warlay::protocol::ipc::{ConnectFailure, AgentRequest, AgentResponse};
+use warlay::protocol::ipc::{AgentRequest, AgentResponse, ConnectFailure};
 
 fn invalid(field: &str, value: &str) -> AppError {
     AppError::InvalidInput(format!("'{value}' is not a valid {field}"))
