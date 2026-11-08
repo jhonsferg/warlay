@@ -33,8 +33,9 @@ pub fn decide(kind: PermissionKind, mic_consent: bool) -> PermissionResponse {
 pub fn install_native_policy(window: &tauri::WebviewWindow, app: tauri::AppHandle) -> tauri::Result<()> {
     use tauri::Manager;
     use webview2_com::Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
-        COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DENY,
+        ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND,
+        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+        COREWEBVIEW2_PERMISSION_STATE_DENY,
     };
     use webview2_com::PermissionRequestedEventHandler;
     use windows_core::Interface;
@@ -56,7 +57,11 @@ pub fn install_native_policy(window: &tauri::WebviewWindow, app: tauri::AppHandl
                 .and_then(|state| state.store.get_settings().ok())
                 .is_some_and(|settings| settings.mic_consent);
             let response = decide(PermissionKind::Microphone, consent);
-            tracing::info!(consent, ?response, "microfono solicitado (politica nativa, sin guardar en el perfil)");
+            tracing::info!(
+                consent,
+                ?response,
+                "microfono solicitado (politica nativa, sin guardar en el perfil)"
+            );
             match response {
                 PermissionResponse::Allow => args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?,
                 PermissionResponse::Deny => args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?,
