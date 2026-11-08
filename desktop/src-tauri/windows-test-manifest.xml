@@ -5,11 +5,10 @@
   Identico al que Tauri incrusta por defecto (tauri-build,
   windows-app-manifest.xml) salvo por requestedExecutionLevel, subido de
   asInvoker a asInvoker: este binario es a la vez el cliente de
-  escritorio y el agente de red de Warlay, y el agente necesita Administrador
-  para la captura cruda SIO_RCVALL. Un PE lleva un unico manifiesto, asi que
-  la elevacion vale para todo el proceso, tambien para la instancia del
-  agente que lanza el cliente: eso es lo que hace posible un unico binario
-  distribuible.
+  escritorio y el codigo de red de Warlay, y la captura cruda SIO_RCVALL
+  necesita Administrador. Un PE lleva un unico manifiesto, asi que la
+  elevacion vale para todo el proceso: eso es lo que hace posible un unico
+  binario distribuible.
 
   El detalle de por que vive en un fichero aparte esta en build.rs.
 
