@@ -47,8 +47,8 @@ pub fn start(_mesh: Arc<PeerMeshHandle>, _exclude_pid: u32) -> Result<DesktopAud
 }
 
 #[cfg(all(test, windows))]
-#[path = "wasapi_tests.rs"]
-mod wasapi_tests;
-#[cfg(all(test, windows))]
 #[path = "mesh_e2e_tests.rs"]
 mod mesh_e2e_tests;
+#[cfg(all(test, windows))]
+#[path = "wasapi_tests.rs"]
+mod wasapi_tests;
