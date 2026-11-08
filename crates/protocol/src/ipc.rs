@@ -254,6 +254,31 @@ pub struct PeerLinkStatus {
     pub p2p_addr: Option<String>,
     /// `"not_attempted" | "connecting" | "connected" | "relayed" | "failed"`.
     pub state: String,
+    /// Round-trip time of the live link in milliseconds (the player's ping);
+    /// `None` while there is no connection.
+    #[serde(default)]
+    pub rtt_ms: Option<u32>,
+}
+
+/// Ping changes smaller than this are noise, not news: the UI is not told
+/// about them, so a link that wobbles by a few ms does not emit an event
+/// every second.
+const RTT_NOISE_MS: u32 = 10;
+
+impl PeerLinkStatus {
+    /// Same link, ignoring ping jitter below [`RTT_NOISE_MS`].
+    fn same_link_as(&self, other: &PeerLinkStatus) -> bool {
+        let rtt_close = match (self.rtt_ms, other.rtt_ms) {
+            (Some(a), Some(b)) => a.abs_diff(b) < RTT_NOISE_MS,
+            (None, None) => true,
+            _ => false,
+        };
+        self.client_id == other.client_id
+            && self.is_host == other.is_host
+            && self.p2p_addr == other.p2p_addr
+            && self.state == other.state
+            && rtt_close
+    }
 }
 
 /// Reply to `GetAgentStatus` — a snapshot of what the agent is doing right
@@ -271,13 +296,19 @@ pub struct NetworkStatus {
 
 impl NetworkStatus {
     /// Whether `other` describes the same network state, ignoring
-    /// `uptime_secs` (which changes every second and is not news). The agent
-    /// pushes a status event to the UI only when this is false.
+    /// `uptime_secs` (which changes every second and is not news) and ping
+    /// jitter under [`RTT_NOISE_MS`]. The agent pushes a status event to the
+    /// UI only when this is false.
     pub fn same_state_as(&self, other: &NetworkStatus) -> bool {
         self.hub_connections == other.hub_connections
             && self.tunnel_active == other.tunnel_active
             && self.lan_discovery_enabled == other.lan_discovery_enabled
-            && self.mesh_peers == other.mesh_peers
+            && self.mesh_peers.len() == other.mesh_peers.len()
+            && self
+                .mesh_peers
+                .iter()
+                .zip(&other.mesh_peers)
+                .all(|(a, b)| a.same_link_as(b))
     }
 }
 
@@ -392,7 +423,31 @@ mod tests {
             is_host: false,
             p2p_addr: None,
             state: state.to_string(),
+            rtt_ms: None,
         }
+    }
+
+    fn with_rtt(mut p: PeerLinkStatus, rtt_ms: u32) -> PeerLinkStatus {
+        p.rtt_ms = Some(rtt_ms);
+        p
+    }
+
+    #[test]
+    fn small_ping_jitter_is_not_a_change_but_a_real_shift_is() {
+        let a = status(vec![with_rtt(peer("a", "connected"), 40)]);
+        let jitter = status(vec![with_rtt(peer("a", "connected"), 47)]);
+        let shift = status(vec![with_rtt(peer("a", "connected"), 80)]);
+        let lost = status(vec![peer("a", "connected")]);
+        assert!(a.same_state_as(&jitter));
+        assert!(!a.same_state_as(&shift));
+        assert!(!a.same_state_as(&lost), "a link that loses its ping is news");
+    }
+
+    #[test]
+    fn a_status_without_ping_still_deserializes() {
+        let link: PeerLinkStatus =
+            serde_json::from_str(r#"{"clientId":"a","isHost":false,"p2pAddr":null,"state":"connected"}"#).unwrap();
+        assert_eq!(link.rtt_ms, None);
     }
 
     #[test]
@@ -408,7 +463,7 @@ mod tests {
             assert!(json.get(key).is_some(), "missing {key}");
         }
         let link = &json["meshPeers"][0];
-        for key in ["clientId", "isHost", "p2pAddr", "state"] {
+        for key in ["clientId", "isHost", "p2pAddr", "state", "rttMs"] {
             assert!(link.get(key).is_some(), "missing {key} in a link");
         }
     }
