@@ -1,25 +1,21 @@
 <script setup lang="ts">
-import { Activity, FolderOpen, Gamepad2, KeyRound, Palette, RefreshCw, Server, Settings, User } from "@lucide/vue";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { FolderOpen, Gamepad2, KeyRound, Palette, Settings, User } from "@lucide/vue";
+import { computed, onMounted, ref } from "vue";
 import { auth } from "../services/api";
-import { errorMessage, mainServerUrl, setMainServerUrl } from "../services/http";
+import { errorMessage } from "../services/http";
 import { isDesktop, native } from "../services/native";
-import { createStatusFeed, idleStatus, uptimeMinutes } from "../services/networkStatus";
-import { realtime } from "../services/realtime";
 import { AVATAR_COLORS } from "../ui/palette";
 import { useSession } from "../stores/session";
 import { useSettings } from "../stores/settings";
 import { useToasts } from "../stores/toasts";
 import WAvatar from "../ui/atoms/WAvatar.vue";
-import WBadge from "../ui/atoms/WBadge.vue";
 import WButton from "../ui/atoms/WButton.vue";
 import WInput from "../ui/atoms/WInput.vue";
 
 import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
+import AdvancedSettingsSection from "../ui/organisms/AdvancedSettingsSection.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
-import LogSettingsSection from "../ui/organisms/LogSettingsSection.vue";
-import UpdateSettingsSection from "../ui/organisms/UpdateSettingsSection.vue";
 import VoiceSettingsSection from "../ui/organisms/VoiceSettingsSection.vue";
 import AppShell from "../ui/templates/AppShell.vue";
 
@@ -27,7 +23,7 @@ const session = useSession();
 const settings = useSettings();
 const toasts = useToasts();
 
-type Tab = "account" | "game" | "network" | "updates" | "logs";
+type Tab = "account" | "game" | "advanced";
 const tab = ref<Tab>("account");
 
 const displayName = ref(session.me?.displayName ?? "");
@@ -38,24 +34,6 @@ const savingProfile = ref(false);
 const currentPassword = ref("");
 const newPassword = ref("");
 const savingPassword = ref(false);
-
-const serverUrl = ref(mainServerUrl());
-
-// The agent's network status is read once and then pushed by the backend when
-// it changes; it is only followed while the network tab is open.
-const network = ref(idleStatus());
-const networkKnown = ref(false);
-const networkReceivedAt = ref(Date.now());
-const now = ref(Date.now());
-const realtimeVia = ref(realtime.via || "sin conexión");
-const statusFeed = createStatusFeed({ fetch: native.networkStatus, listen: native.onNetworkStatus }, (status) => {
-  network.value = status;
-  networkKnown.value = true;
-  networkReceivedAt.value = Date.now();
-});
-const uptime = computed(() => uptimeMinutes(network.value, networkReceivedAt.value, now.value));
-let following = false;
-let clockTimer: ReturnType<typeof setInterval> | null = null;
 
 const profileDirty = computed(
   () =>
@@ -104,44 +82,9 @@ async function saveGame() {
   }
 }
 
-function saveServer() {
-  setMainServerUrl(serverUrl.value);
-  toasts.info("Servidor actualizado", "Reinicia la sesión para aplicar el cambio.");
-}
-
-/** The realtime connection is not reactive, so this local timer (no IPC)
- * refreshes how it is reached, and the uptime, while the network tab is open. */
-function refreshLocal() {
-  now.value = Date.now();
-  realtimeVia.value =
-    realtime.state === "open"
-      ? realtime.via === "principal"
-        ? "servidor principal"
-        : `ayudante ${realtime.via}`
-      : "reconectando...";
-}
-
-function followNetwork(on: boolean) {
-  if (on === following) return;
-  following = on;
-  if (on) {
-    refreshLocal();
-    clockTimer = setInterval(refreshLocal, 3000);
-    void statusFeed.start();
-  } else {
-    if (clockTimer) clearInterval(clockTimer);
-    clockTimer = null;
-    statusFeed.stop();
-  }
-}
-
-watch(tab, (value) => followNetwork(value === "network"));
-
 onMounted(() => {
   void settings.load().catch(() => {});
-  followNetwork(tab.value === "network");
 });
-onUnmounted(() => followNetwork(false));
 </script>
 
 <template>
@@ -155,9 +98,7 @@ onUnmounted(() => followNetwork(false));
       :tabs="[
         { id: 'account', label: 'Cuenta' },
         { id: 'game', label: 'Juego' },
-        { id: 'network', label: 'Red y agente' },
-        { id: 'updates', label: 'Actualizaciones' },
-        { id: 'logs', label: 'Registros' },
+        { id: 'advanced', label: 'Avanzado' },
       ]"
     />
 
@@ -246,75 +187,7 @@ onUnmounted(() => followNetwork(false));
       <VoiceSettingsSection />
     </div>
 
-    <div v-else-if="tab === 'network'" class="settings__grid">
-      <section class="settings__card">
-        <h3><Activity /> Agente de red</h3>
-        <p class="settings__muted">El agente conecta tu juego directamente con los demás jugadores.</p>
-        <p class="settings__muted" data-testid="realtime-via">
-          Chat y avisos en tiempo real: <strong>{{ realtimeVia }}</strong>
-        </p>
-        <div v-if="networkKnown" class="settings__stats">
-          <div>
-            <span>Activo desde</span><strong>{{ uptime }} min</strong>
-          </div>
-          <div>
-            <span>Túnel de juego</span><strong>{{ network.tunnelActive ? "Activo" : "Inactivo" }}</strong>
-          </div>
-          <div>
-            <span>Enlaces</span><strong>{{ network.meshPeers.length }}</strong>
-          </div>
-        </div>
-        <ul v-if="network.meshPeers.length" class="settings__links">
-          <li v-for="p in network.meshPeers" :key="p.clientId">
-            <code>{{ p.clientId.slice(0, 8) }}</code>
-            <span>{{ p.p2pAddr ?? "—" }}</span>
-            <WBadge
-              :tone="
-                p.state === 'connected'
-                  ? 'success'
-                  : p.state === 'relayed'
-                    ? 'info'
-                    : p.state === 'failed'
-                      ? 'danger'
-                      : 'warning'
-              "
-            >
-              {{
-                p.state === "connected"
-                  ? "P2P directo"
-                  : p.state === "relayed"
-                    ? "Vía ayudante"
-                    : p.state === "failed"
-                      ? "Falló"
-                      : "Conectando"
-              }}
-            </WBadge>
-          </li>
-        </ul>
-        <div class="settings__actions">
-          <WButton variant="secondary" @click="native.retryPeerMesh()"
-            ><template #icon><RefreshCw /></template>Reintentar enlaces</WButton
-          >
-        </div>
-      </section>
-
-      <section class="settings__card">
-        <h3><Server /> Servidor de Warlay</h3>
-        <FormField
-          label="Dirección del servidor principal"
-          for="server-url"
-          hint="Solo cámbiala si usas un servidor propio."
-        >
-          <WInput id="server-url" v-model="serverUrl" placeholder="https://warlay.example.com" />
-        </FormField>
-        <div class="settings__actions">
-          <WButton variant="secondary" @click="saveServer">Aplicar</WButton>
-        </div>
-      </section>
-    </div>
-
-    <UpdateSettingsSection v-if="tab === 'updates'" />
-    <LogSettingsSection v-if="tab === 'logs'" />
+    <AdvancedSettingsSection v-else-if="tab === 'advanced'" />
   </AppShell>
 </template>
 
@@ -434,46 +307,6 @@ onUnmounted(() => followNetwork(false));
     p {
       margin: 2px 0 0;
       font-size: var(--fs-sm);
-    }
-  }
-  &__stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--s-2);
-    div {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      padding: var(--s-3);
-      background: var(--bg-2);
-      border-radius: var(--r-md);
-    }
-    span {
-      @include eyebrow;
-    }
-    strong {
-      font-size: var(--fs-lg);
-    }
-  }
-  &__links {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-2);
-    li {
-      display: flex;
-      align-items: center;
-      gap: var(--s-3);
-      span {
-        flex: 1;
-        color: var(--text-3);
-        font-size: var(--fs-sm);
-      }
-    }
-    code {
-      color: var(--text-2);
     }
   }
 }
