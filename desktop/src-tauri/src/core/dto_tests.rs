@@ -28,6 +28,7 @@ fn voice_options_default_to_asking_first_and_standard_noise_suppression() {
     assert!(!settings.mic_consent, "never assume consent for the microphone");
     assert_eq!(settings.mic_device_id, "");
     assert_eq!(settings.noise_suppression, "standard");
+    assert!(!settings.share_desktop_audio, "sharing the desktop sound is opt-in");
 }
 
 #[test]
@@ -36,13 +37,16 @@ fn voice_options_round_trip_with_camel_case_keys() {
     settings.mic_consent = true;
     settings.mic_device_id = "abc123".into();
     settings.noise_suppression = "strong".into();
+    settings.share_desktop_audio = true;
 
     let json = serde_json::to_value(&settings).unwrap();
     assert_eq!(json["micConsent"], true);
     assert_eq!(json["micDeviceId"], "abc123");
     assert_eq!(json["noiseSuppression"], "strong");
+    assert_eq!(json["shareDesktopAudio"], true);
 
     let back: AppSettings = serde_json::from_value(json).unwrap();
     assert!(back.mic_consent);
     assert_eq!(back.noise_suppression, "strong");
+    assert!(back.share_desktop_audio);
 }
