@@ -27,8 +27,9 @@ over a named pipe and starts as a second instance of itself with
   real time, with roster, activity log and automatic "in progress" detection.
 - **Game launch** - starts Warcraft III with the configured executable and
   arguments once the room's tunnel is ready.
-- **Chat and voice** - room and private text chat, Opus voice chat with an
-  in-game overlay and a global microphone mute shortcut.
+- **Chat and voice** - room and private text chat, Opus voice chat in the
+  room (captured and played in the webview) with a global microphone mute
+  shortcut.
 - **LAN tab** - the legacy lan-mesh flow: scan local subnets, find relay
   bridges, list observed games, and turn this PC into a mesh peer.
 - **Agent and console views** - agent status and settings, live logs, log
@@ -52,10 +53,8 @@ flowchart LR
     backend --> commands["src/commands/<br/>Tauri command handlers, the only<br/>layer touching AppHandle and State"]
     backend --> ipc["src/agent/events.rs<br/>Tauri event emitter for the agent"]
     backend --> clientStorage["src/storage/<br/>SQLite: client identity,<br/>servers and keys, settings"]
-    backend --> voice["src/voice/<br/>audio capture and playback,<br/>Opus codec, jitter buffer"]
     backend --> network["src/network/<br/>lan-mesh discovery<br/>and relay client"]
     backend --> launcher["src/launcher/<br/>starts and tracks<br/>the game process"]
-    backend --> overlay["src/overlay.rs<br/>click-through in-game<br/>overlay window"]
     backend --> tauriConf["tauri.conf.json<br/>window and NSIS bundle<br/>configuration"]
 
     root --> scripts["scripts/<br/>portable zip build helper"]
