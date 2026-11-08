@@ -1,6 +1,7 @@
 mod agent;
 mod commands;
 mod core;
+mod desktop_audio;
 pub use warlay::crypto;
 mod launcher;
 mod log_bridge;
@@ -502,6 +503,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
             commands::voice::send_voice_frame,
+            commands::voice::start_desktop_audio,
+            commands::voice::stop_desktop_audio,
             commands::voice::set_mic_consent,
             commands::voice::open_mic_privacy_settings,
             commands::voice::register_voice_shortcut,
