@@ -19,6 +19,7 @@ import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import LogSettingsSection from "../ui/organisms/LogSettingsSection.vue";
+import UpdateSettingsSection from "../ui/organisms/UpdateSettingsSection.vue";
 import VoiceSettingsSection from "../ui/organisms/VoiceSettingsSection.vue";
 import AppShell from "../ui/templates/AppShell.vue";
 
@@ -26,7 +27,7 @@ const session = useSession();
 const settings = useSettings();
 const toasts = useToasts();
 
-type Tab = "account" | "game" | "network" | "logs";
+type Tab = "account" | "game" | "network" | "updates" | "logs";
 const tab = ref<Tab>("account");
 
 const displayName = ref(session.me?.displayName ?? "");
@@ -155,6 +156,7 @@ onUnmounted(() => followNetwork(false));
         { id: 'account', label: 'Cuenta' },
         { id: 'game', label: 'Juego' },
         { id: 'network', label: 'Red y agente' },
+        { id: 'updates', label: 'Actualizaciones' },
         { id: 'logs', label: 'Registros' },
       ]"
     />
@@ -244,7 +246,7 @@ onUnmounted(() => followNetwork(false));
       <VoiceSettingsSection />
     </div>
 
-    <div v-else class="settings__grid">
+    <div v-else-if="tab === 'network'" class="settings__grid">
       <section class="settings__card">
         <h3><Activity /> Agente de red</h3>
         <p class="settings__muted">El agente conecta tu juego directamente con los demás jugadores.</p>
@@ -311,6 +313,7 @@ onUnmounted(() => followNetwork(false));
       </section>
     </div>
 
+    <UpdateSettingsSection v-if="tab === 'updates'" />
     <LogSettingsSection v-if="tab === 'logs'" />
   </AppShell>
 </template>
