@@ -221,6 +221,32 @@ cd warlay
 One build produces one executable: `warlay.exe` is the whole desktop client,
 network code included.
 
+**Server address (forks start here)** - the client has to know where your
+Warlay server is, and that address is **not in the source code and not shown
+or editable anywhere in the app**. It is injected when the frontend is built,
+through the `VITE_WARLAY_MAIN_URL` variable:
+
+- **Local builds** - export the variable in your shell, or put it in
+  `desktop/.env` (git-ignored; start from `desktop/.env.example`):
+
+  ```powershell
+  cd desktop
+  copy .env.example .env     # then edit it: VITE_WARLAY_MAIN_URL=https://your-server
+  ```
+
+- **GitHub Actions** - the release workflow reads the address from a
+  repository secret named `WARLAY_MAIN_URL`. In a fork, create it with your
+  own server's address (`Settings > Secrets and variables > Actions > New
+repository secret`, or `gh secret set WARLAY_MAIN_URL`) and your releases
+  will talk to your server. The release fails, on purpose, while the secret
+  is missing. Pull-request CI does not need it: it builds with a placeholder.
+
+A production build (`npm run build`, `npx tauri build`) **fails** if the
+address is missing or is not a plain `http(s)://host[:port]` URL;
+`npm run tauri dev` falls back to `http://127.0.0.1:8080`. The address does
+end up inside the compiled client (it has to connect somewhere); it is just
+not published in the repository.
+
 **Development mode** - hot-reloading frontend on top of a debug build:
 
 ```powershell

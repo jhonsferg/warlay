@@ -1,21 +1,14 @@
+import { resolveServerUrl } from "./serverUrl";
 import type { ApiErrorBody, Tokens } from "./types";
 
 const TOKENS_KEY = "warlay.tokens";
 
-/** The production API, baked into the source itself. A build must always know
- * where its server is without depending on the build environment: CI does not
- * pass `VITE_WARLAY_MAIN_URL`, so a build-time-only URL silently degraded to
- * `127.0.0.1:8080` and every release reported that it could not reach the
- * server even while it was up. */
-const PRODUCTION_MAIN_URL = "https://api.warlay.codesoftlabs.com";
-
-/** The main server's base URL, fixed by the build (shown read-only in
- * Ajustes > Avanzado): a build-time default, the embedded production server,
- * or — only while developing — a local one. */
+/** The main server's base URL, fixed by the build (it is not shown or
+ * editable anywhere in the UI). It is injected at build time (`VITE_WARLAY_MAIN_URL`,
+ * see `serverUrl.ts`), never written in the source; only `npm run dev` falls
+ * back to a local server. */
 export function mainServerUrl(): string {
-  const url =
-    import.meta.env.VITE_WARLAY_MAIN_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8080" : PRODUCTION_MAIN_URL);
-  return url.replace(/\/+$/, "");
+  return resolveServerUrl(import.meta.env.VITE_WARLAY_MAIN_URL, import.meta.env.DEV);
 }
 
 export class ApiError extends Error {

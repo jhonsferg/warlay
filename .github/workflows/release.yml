@@ -160,9 +160,22 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ env.VERSION }}
+      # The server address is not in the source: it is injected at build time
+      # from the WARLAY_MAIN_URL repository secret. A fork sets its own.
+      - name: Require the server URL secret
+        shell: bash
+        env:
+          WARLAY_MAIN_URL: ${{ secrets.WARLAY_MAIN_URL }}
+        run: |
+          if [ -z "$WARLAY_MAIN_URL" ]; then
+            echo "::error::Create the WARLAY_MAIN_URL repository secret (the address of your Warlay server, e.g. https://warlay.example.com) so releases know which server the client talks to."
+            exit 1
+          fi
       - name: Build client and installer
-        # beforeBuildCommand runs `npm run build`.
+        # beforeBuildCommand runs `npm run build`, which reads the variable.
         working-directory: desktop
+        env:
+          VITE_WARLAY_MAIN_URL: ${{ secrets.WARLAY_MAIN_URL }}
         run: npx tauri build
       - name: Build portable zip
         working-directory: desktop

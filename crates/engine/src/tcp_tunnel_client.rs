@@ -747,15 +747,18 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::time::{timeout, Duration};
 
-    /// Exercises `start_hosting`/`start_joining` against the real deployed
-    /// `warlay-hub` VPS, standing in for WC3 on both ends with plain TCP
+    /// Exercises `start_hosting`/`start_joining` against a real deployed
+    /// `warlay-hub`, standing in for WC3 on both ends with plain TCP
     /// sockets. Not run by default (needs live network access to a specific
-    /// host); run explicitly with `cargo test -- --ignored` when validating
-    /// a deployment.
+    /// host); run explicitly with `WARLAY_TEST_HUB_TCP=host:7778 cargo test --
+    /// --ignored` when validating a deployment.
     #[tokio::test]
-    #[ignore = "requires the deployed warlay-hub VPS at 161.132.37.213:7778"]
+    #[ignore = "requires a deployed warlay-hub: set WARLAY_TEST_HUB_TCP=ip:7778"]
     async fn full_round_trip_against_live_vps() {
-        let hub_tcp_addr: SocketAddr = "161.132.37.213:7778".parse().unwrap();
+        let hub_tcp_addr: SocketAddr = std::env::var("WARLAY_TEST_HUB_TCP")
+            .expect("set WARLAY_TEST_HUB_TCP to the hub's tunnel address, e.g. 203.0.113.7:7778")
+            .parse()
+            .expect("WARLAY_TEST_HUB_TCP must be ip:port");
         let room_token = Uuid::new_v4();
 
         let host_stub = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -796,9 +799,11 @@ mod tests {
     /// Same round trip, with both legs TLS-wrapped through the hub's
     /// reverse proxy (`:7443` terminates TLS in front of the plain tunnel).
     #[tokio::test]
-    #[ignore = "requires the deployed warlay-hub at warlay.codesoftlabs.com:7443"]
+    #[ignore = "requires a deployed warlay-hub: set WARLAY_TEST_HUB_TLS_HOST=hub.example.com"]
     async fn full_round_trip_over_tls_against_live_hub() {
-        let hub_host = "warlay.codesoftlabs.com";
+        let hub_host = std::env::var("WARLAY_TEST_HUB_TLS_HOST")
+            .expect("set WARLAY_TEST_HUB_TLS_HOST to the hub's TLS host, e.g. hub.example.com");
+        let hub_host = hub_host.as_str();
         let addr = tokio::net::lookup_host((hub_host, 7443)).await.unwrap().next().unwrap();
         let hub_tcp_addr = HubTunnelEndpoint::tls(addr, hub_host).unwrap();
         let room_token = Uuid::new_v4();

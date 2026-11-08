@@ -3,6 +3,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { router } from "./router";
 import { isDesktop, native } from "./services/native";
+import { removeLegacyServerOverride } from "./services/serverUrl";
 // Self-hosted fonts (no external fetch): Inter for UI text, Rajdhani for
 // display headings.
 import "@fontsource/inter/400.css";
@@ -12,6 +13,9 @@ import "@fontsource/inter/700.css";
 import "@fontsource/rajdhani/600.css";
 import "@fontsource/rajdhani/700.css";
 import "./styles/theme.scss";
+
+// The server address used to be editable in Ajustes; it is fixed by the build now.
+removeLegacyServerOverride(localStorage);
 
 createApp(App).use(createPinia()).use(router).mount("#app");
 
