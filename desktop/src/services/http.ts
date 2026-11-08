@@ -3,8 +3,8 @@ import type { ApiErrorBody, Tokens } from "./types";
 
 const TOKENS_KEY = "warlay.tokens";
 
-/** The main server's base URL, fixed by the build (shown read-only in
- * Ajustes > Avanzado). It is injected at build time (`VITE_WARLAY_MAIN_URL`,
+/** The main server's base URL, fixed by the build (it is not shown or
+ * editable anywhere in the UI). It is injected at build time (`VITE_WARLAY_MAIN_URL`,
  * see `serverUrl.ts`), never written in the source; only `npm run dev` falls
  * back to a local server. */
 export function mainServerUrl(): string {
