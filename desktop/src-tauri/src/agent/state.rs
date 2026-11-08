@@ -79,6 +79,17 @@ pub struct DaemonState {
 /// down (`DisconnectFromHub`, `LeaveRoom`, `DeleteRoom`, `StopHubTunnel`,
 /// and now graceful shutdown) -- previously copy-pasted four times.
 impl DaemonState {
+    /// This machine's LAN-bridging rules over the shared state (see
+    /// `warlay::engine::LanBridge`). Cheap: clones a few `Arc`s.
+    pub fn lan_bridge(&self) -> warlay::engine::LanBridge {
+        warlay::engine::LanBridge {
+            loop_guard: self.lan_loop_guard.clone(),
+            own_game_hosting: self.own_game_hosting.clone(),
+            game_started: self.game_started.clone(),
+            capture_ports: self.lan_capture_ports.clone(),
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             connections: HashMap::new(),
