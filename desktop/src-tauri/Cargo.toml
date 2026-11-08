@@ -15,9 +15,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # workspace member path keep working unchanged) -- only the produced binary
 # is renamed, to "warlay.exe".
 #
-# `test = false`: main.rs holds no unit tests (the agent's live in
-# `crates/agent`), so the harness cargo would build for this binary has
-# nothing to run. It would also inherit the `requireAdministrator` manifest
+# `test = false`: main.rs holds no unit tests (they live in the library), so
+# the harness cargo would build for this binary has nothing to run. It would also inherit the `requireAdministrator` manifest
 # build.rs embeds, and running it unelevated would fail with os error 740
 # before a single test executes.
 [[bin]]
