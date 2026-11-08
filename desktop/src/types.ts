@@ -132,6 +132,13 @@ export interface AppSettings {
   /** Log files older than this many days are deleted once at every launch,
    * and again immediately when this changes — see `LogLevelSection.vue`. */
   logRetentionDays: number;
+  /** True once the user accepted Warlay's own microphone dialog — the native
+   * permission policy only allows the mic while this is set. */
+  micConsent: boolean;
+  /** Input device (`MediaDeviceInfo.deviceId`); "" is the OS default. */
+  micDeviceId: string;
+  /** "off" | "standard" | "strong" — see `services/voicePrefs.ts`. */
+  noiseSuppression: "off" | "standard" | "strong";
 }
 
 /** Read-only hardware snapshot from `get_system_info` — informational only,
