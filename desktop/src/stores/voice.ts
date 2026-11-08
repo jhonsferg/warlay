@@ -4,6 +4,14 @@ import { native } from "../services/native";
 import { VoiceEngine, voiceSupported } from "../services/voice";
 import { meterLevel, smoothLevel } from "../services/voiceActivity";
 import { speakingNow } from "../services/voiceJitter";
+import {
+  decodeStateFrame,
+  encodeStateFrame,
+  HEARTBEAT_MS,
+  VoicePresence,
+  type VoiceAnnouncement,
+  type VoiceState,
+} from "../services/voicePresence";
 import { classifyMicError } from "../services/voicePrefs";
 import { useSession } from "./session";
 import { useSettings } from "./settings";
@@ -39,6 +47,25 @@ export const useVoice = defineStore("voice", () => {
   /** Smoothed 0..1 volume of whoever is speaking, for the rings' size. */
   const levels = ref<Record<string, number>>({});
 
+  /** Who is in voice and whether their mic is muted (the mic icons). Members
+   * not listed are not in voice. Includes this user. */
+  const members = ref<Record<string, VoiceState>>({});
+  const presence = new VoicePresence();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+  /** Tells the room this user's state (a control packet on the voice channel). */
+  function announce(what: VoiceAnnouncement) {
+    void native.sendVoiceFrame(encodeStateFrame(what)).catch(() => {});
+  }
+  function announceState() {
+    announce(muted.value ? "muted" : "live");
+  }
+  /** Sent twice: a lost datagram would leave a stale icon until the heartbeat. */
+  function announceChange() {
+    announceState();
+    setTimeout(() => active.value && announceState(), 120);
+  }
+
   const lastFrameAt = new Map<string, number>();
   const rawLevel = new Map<string, number>();
   const shownLevel = new Map<string, number>();
@@ -70,10 +97,17 @@ export const useVoice = defineStore("voice", () => {
       unlistenFrames = await native.onVoiceFrames((batch) => {
         const now = performance.now();
         for (const { from, data } of batch) {
+          const bytes = fromBase64(data);
+          const control = decodeStateFrame(bytes);
+          if (control) {
+            if (control === "left") presence.forget(from);
+            else presence.update(from, control, now);
+            continue;
+          }
           // The ring lights up on arrival; its size follows the decoded level.
           lastFrameAt.set(from, now);
           if (!speaking.value.includes(from)) speaking.value = [...speaking.value, from];
-          engine.push(from, fromBase64(data));
+          engine.push(from, bytes);
         }
       });
     }
@@ -96,6 +130,10 @@ export const useVoice = defineStore("voice", () => {
         for (const id of [...shownLevel.keys()]) if (!next.includes(id)) shownLevel.delete(id);
         rawLevel.clear();
         levels.value = out;
+        const mine = session.me?.id;
+        const nextMembers = presence.snapshot(performance.now());
+        if (mine && active.value) nextMembers[mine] = muted.value ? "muted" : "live";
+        if (JSON.stringify(nextMembers) !== JSON.stringify(members.value)) members.value = nextMembers;
       }, 60);
     }
   }
@@ -153,6 +191,7 @@ export const useVoice = defineStore("voice", () => {
     if (active.value) {
       muted.value = !muted.value;
       engine.setMuted(muted.value);
+      announceChange();
       return;
     }
     if (!voiceSupported()) {
@@ -177,6 +216,8 @@ export const useVoice = defineStore("voice", () => {
       engine.setMuted(false);
       muted.value = false;
       active.value = true;
+      announceChange();
+      heartbeat ??= setInterval(announceState, HEARTBEAT_MS);
       if (settings.noiseSuppression === "strong" && engine.noiseFallbackReason) {
         toasts.info("Supresión fuerte no disponible", "Se usa la estándar del navegador.");
       }
@@ -203,6 +244,9 @@ export const useVoice = defineStore("voice", () => {
   }
 
   async function leave() {
+    if (active.value) announce("left");
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
     if (sharingDesktop.value) {
       await native.stopDesktopAudio().catch(() => {});
       sharingDesktop.value = false;
@@ -213,6 +257,8 @@ export const useVoice = defineStore("voice", () => {
     muted.value = true;
     speaking.value = [];
     levels.value = {};
+    members.value = {};
+    presence.clear();
     lastFrameAt.clear();
     rawLevel.clear();
     shownLevel.clear();
@@ -241,6 +287,7 @@ export const useVoice = defineStore("voice", () => {
     dialog,
     speaking,
     levels,
+    members,
     sharingDesktop,
     syncDesktopShare,
     toggle,
