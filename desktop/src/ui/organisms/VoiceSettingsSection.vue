@@ -24,7 +24,9 @@ const namesHidden = ref(false);
 async function refreshDevices() {
   try {
     const all = await navigator.mediaDevices.enumerateDevices();
-    const mics = all.filter((d) => d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications");
+    const mics = all.filter(
+      (d) => d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications",
+    );
     namesHidden.value = mics.length > 0 && mics.every((d) => !d.label);
     inputs.value = mics.map((d, i) => ({ id: d.deviceId, label: d.label || `Micrófono ${i + 1}` }));
   } catch {
@@ -90,7 +92,11 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
       Los nombres de los dispositivos aparecen después de usar el micrófono una vez.
     </p>
 
-    <FormField label="Supresión de ruido" for="noise-level" :hint="HINTS[normalizeNoiseLevel(settings.noiseSuppression)]">
+    <FormField
+      label="Supresión de ruido"
+      for="noise-level"
+      :hint="HINTS[normalizeNoiseLevel(settings.noiseSuppression)]"
+    >
       <select
         id="noise-level"
         class="voice-settings__select"
@@ -106,8 +112,8 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
       <div>
         <strong>Compartir el audio del escritorio</strong>
         <p class="voice-settings__note" data-testid="share-hint">
-          Los jugadores de la sala oirán el sonido de tu PC (tu juego, música, un vídeo) mientras estés en la voz.
-          El audio de Warlay, es decir sus voces, nunca se reenvía. Requiere Windows 11.
+          Los jugadores de la sala oirán el sonido de tu PC (tu juego, música, un vídeo) mientras estés en la voz. El
+          audio de Warlay, es decir sus voces, nunca se reenvía. Requiere Windows 11.
         </p>
       </div>
       <WSwitch
