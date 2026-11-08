@@ -1309,6 +1309,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "warlay",
+ "webview2-com",
  "windows 0.62.2",
  "windows-core 0.62.2",
 ]
