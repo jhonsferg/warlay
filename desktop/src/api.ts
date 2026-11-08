@@ -11,7 +11,6 @@ import type {
   LogLevel,
   RelayInfo,
   RelayStatus,
-  RoomMember,
   ServerInfo,
   ServerMessageEvent,
   ServerPingEvent,
@@ -166,13 +165,6 @@ export function stopHubTunnel(): Promise<void> {
   return invoke("stop_hub_tunnel");
 }
 
-/** Current truth for the active room's roster — see `OverlayApp.vue`'s use
- * of this on mount, and `commands::matchmaking::get_room_members`'s doc
- * comment for why it needs to exist at all. */
-export function getRoomMembers(): Promise<RoomMember[]> {
-  return invoke("get_room_members");
-}
-
 export function loadSettings(): Promise<AppSettings> {
   return invoke("load_settings");
 }
@@ -259,8 +251,4 @@ export function onLogLine(handler: (line: string) => void): Promise<UnlistenFn> 
   return listen<string>("log://line", (event) => handler(event.payload));
 }
 
-
-export function setOverlayInteractive(interactive: boolean): Promise<void> {
-  return invoke("set_overlay_interactive", { interactive });
-}
 
