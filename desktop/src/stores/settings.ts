@@ -59,7 +59,11 @@ export const useSettings = defineStore("settings-v2", () => {
     raw.value = { ...raw.value, micConsent: granted };
   }
 
-  async function setVoicePrefs(prefs: { micDeviceId: string; noiseSuppression: NoiseLevel; shareDesktopAudio?: boolean }) {
+  async function setVoicePrefs(prefs: {
+    micDeviceId: string;
+    noiseSuppression: NoiseLevel;
+    shareDesktopAudio?: boolean;
+  }) {
     const next = { ...raw.value, ...prefs };
     await native.saveSettings(next);
     raw.value = next;
