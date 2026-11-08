@@ -4,7 +4,6 @@ pub mod discovery;
 pub mod e2e;
 pub mod launcher;
 pub mod matchmaking;
-pub mod overlay;
 pub mod relay;
 pub mod servers;
 pub mod session;
