@@ -380,7 +380,9 @@ pub fn run() {
                 .try_state::<AppState>()
                 .and_then(|state| state.store.get_settings().ok())
                 .is_some_and(|settings| settings.mic_consent);
-            permissions::decide(kind, consent)
+            let response = permissions::decide(kind, consent);
+            tracing::info!(?kind, consent, ?response, "permiso solicitado por el webview");
+            response
         })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -405,6 +407,14 @@ pub fn run() {
             *state.agent_state.lock().unwrap() = Some(agent_state.clone());
             *state.app_handle.lock().unwrap() = Some(app.handle().clone());
             agent::events::set_app_handle(app.handle().clone());
+            // The microphone answer comes from Warlay's consent and is never saved in the
+            // WebView2 profile (see `permissions::install_native_policy`).
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(error) = permissions::install_native_policy(&window, app.handle().clone()) {
+                    tracing::warn!(%error, "no se pudo instalar la politica de permisos");
+                }
+            }
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
