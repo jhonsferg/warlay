@@ -108,66 +108,18 @@ pub async fn start_room_session(
                 continue;
             }
             // Snapshot what each packet needs while holding the lock; the
-            // gateway bind below is async work that must not hold it.
-            let (loop_guard, relay_tx, gateway, capture_ports, own_hosting) = {
+            // gateway bind is async work that must not hold it.
+            let (bridge, relay_tx, gateway) = {
                 let s = inbound_state.lock().await;
-                (
-                    s.lan_loop_guard.clone(),
-                    s.lan_relay_tx.clone(),
-                    s.game_gateway.clone(),
-                    s.lan_capture_ports.clone(),
-                    s.own_game_hosting.load(std::sync::atomic::Ordering::Relaxed),
-                )
+                (s.lan_bridge(), s.lan_relay_tx.clone(), s.game_gateway.clone())
             };
-            for (from, mut bytes) in packets {
-                loop_guard.mark(&bytes);
-                // While our own WC3 is hosting, replaying the other members'
-                // game state (announcements + GAMEINFO) onto the local
-                // network is useless — we're in our own lobby, not
-                // browsing — and a remote GAMEINFO landing on the socket
-                // right as our WC3 runs its create handshake is a state that
-                // never occurs on a real LAN: the prime suspect for WC3's
-                // failed-creation dialog. Join traffic still flows: a
-                // hosting WC3 must keep receiving SEARCHGAME to answer it
-                // with GAMEINFO (that is how someone joins *our* game).
-                if own_hosting && warlay::engine::contains_game_state(&bytes) {
+            for (from, bytes) in packets {
+                // The replay rules (echo marking, host gate, per-peer
+                // GAMEINFO port rewrite) live in `warlay::engine::LanBridge`
+                // so the lab simulator and the tests run the same code.
+                let Some(bytes) = bridge.prepare_inbound(from, bytes, gateway.as_deref()).await else {
                     continue;
-                }
-                // Each peer's GAMEINFO is rewritten to that peer's own
-                // dedicated joiner port, so when our WC3 joins the game it
-                // advertised, the port it connects to says which member the
-                // session must be carried to (see `start_game_gateway`).
-                if warlay::engine::contains_game_info(&bytes) {
-                    if let Some(gateway) = &gateway {
-                        match gateway.ensure_listener(from).await {
-                            Ok(port) => {
-                                // Scope the capture to it as well: our
-                                // WC3's own queries toward that port are
-                                // this game's traffic too and must be
-                                // relayed.
-                                {
-                                    let mut ports = capture_ports.lock().unwrap();
-                                    if !ports.contains(&port) {
-                                        ports.push(port);
-                                    }
-                                }
-                                warlay::engine::rewrite_gameinfo_port(&mut bytes, port);
-                                // What actually goes onto the LAN is the
-                                // rewritten packet, and the capture sees it
-                                // come back from our own IP. Marking only
-                                // the original bytes (above) let that echo
-                                // through as "our WC3's own traffic": it
-                                // was relayed back to the mesh and every
-                                // member re-pointed the game at the
-                                // echoer's joiner port instead of the real
-                                // host's, so the join went to the wrong
-                                // member.
-                                loop_guard.mark(&bytes);
-                            }
-                            Err(error) => warn!(%error, %from, "no se pudo abrir el puerto local de unión para el par"),
-                        }
-                    }
-                }
+                };
                 if let Some(tx) = &relay_tx {
                     let _ = tx.send(bytes);
                 }
