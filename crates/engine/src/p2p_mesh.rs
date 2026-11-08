@@ -405,7 +405,12 @@ impl PeerMeshHandle {
     /// `Arc<P2pTunnelHandle>` that has no business leaving this crate, and
     /// the caller (the daemon) maps this into `protocol::ipc`'s own
     /// serializable DTO.
-    pub fn peer_statuses(&self) -> Vec<(Uuid, bool, Option<SocketAddr>, &'static str)> {
+    ///
+    /// The last element is the round-trip time of the live link in
+    /// milliseconds (QUIC's own estimate, no extra traffic), `None` while
+    /// there is no connection.
+    #[allow(clippy::type_complexity)]
+    pub fn peer_statuses(&self) -> Vec<(Uuid, bool, Option<SocketAddr>, &'static str, Option<u32>)> {
         let Ok(st) = self.state.read() else {
             return Vec::new();
         };
@@ -413,6 +418,12 @@ impl PeerMeshHandle {
         st.peers
             .values()
             .map(|p| {
+                let rtt_ms = match p.state {
+                    PeerLinkState::Connected(ref h) => {
+                        Some(h.connection.rtt().as_millis().min(u32::MAX as u128) as u32)
+                    }
+                    _ => None,
+                };
                 let tag = match p.state {
                     PeerLinkState::NotAttempted => "not_attempted",
                     PeerLinkState::Connecting => "connecting",
@@ -420,7 +431,7 @@ impl PeerMeshHandle {
                     PeerLinkState::Connected(_) => "connected",
                     PeerLinkState::Failed => "failed",
                 };
-                (p.client_id, p.is_host, p.p2p_addr, tag)
+                (p.client_id, p.is_host, p.p2p_addr, tag, rtt_ms)
             })
             .collect()
     }
