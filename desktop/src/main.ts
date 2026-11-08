@@ -4,6 +4,7 @@ import App from "./App.vue";
 import { router } from "./router";
 import { isDesktop, native } from "./services/native";
 import { removeLegacyServerOverride } from "./services/serverUrl";
+import { announceUpdateOnStart } from "./stores/updates";
 // Self-hosted fonts (no external fetch): Inter for UI text, Rajdhani for
 // display headings.
 import "@fontsource/inter/400.css";
@@ -22,6 +23,8 @@ createApp(App).use(createPinia()).use(router).mount("#app");
 // Dismiss the static splash (index.html) once the first route has resolved,
 // which includes restoring the session, so the user never sees a blank frame.
 void router.isReady().then(() => {
+  // Once the splash is gone, look for a new release without blocking anything.
+  if (isDesktop) void announceUpdateOnStart(() => router.push({ path: "/settings", query: { tab: "advanced" } }));
   const splash = document.getElementById("splash");
   if (!splash) return;
   requestAnimationFrame(() => {

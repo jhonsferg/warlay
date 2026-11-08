@@ -50,7 +50,6 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: var(--s-6);
-  grid-column: 1 / -1;
 
   &__body {
     flex: 1;
@@ -66,11 +65,12 @@ onMounted(async () => {
   }
   &__facts {
     margin: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--s-3);
 
     div {
+      flex: 1 1 170px;
       display: flex;
       flex-direction: column;
       gap: 2px;

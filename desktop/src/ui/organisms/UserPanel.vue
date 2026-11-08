@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LogOut, Settings } from "@lucide/vue";
+import { Settings } from "@lucide/vue";
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { useRooms } from "../../stores/rooms";
@@ -19,20 +19,13 @@ const presence = computed(() => ({
     : ("online" as const),
   roomId: rooms.current?.id ?? null,
 }));
-
-async function logout() {
-  await rooms.leave().catch(() => {});
-  await session.logout();
-  void router.push("/login");
-}
 </script>
 
 <template>
   <div v-if="session.me" class="user-panel" data-testid="user-panel">
     <UserChip :user="session.me" :presence="presence" size="sm" :subtitle="`@${session.me.username}`" />
     <div class="user-panel__actions">
-      <WIconButton label="Ajustes" size="sm" @click="router.push('/settings')"><Settings /></WIconButton>
-      <WIconButton label="Cerrar sesión" size="sm" tone="danger" @click="logout"><LogOut /></WIconButton>
+      <WIconButton label="Ajustes" size="md" @click="router.push('/settings')"><Settings /></WIconButton>
     </div>
   </div>
 </template>

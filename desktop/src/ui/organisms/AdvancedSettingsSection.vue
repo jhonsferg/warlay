@@ -14,11 +14,22 @@ import UpdateSettingsSection from "./UpdateSettingsSection.vue";
 
 <style scoped lang="scss">
 .advanced {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--s-5);
-  align-items: start;
+  align-items: stretch;
   max-width: 1100px;
+  margin: 0 auto;
   container-type: inline-size;
+
+  // Each block grows to share the row, so nothing is left empty.
+  > * {
+    flex: 1 1 340px;
+    min-width: 0;
+  }
+  // The about panel always takes a full row of its own.
+  > :last-child {
+    flex-basis: 100%;
+  }
 }
 </style>

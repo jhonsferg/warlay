@@ -4,7 +4,7 @@ import { ref } from "vue";
 export interface ToastAction {
   label: string;
   /** "primary" is the accept-like action; "ghost" the decline-like one. */
-  variant?: "primary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "success";
   /** Runs the action; the toast closes once it settles (or fails). */
   run: () => unknown | Promise<unknown>;
 }
