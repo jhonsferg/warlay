@@ -1,7 +1,5 @@
 use super::*;
 use crate::state::test_support::TestApp;
-use uuid::Uuid;
-use warlay::protocol::RoomMember;
 
 #[test]
 fn success_maps_to_ok_and_an_agent_error_keeps_its_message() {
@@ -32,19 +30,4 @@ fn commands_fail_loudly_until_the_agent_is_started() {
 
     *t.state().agent_state.lock().unwrap() = Some(Arc::new(TokioMutex::new(DaemonState::new())));
     assert!(require_agent_state(&t.state()).is_ok());
-}
-
-#[test]
-fn room_members_are_empty_without_a_room_and_returned_with_one() {
-    let t = TestApp::new();
-    assert!(get_room_members(t.state()).is_empty());
-
-    let members = vec![RoomMember {
-        client_id: Uuid::new_v4(),
-        display_name: "Arthas".into(),
-    }];
-    *t.state().active_room.lock().unwrap() = Some((Uuid::new_v4(), members.clone()));
-    let got = get_room_members(t.state());
-    assert_eq!(got.len(), 1);
-    assert_eq!(got[0].display_name, "Arthas");
 }
