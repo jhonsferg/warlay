@@ -3,7 +3,12 @@ import { test } from "node:test";
 import { compareFriends, matchesQuery } from "./friendOrder.ts";
 
 type F = Parameters<typeof compareFriends>[0];
-const friend = (name: string, status: F["presence"]["status"], lastSeenAt: string | null = null, username = name.toLowerCase()): F => ({
+const friend = (
+  name: string,
+  status: F["presence"]["status"],
+  lastSeenAt: string | null = null,
+  username = name.toLowerCase(),
+): F => ({
   displayName: name,
   username,
   presence: { status, roomId: null, lastSeenAt },
@@ -11,20 +16,16 @@ const friend = (name: string, status: F["presence"]["status"], lastSeenAt: strin
 const order = (list: F[]) => [...list].sort(compareFriends).map((f) => f.displayName);
 
 test("people who are around come first: in game, in a room, online, then offline", () => {
-  const list = [
-    friend("Off", "offline"),
-    friend("On", "online"),
-    friend("Game", "in_game"),
-    friend("Room", "in_room"),
-  ];
+  const list = [friend("Off", "offline"), friend("On", "online"), friend("Game", "in_game"), friend("Room", "in_room")];
   assert.deepEqual(order(list), ["Game", "Room", "On", "Off"]);
 });
 
 test("within a group, names are alphabetical (accents and case do not break it)", () => {
-  assert.deepEqual(
-    order([friend("zoe", "online"), friend("Ángel", "online"), friend("bruno", "online")]),
-    ["Ángel", "bruno", "zoe"],
-  );
+  assert.deepEqual(order([friend("zoe", "online"), friend("Ángel", "online"), friend("bruno", "online")]), [
+    "Ángel",
+    "bruno",
+    "zoe",
+  ]);
 });
 
 test("offline friends: the most recently seen first, never-seen last", () => {
@@ -43,7 +44,10 @@ test("offline friends seen at the same instant fall back to the name", () => {
 });
 
 test("an unparseable timestamp counts as never seen", () => {
-  assert.deepEqual(order([friend("Bad", "offline", "nope"), friend("Ok", "offline", "2026-01-01T00:00:00Z")]), ["Ok", "Bad"]);
+  assert.deepEqual(order([friend("Bad", "offline", "nope"), friend("Ok", "offline", "2026-01-01T00:00:00Z")]), [
+    "Ok",
+    "Bad",
+  ]);
 });
 
 test("search matches display name or username, ignoring case and accents", () => {
