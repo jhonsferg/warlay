@@ -15,6 +15,18 @@ import "./styles/theme.scss";
 
 createApp(App).use(createPinia()).use(router).mount("#app");
 
+// Dismiss the static splash (index.html) once the first route has resolved,
+// which includes restoring the session, so the user never sees a blank frame.
+void router.isReady().then(() => {
+  const splash = document.getElementById("splash");
+  if (!splash) return;
+  requestAnimationFrame(() => {
+    splash.classList.add("splash--hide");
+    splash.addEventListener("transitionend", () => splash.remove(), { once: true });
+    window.setTimeout(() => splash.remove(), 600);
+  });
+});
+
 // Developer tools: release builds ship with them enabled (see
 // `app.security.devtools` in tauri.conf.json), but WebView2's own F12
 // accelerator is not reliable inside a Tauri window, so the chord is handled
