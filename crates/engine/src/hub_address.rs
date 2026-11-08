@@ -61,17 +61,17 @@ mod tests {
 
     #[test]
     fn legacy_host_port_is_plain_ws() {
-        let address = HubAddress::parse("161.132.40.53:7777").unwrap();
-        assert_eq!(address.ws_url(), "ws://161.132.40.53:7777/ws");
-        assert_eq!(address.host(), "161.132.40.53");
+        let address = HubAddress::parse("203.0.113.7:7777").unwrap();
+        assert_eq!(address.ws_url(), "ws://203.0.113.7:7777/ws");
+        assert_eq!(address.host(), "203.0.113.7");
         assert!(!address.is_secure());
     }
 
     #[test]
     fn wss_without_path_defaults_to_ws_endpoint() {
-        let address = HubAddress::parse(" wss://warlay.codesoftlabs.com ").unwrap();
-        assert_eq!(address.ws_url(), "wss://warlay.codesoftlabs.com/ws");
-        assert_eq!(address.host(), "warlay.codesoftlabs.com");
+        let address = HubAddress::parse(" wss://hub.example.com ").unwrap();
+        assert_eq!(address.ws_url(), "wss://hub.example.com/ws");
+        assert_eq!(address.host(), "hub.example.com");
         assert!(address.is_secure());
     }
 
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn rejects_other_schemes_and_garbage() {
-        assert!(HubAddress::parse("https://warlay.codesoftlabs.com").is_err());
+        assert!(HubAddress::parse("https://hub.example.com").is_err());
         assert!(HubAddress::parse("").is_err());
         assert!(HubAddress::parse("wss://").is_err());
     }
