@@ -141,3 +141,7 @@ pub fn teardown_tunnel_and_lan(s: &mut DaemonState) {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "state_tests.rs"]
+mod tests;
