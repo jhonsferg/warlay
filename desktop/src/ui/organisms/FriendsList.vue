@@ -45,8 +45,14 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
     </div>
 
     <div class="friends-list__scroll">
-      <section v-if="social.incoming.length || social.outgoing.length" class="friends-list__requests" data-testid="friend-requests">
-        <p class="friends-list__eyebrow">Solicitudes de amistad — {{ social.incoming.length + social.outgoing.length }}</p>
+      <section
+        v-if="social.incoming.length || social.outgoing.length"
+        class="friends-list__requests"
+        data-testid="friend-requests"
+      >
+        <p class="friends-list__eyebrow">
+          Solicitudes de amistad — {{ social.incoming.length + social.outgoing.length }}
+        </p>
         <div v-for="r in social.incoming" :key="r.id" class="friends-list__request" :data-request="r.from.username">
           <UserChip :user="r.from" :subtitle="`@${r.from.username} quiere ser tu amigo`" size="sm" />
           <WButton size="sm" variant="success" @click="answer(() => social.accept(r.id), 'No se pudo aceptar')"
@@ -70,7 +76,11 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
 
       <p class="friends-list__eyebrow">Todos los amigos — {{ social.friends.length }}</p>
 
-      <EmptyState v-if="social.friends.length === 0" title="Aún no tienes amigos" text="Busca a tus compañeros por su nombre de usuario.">
+      <EmptyState
+        v-if="social.friends.length === 0"
+        title="Aún no tienes amigos"
+        text="Busca a tus compañeros por su nombre de usuario."
+      >
         <template #icon><Users /></template>
         <WButton @click="dialogs.addFriend = true"
           ><template #icon><UserPlus /></template>Agregar amigo</WButton
