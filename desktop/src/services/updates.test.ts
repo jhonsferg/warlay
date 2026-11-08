@@ -3,8 +3,11 @@ import { test } from "node:test";
 import {
   createUpdater,
   formatBytes,
+  formatLastCheck,
   percent,
+  readLastCheck,
   releaseHighlights,
+  saveLastCheck,
   type UpdateProgress,
   type UpdateState,
   type UpdateStatus,
@@ -194,4 +197,32 @@ test("late progress after a failed install is ignored", async () => {
   const before = h.seen.length;
   h.push({ receivedBytes: 5, totalBytes: 10 });
   assert.equal(h.seen.length, before);
+});
+
+test("the last check reads as never, seconds, minutes, hours or a date", () => {
+  const now = Date.UTC(2026, 10, 9, 12, 0, 0);
+  assert.equal(formatLastCheck(null, now), "Nunca");
+  assert.equal(formatLastCheck(Number.NaN, now), "Nunca");
+  assert.equal(formatLastCheck(now - 5_000, now), "Hace unos segundos");
+  assert.equal(formatLastCheck(now + 5_000, now), "Hace unos segundos", "a clock step back never goes negative");
+  assert.equal(formatLastCheck(now - 5 * 60_000, now), "Hace 5 min");
+  assert.equal(formatLastCheck(now - 3 * 3_600_000 - 1_000, now), "Hace 3 h");
+  const old = formatLastCheck(now - 3 * 86_400_000, now);
+  assert.match(old, /2026/);
+  assert.match(old, /noviembre/i);
+});
+
+test("the last check is remembered between runs and ignores junk", () => {
+  const data = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, v),
+  };
+  assert.equal(readLastCheck(storage), null);
+  saveLastCheck(storage, 1_700_000_123_000);
+  assert.equal(readLastCheck(storage), 1_700_000_123_000);
+  data.set("warlay.updates.lastCheck", "no es un número");
+  assert.equal(readLastCheck(storage), null);
+  data.set("warlay.updates.lastCheck", "-4");
+  assert.equal(readLastCheck(storage), null);
 });
