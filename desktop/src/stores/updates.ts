@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { native } from "../services/native";
 import { createUpdater, initialUpdateState, readLastCheck, saveLastCheck } from "../services/updates";
+import { useToasts } from "./toasts";
 
 /** The browser's storage, when there is one (plain Node tests have none). */
 const storage = typeof localStorage === "undefined" ? null : localStorage;
@@ -32,3 +33,24 @@ export const useUpdates = defineStore("updates", () => {
 
   return { state, lastCheckedAt, check: updater.check, install: updater.install };
 });
+
+/**
+ * Looks for a release in the background once the app is up and, when there is
+ * one, offers it in a toast. Failures stay silent: the user did not ask.
+ * `goToUpdates` opens the screen with the release details.
+ */
+export async function announceUpdateOnStart(goToUpdates: () => unknown): Promise<void> {
+  const updates = useUpdates();
+  await updates.check();
+  const status = updates.state.status;
+  if (updates.state.phase !== "available" || !status) return;
+  useToasts().action(
+    `Hay una nueva versión: ${status.latest}`,
+    "Para poder actualizarla haz clic aquí.",
+    [
+      { label: "Ir a actualizaciones", variant: "success", run: goToUpdates },
+      { label: "Lo haré después", variant: "secondary", run: () => {} },
+    ],
+    30000,
+  );
+}
