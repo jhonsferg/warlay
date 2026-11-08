@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { friends as friendsApi, users } from "../services/api";
 import type { FriendRequest, Presence, UserSummary, UserWithPresence } from "../services/types";
-import { PRESENCE_ORDER } from "../ui/presence";
+import { compareFriends } from "../services/friendOrder";
 
 /** Friends, friend requests and live presence. */
 export const useSocial = defineStore("social", () => {
@@ -11,13 +11,7 @@ export const useSocial = defineStore("social", () => {
   const outgoing = ref<FriendRequest[]>([]);
   const loaded = ref(false);
 
-  const sortedFriends = computed(() =>
-    [...friends.value].sort(
-      (a, b) =>
-        PRESENCE_ORDER.indexOf(a.presence.status) - PRESENCE_ORDER.indexOf(b.presence.status) ||
-        a.displayName.localeCompare(b.displayName),
-    ),
-  );
+  const sortedFriends = computed(() => [...friends.value].sort(compareFriends));
   const onlineCount = computed(() => friends.value.filter((f) => f.presence.status !== "offline").length);
 
   async function load() {
