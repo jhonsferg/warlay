@@ -54,3 +54,12 @@ export function resolveServerUrl(injected: string | undefined, dev: boolean): st
   if (dev && !(injected ?? "").trim()) return DEV_SERVER_URL;
   throw new Error(serverUrlProblem(injected) ?? "invalid server address");
 }
+
+/** Older versions let the user type a server address in Ajustes and kept it
+ * under this key. The address is now fixed by the build and nothing reads the
+ * key any more, so a leftover value is removed instead of lingering. */
+export const LEGACY_SERVER_OVERRIDE_KEY = "warlay.mainServer";
+
+export function removeLegacyServerOverride(storage: Pick<Storage, "removeItem">): void {
+  storage.removeItem(LEGACY_SERVER_OVERRIDE_KEY);
+}
