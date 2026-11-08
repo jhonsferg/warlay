@@ -88,7 +88,9 @@ export class VoiceEngine {
       // reopen it with the standard one instead of sending the raw noise.
       console.warn("noise filter unavailable, using the standard suppressor:", this.capture.fallbackReason);
       this.stream.getTracks().forEach((t) => t.stop());
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints({ ...prefs, noise: "standard" }) });
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints({ ...prefs, noise: "standard" }),
+      });
       this.capture = { track: this.stream.getAudioTracks()[0], filtered: false, dispose() {} };
     }
     const track = this.capture.track;
