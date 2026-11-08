@@ -6,6 +6,5 @@
 
 # Components.
 /server/                @jhonsferg
-/daemon/                @jhonsferg
 /desktop/               @jhonsferg
 /crates/                @jhonsferg
