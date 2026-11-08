@@ -2,14 +2,14 @@ use std::sync::Arc;
 use tauri::async_runtime::Mutex as TokioMutex;
 
 use crate::agent::handlers::handle_request;
-use crate::agent::state::DaemonState;
+use crate::agent::state::AgentState;
 use crate::core::dto::ConnectStatusDto;
 use crate::core::error::AppError;
 use crate::state::AppState;
 use anyhow::anyhow;
 use tauri::{AppHandle, State};
 use uuid::Uuid;
-use warlay::protocol::ipc::{ConnectFailure, DaemonRequest, DaemonResponse};
+use warlay::protocol::ipc::{AgentRequest, AgentResponse, ConnectFailure};
 
 fn invalid(field: &str, value: &str) -> AppError {
     AppError::InvalidInput(format!("'{value}' is not a valid {field}"))
@@ -18,7 +18,7 @@ fn invalid(field: &str, value: &str) -> AppError {
 /// Every command below needs the agent to be running; silently no-op'ing
 /// when it isn't hides real failures from the user instead of surfacing
 /// them.
-pub(crate) fn require_agent_state(state: &State<'_, AppState>) -> Result<Arc<TokioMutex<DaemonState>>, AppError> {
+pub(crate) fn require_agent_state(state: &State<'_, AppState>) -> Result<Arc<TokioMutex<AgentState>>, AppError> {
     state
         .agent_state
         .lock()
@@ -28,10 +28,10 @@ pub(crate) fn require_agent_state(state: &State<'_, AppState>) -> Result<Arc<Tok
 }
 
 /// Maps the agent's generic Success/Error reply to a Tauri command result.
-pub(crate) fn success_or_err(resp: DaemonResponse) -> Result<(), AppError> {
+pub(crate) fn success_or_err(resp: AgentResponse) -> Result<(), AppError> {
     match resp {
-        DaemonResponse::Success { .. } => Ok(()),
-        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow!(message))),
+        AgentResponse::Success { .. } => Ok(()),
+        AgentResponse::Error { message, .. } => Err(AppError::Any(anyhow!(message))),
         other => Err(AppError::Any(anyhow!("respuesta inesperada del agente: {other:?}"))),
     }
 }
@@ -53,7 +53,7 @@ pub async fn connect_to_server(
     let agent_state = require_agent_state(&state)?;
 
     let response = handle_request(
-        DaemonRequest::ConnectToHub {
+        AgentRequest::ConnectToHub {
             server_id: server_id.clone(),
             address: record.address,
             psk: record.psk,
@@ -67,7 +67,7 @@ pub async fn connect_to_server(
     .await;
 
     match response {
-        DaemonResponse::Connected {
+        AgentResponse::Connected {
             remote_server_id,
             server_name,
             new_psk,
@@ -80,7 +80,7 @@ pub async fn connect_to_server(
                 .record_handshake_success(local_id, remote_id, &server_name, new_psk.as_ref())?;
             Ok(ConnectStatusDto::Connected { server_name })
         }
-        DaemonResponse::ConnectFailed { failure, .. } => match failure {
+        AgentResponse::ConnectFailed { failure, .. } => match failure {
             ConnectFailure::PasswordRequired { server_name } => Ok(ConnectStatusDto::PasswordRequired { server_name }),
             ConnectFailure::Rejected { message, retry_as_new } => {
                 if retry_as_new {
@@ -90,7 +90,7 @@ pub async fn connect_to_server(
             }
             ConnectFailure::Other { message } => Err(AppError::Any(anyhow::anyhow!(message))),
         },
-        DaemonResponse::Error { message, .. } => Err(AppError::Any(anyhow::anyhow!(message))),
+        AgentResponse::Error { message, .. } => Err(AppError::Any(anyhow::anyhow!(message))),
         other => Err(AppError::Any(anyhow!("respuesta inesperada del agente: {other:?}"))),
     }
 }
@@ -102,7 +102,7 @@ pub async fn disconnect_from_server(
     server_id: String,
 ) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::DisconnectFromHub { server_id }, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::DisconnectFromHub { server_id }, agent_state, app).await)
 }
 
 #[tauri::command]
@@ -117,7 +117,7 @@ pub async fn create_room(
     let agent_state = require_agent_state(&state)?;
     success_or_err(
         handle_request(
-            DaemonRequest::CreateRoom {
+            AgentRequest::CreateRoom {
                 server_id,
                 name,
                 game_port,
@@ -141,7 +141,7 @@ pub async fn join_room(
     let agent_state = require_agent_state(&state)?;
     success_or_err(
         handle_request(
-            DaemonRequest::JoinRoom {
+            AgentRequest::JoinRoom {
                 server_id,
                 room_id,
                 password,
@@ -156,7 +156,7 @@ pub async fn join_room(
 #[tauri::command]
 pub async fn leave_room(app: AppHandle, state: State<'_, AppState>, server_id: String) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::LeaveRoom { server_id }, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::LeaveRoom { server_id }, agent_state, app).await)
 }
 
 #[tauri::command]
@@ -167,7 +167,7 @@ pub async fn delete_room(
     room_id: String,
 ) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::DeleteRoom { server_id, room_id }, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::DeleteRoom { server_id, room_id }, agent_state, app).await)
 }
 
 #[tauri::command]
@@ -177,13 +177,13 @@ pub async fn set_room_in_progress(
     server_id: String,
 ) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::SetRoomInProgress { server_id }, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::SetRoomInProgress { server_id }, agent_state, app).await)
 }
 
 #[tauri::command]
 pub async fn set_room_available(app: AppHandle, state: State<'_, AppState>, server_id: String) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::SetRoomAvailable { server_id }, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::SetRoomAvailable { server_id }, agent_state, app).await)
 }
 
 #[tauri::command]
@@ -194,7 +194,7 @@ pub async fn send_chat_message(
     text: String,
 ) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::SendChatMessage { server_id, text }, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::SendChatMessage { server_id, text }, agent_state, app).await)
 }
 
 #[tauri::command]
@@ -208,7 +208,7 @@ pub async fn send_private_message(
     let agent_state = require_agent_state(&state)?;
     success_or_err(
         handle_request(
-            DaemonRequest::SendPrivateMessage {
+            AgentRequest::SendPrivateMessage {
                 server_id,
                 to_client_id,
                 text,
@@ -233,7 +233,7 @@ pub async fn start_hosting_tunnel(
     let agent_state = require_agent_state(&state)?;
     success_or_err(
         handle_request(
-            DaemonRequest::StartHostingTunnel {
+            AgentRequest::StartHostingTunnel {
                 hub_host,
                 hub_tcp_port,
                 room_token,
@@ -260,7 +260,7 @@ pub async fn start_joining_tunnel(
     let agent_state = require_agent_state(&state)?;
     success_or_err(
         handle_request(
-            DaemonRequest::StartJoiningTunnel {
+            AgentRequest::StartJoiningTunnel {
                 hub_host,
                 hub_tcp_port,
                 room_token,
@@ -277,7 +277,7 @@ pub async fn start_joining_tunnel(
 #[tauri::command]
 pub async fn stop_hub_tunnel(app: AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::StopHubTunnel, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::StopHubTunnel, agent_state, app).await)
 }
 
 #[cfg(test)]

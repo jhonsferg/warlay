@@ -30,6 +30,7 @@ pub mod paths;
 pub mod session;
 pub mod shutdown;
 pub mod state;
+pub mod status;
 pub mod storage;
 pub mod voice;
 
@@ -39,65 +40,3 @@ pub const EXIT_NOT_ELEVATED: i32 = 2;
 /// The prefix used for the agent's log files, so they can be told apart
 /// from the desktop client's own `warlay-*.log` files in the same directory.
 pub const LOG_FILE_PREFIX: &str = "warlaid";
-
-/// What a process was asked to do with the agent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Invocation {
-    /// Run the agent inside the current process (desktop client mode).
-    Daemon,
-}
-
-/// Reads an agent request out of `args`, or reports `None` when these
-/// arguments belong to something else -- notably the desktop client's normal
-/// double-click start, which must carry on launching the GUI.
-///
-/// Only `argv[1]` is inspected.
-pub fn parse_invocation(args: &[String]) -> Option<Invocation> {
-    match args.get(1).map(String::as_str) {
-        Some("--daemon") => Some(Invocation::Daemon),
-        _ => None,
-    }
-}
-
-impl Invocation {
-    /// Runs the request to completion and returns the process exit code.
-    pub fn run(self) -> i32 {
-        // The agent now lives inside the desktop client process; there is
-        // no separate daemon process to start from here.
-        let _ = self;
-        0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_invocation, Invocation};
-
-    /// Builds an argv: `first` is `argv[0]`, the rest are the flags.
-    fn argv(first: &str, rest: &[&str]) -> Vec<String> {
-        std::iter::once(first.to_owned())
-            .chain(rest.iter().map(|flag| (*flag).to_owned()))
-            .collect()
-    }
-
-    #[test]
-    fn no_flag_is_the_desktop_client() {
-        assert_eq!(parse_invocation(&argv("warlay.exe", &[])), None);
-        assert_eq!(parse_invocation(&argv("warlay.exe", &["--verbose"])), None);
-        assert_eq!(parse_invocation(&[]), None);
-    }
-
-    #[test]
-    fn daemon_flag_is_recognised() {
-        assert_eq!(
-            parse_invocation(&argv("warlay.exe", &["--daemon"])),
-            Some(Invocation::Daemon)
-        );
-        assert_eq!(parse_invocation(&argv("warlay.exe", &[])), None);
-    }
-
-    #[test]
-    fn only_the_first_flag_is_read() {
-        assert_eq!(parse_invocation(&argv("warlay.exe", &["something", "--daemon"])), None);
-    }
-}

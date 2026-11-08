@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Activity, FolderOpen, Gamepad2, KeyRound, Palette, RefreshCw, Server, Settings, User } from "@lucide/vue";
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { auth } from "../services/api";
 import { errorMessage, mainServerUrl, setMainServerUrl } from "../services/http";
-import { isDesktop, native, type AgentStatus } from "../services/native";
+import { isDesktop, native } from "../services/native";
+import { createStatusFeed, idleStatus, uptimeMinutes } from "../services/networkStatus";
 import { realtime } from "../services/realtime";
 import { AVATAR_COLORS } from "../ui/palette";
 import { useSession } from "../stores/session";
@@ -38,9 +39,22 @@ const newPassword = ref("");
 const savingPassword = ref(false);
 
 const serverUrl = ref(mainServerUrl());
-const agent = ref<AgentStatus | null>(null);
+
+// The agent's network status is read once and then pushed by the backend when
+// it changes; it is only followed while the network tab is open.
+const network = ref(idleStatus());
+const networkKnown = ref(false);
+const networkReceivedAt = ref(Date.now());
+const now = ref(Date.now());
 const realtimeVia = ref(realtime.via || "sin conexión");
-let agentTimer: ReturnType<typeof setInterval> | null = null;
+const statusFeed = createStatusFeed({ fetch: native.networkStatus, listen: native.onNetworkStatus }, (status) => {
+  network.value = status;
+  networkKnown.value = true;
+  networkReceivedAt.value = Date.now();
+});
+const uptime = computed(() => uptimeMinutes(network.value, networkReceivedAt.value, now.value));
+let following = false;
+let clockTimer: ReturnType<typeof setInterval> | null = null;
 
 const profileDirty = computed(
   () =>
@@ -94,26 +108,39 @@ function saveServer() {
   toasts.info("Servidor actualizado", "Reinicia la sesión para aplicar el cambio.");
 }
 
-async function refreshAgent() {
+/** The realtime connection is not reactive, so this local timer (no IPC)
+ * refreshes how it is reached, and the uptime, while the network tab is open. */
+function refreshLocal() {
+  now.value = Date.now();
   realtimeVia.value =
     realtime.state === "open"
       ? realtime.via === "principal"
         ? "servidor principal"
         : `ayudante ${realtime.via}`
       : "reconectando...";
-  try {
-    agent.value = await native.agentStatus();
-  } catch {
-    agent.value = null;
+}
+
+function followNetwork(on: boolean) {
+  if (on === following) return;
+  following = on;
+  if (on) {
+    refreshLocal();
+    clockTimer = setInterval(refreshLocal, 3000);
+    void statusFeed.start();
+  } else {
+    if (clockTimer) clearInterval(clockTimer);
+    clockTimer = null;
+    statusFeed.stop();
   }
 }
 
+watch(tab, (value) => followNetwork(value === "network"));
+
 onMounted(() => {
   void settings.load().catch(() => {});
-  void refreshAgent();
-  agentTimer = setInterval(refreshAgent, 3000);
+  followNetwork(tab.value === "network");
 });
-onUnmounted(() => agentTimer && clearInterval(agentTimer));
+onUnmounted(() => followNetwork(false));
 </script>
 
 <template>
@@ -224,19 +251,19 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
         <p class="settings__muted" data-testid="realtime-via">
           Chat y avisos en tiempo real: <strong>{{ realtimeVia }}</strong>
         </p>
-        <div v-if="agent" class="settings__stats">
+        <div v-if="networkKnown" class="settings__stats">
           <div>
-            <span>Activo desde</span><strong>{{ Math.round(agent.uptimeSecs / 60) }} min</strong>
+            <span>Activo desde</span><strong>{{ uptime }} min</strong>
           </div>
           <div>
-            <span>Túnel de juego</span><strong>{{ agent.tunnelActive ? "Activo" : "Inactivo" }}</strong>
+            <span>Túnel de juego</span><strong>{{ network.tunnelActive ? "Activo" : "Inactivo" }}</strong>
           </div>
           <div>
-            <span>Enlaces</span><strong>{{ agent.meshPeers.length }}</strong>
+            <span>Enlaces</span><strong>{{ network.meshPeers.length }}</strong>
           </div>
         </div>
-        <ul v-if="agent?.meshPeers.length" class="settings__links">
-          <li v-for="p in agent.meshPeers" :key="p.clientId">
+        <ul v-if="network.meshPeers.length" class="settings__links">
+          <li v-for="p in network.meshPeers" :key="p.clientId">
             <code>{{ p.clientId.slice(0, 8) }}</code>
             <span>{{ p.p2pAddr ?? "—" }}</span>
             <WBadge

@@ -1,6 +1,6 @@
 //! A process-wide "please exit" signal. The agent runs elevated, so the
 //! desktop app (which is not) can't terminate it from outside; instead it
-//! sends `DaemonRequest::Shutdown`, whose handler raises this signal and the
+//! sends `AgentRequest::Shutdown`, whose handler raises this signal and the
 //! accept loop stops, which ends the process.
 
 use std::sync::OnceLock;

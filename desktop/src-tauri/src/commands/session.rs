@@ -6,7 +6,7 @@ use crate::agent::handlers::handle_request;
 use crate::core::error::AppError;
 use crate::state::AppState;
 use tauri::{AppHandle, State};
-use warlay::protocol::ipc::DaemonRequest;
+use warlay::protocol::ipc::AgentRequest;
 
 use super::matchmaking::{require_agent_state, success_or_err};
 
@@ -24,7 +24,7 @@ pub async fn start_room_session(
     let agent_state = require_agent_state(&state)?;
     success_or_err(
         handle_request(
-            DaemonRequest::StartRoomSession {
+            AgentRequest::StartRoomSession {
                 room_id,
                 user_id,
                 is_host,
@@ -42,13 +42,13 @@ pub async fn start_room_session(
 #[tauri::command]
 pub async fn stop_room_session(app: AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::StopRoomSession, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::StopRoomSession, agent_state, app).await)
 }
 
 #[tauri::command]
 pub async fn start_game_tunnel(app: AppHandle, state: State<'_, AppState>, game_port: u16) -> Result<(), AppError> {
     let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(DaemonRequest::StartGameTunnel { game_port }, agent_state, app).await)
+    success_or_err(handle_request(AgentRequest::StartGameTunnel { game_port }, agent_state, app).await)
 }
 
 #[tauri::command]
@@ -61,7 +61,7 @@ pub async fn update_room_helper(
     let agent_state = require_agent_state(&state)?;
     success_or_err(
         handle_request(
-            DaemonRequest::UpdateRoomHelper {
+            AgentRequest::UpdateRoomHelper {
                 rendezvous_addr,
                 relay_addr,
             },

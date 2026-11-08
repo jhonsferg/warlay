@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 
 #[test]
 fn a_fresh_state_is_idle() {
-    let s = DaemonState::new();
+    let s = AgentState::new();
     assert!(s.connections.is_empty());
     assert!(s.room_session.is_none());
     assert!(s.peer_mesh.is_none());
@@ -14,7 +14,7 @@ fn a_fresh_state_is_idle() {
 
 #[test]
 fn the_lan_bridge_shares_live_state_with_the_agent() {
-    let s = DaemonState::new();
+    let s = AgentState::new();
     let bridge = s.lan_bridge();
 
     // Flags flipped through the bridge (the capture thread) are what the

@@ -63,12 +63,17 @@ flowchart LR
 
 The frontend only talks to Tauri commands. Commands that need networking
 (`connect_to_server`, `start_hosting_tunnel`, `launch_game`, ...) build a
-`DaemonRequest` (the historical name of the agent's request type, see
-`crates/protocol/src/ipc.rs`) and call `agent::handlers::handle_request`
-directly, in the same process. The agent keeps its state in `DaemonState`
-and pushes events back (`HubMessage`, `TunnelStatusChanged`, voice frames,
-...) through `agent/events.rs`, which emits them to the frontend as Tauri
-events.
+`AgentRequest` (see `crates/protocol/src/ipc.rs`) and call
+`agent::handlers::handle_request` directly, in the same process. The agent
+keeps its state in `AgentState` and pushes events back (`HubMessage`,
+`TunnelStatusChanged`, voice frames, ...) through `agent/events.rs`, which
+emits them to the frontend as Tauri events.
+
+The frontend does not poll the agent. The network status (P2P links, game
+tunnel, hub connections) is read once with `get_network_status`, and
+`agent/status.rs` then emits the `network://status` event only when
+something other than uptime changes; the room and the Settings network tab
+follow it through `services/networkStatus.ts`.
 
 On start, the frontend shows a loading screen (logo, name and version over an
 indeterminate progress bar, defined in `index.html`) that is dismissed once
@@ -129,5 +134,6 @@ Windows 10 and 11.
 
 ```sh
 npm run build                         # vue-tsc type-check + Vite bundle
-cargo test -p desktop                 # backend unit tests (from the repo root)
+npm run test:unit                     # frontend unit tests (src/services/*.test.ts)
+cargo test -p desktop -p protocol     # backend unit tests (from the repo root)
 ```

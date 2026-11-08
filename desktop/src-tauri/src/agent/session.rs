@@ -13,11 +13,11 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use warlay::protocol::ipc::DaemonResponse;
+use warlay::protocol::ipc::AgentResponse;
 
 use super::events::{emit_event, err};
 use super::lan::spawn_lan_mesh;
-use super::state::{teardown_tunnel_and_lan, DaemonState};
+use super::state::{teardown_tunnel_and_lan, AgentState};
 
 pub struct RoomSessionInfo {
     pub room_id: Uuid,
@@ -41,7 +41,7 @@ async fn resolve(addr: &str) -> Result<SocketAddr, String> {
 }
 
 /// Ends the current room session (mesh, game tunnel, LAN bridging).
-pub fn clear_room_session(s: &mut DaemonState) {
+pub fn clear_room_session(s: &mut AgentState) {
     if let Some(mesh) = s.peer_mesh.take() {
         mesh.abort();
     }
@@ -51,14 +51,14 @@ pub fn clear_room_session(s: &mut DaemonState) {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn start_room_session(
-    state: Arc<Mutex<DaemonState>>,
+    state: Arc<Mutex<AgentState>>,
     room_id: String,
     user_id: String,
     is_host: bool,
     rendezvous_addr: String,
     relay_addr: String,
     ticket: String,
-) -> DaemonResponse {
+) -> AgentResponse {
     let (Ok(room_id), Ok(user_id)) = (Uuid::parse_str(&room_id), Uuid::parse_str(&user_id)) else {
         return err("StartRoomSession", "id de sala o de usuario inválido");
     };
@@ -131,21 +131,21 @@ pub async fn start_room_session(
         lan_inbound_task,
     });
     info!(%room_id, %user_id, is_host, %rendezvous, ?relay, "sesión de sala P2P iniciada");
-    DaemonResponse::Success {
+    AgentResponse::Success {
         request_type: "StartRoomSession".to_string(),
     }
 }
 
-pub async fn stop_room_session(state: Arc<Mutex<DaemonState>>) -> DaemonResponse {
+pub async fn stop_room_session(state: Arc<Mutex<AgentState>>) -> AgentResponse {
     let mut s = state.lock().await;
     let had_session = s.room_session.is_some();
     clear_room_session(&mut s);
     drop(s);
     if had_session {
         info!("sesión de sala P2P terminada");
-        emit_event(&DaemonResponse::TunnelStatusChanged { running: false });
+        emit_event(&AgentResponse::TunnelStatusChanged { running: false });
     }
-    DaemonResponse::Success {
+    AgentResponse::Success {
         request_type: "StopRoomSession".to_string(),
     }
 }
@@ -153,7 +153,7 @@ pub async fn stop_room_session(state: Arc<Mutex<DaemonState>>) -> DaemonResponse
 /// Starts this member's game tunnel. Both halves on every member, host or
 /// not: anyone may host a game the others join, and anyone may join a
 /// game another member hosts.
-pub async fn start_game_tunnel(state: Arc<Mutex<DaemonState>>, game_port: u16) -> DaemonResponse {
+pub async fn start_game_tunnel(state: Arc<Mutex<AgentState>>, game_port: u16) -> AgentResponse {
     let (mesh, room_id, is_host) = {
         let s = state.lock().await;
         match (&s.peer_mesh, &s.room_session) {
@@ -174,7 +174,7 @@ pub async fn start_game_tunnel(state: Arc<Mutex<DaemonState>>, game_port: u16) -
                 .await
                 .game_started
                 .store(true, std::sync::atomic::Ordering::SeqCst);
-            emit_event(&DaemonResponse::GameStarted);
+            emit_event(&AgentResponse::GameStarted);
         });
     });
     // Join side: one dedicated local port per peer, bound on demand as
@@ -196,17 +196,17 @@ pub async fn start_game_tunnel(state: Arc<Mutex<DaemonState>>, game_port: u16) -
         return err("StartGameTunnel", e);
     }
     info!(%room_id, is_host, game_port, "túnel de juego P2P iniciado");
-    emit_event(&DaemonResponse::TunnelStatusChanged { running: true });
-    DaemonResponse::Success {
+    emit_event(&AgentResponse::TunnelStatusChanged { running: true });
+    AgentResponse::Success {
         request_type: "StartGameTunnel".to_string(),
     }
 }
 
 pub async fn update_room_helper(
-    state: Arc<Mutex<DaemonState>>,
+    state: Arc<Mutex<AgentState>>,
     rendezvous_addr: String,
     relay_addr: String,
-) -> DaemonResponse {
+) -> AgentResponse {
     let rendezvous = match resolve(&rendezvous_addr).await {
         Ok(addr) => addr,
         Err(message) => return err("UpdateRoomHelper", message),
@@ -217,7 +217,7 @@ pub async fn update_room_helper(
         Some(mesh) if s.room_session.is_some() => {
             mesh.switch_helper(rendezvous, relay);
             info!(%rendezvous, ?relay, "sala movida a otro ayudante");
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "UpdateRoomHelper".to_string(),
             }
         }

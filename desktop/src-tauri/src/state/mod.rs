@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
-use crate::agent::state::DaemonState;
+use crate::agent::state::AgentState;
 use crate::network::RelayClientHandle;
 use crate::storage::ClientStore;
 use std::sync::atomic::AtomicBool;
@@ -33,7 +33,7 @@ pub struct AppState {
     /// The agent now runs inside this same process (see `src/agent/`): its
     /// mutable state lives here, and commands talk to it directly instead of
     /// over a named pipe. `None` until `.setup()` finishes booting it.
-    pub agent_state: Mutex<Option<Arc<TokioMutex<DaemonState>>>>,
+    pub agent_state: Mutex<Option<Arc<TokioMutex<AgentState>>>>,
     /// Cloned `AppHandle` so the agent's event pushes (hub status, tunnel
     /// status, voice frames, ...) can be emitted as Tauri events to the
     /// frontend instead of being written to a pipe. Set in `.setup()`.

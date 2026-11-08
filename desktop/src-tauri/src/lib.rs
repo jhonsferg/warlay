@@ -14,7 +14,7 @@ mod state;
 mod storage;
 pub use warlay::transport;
 
-use agent::state::DaemonState;
+use agent::state::AgentState;
 use state::AppState;
 use std::sync::Arc;
 use storage::ClientStore;
@@ -401,9 +401,10 @@ pub fn run() {
             let state = app.state::<AppState>();
             // Initialize the agent state (runs in-process, no separate daemon
             // process). The agent's networking, LAN capture, tunnels, and hub
-            // connections all operate on this shared DaemonState.
-            let agent_state = Arc::new(TokioMutex::new(DaemonState::new()));
+            // connections all operate on this shared AgentState.
+            let agent_state = Arc::new(TokioMutex::new(AgentState::new()));
             *state.agent_state.lock().unwrap() = Some(agent_state.clone());
+            agent::status::spawn_watcher(app.handle().clone(), agent_state.clone());
             *state.app_handle.lock().unwrap() = Some(app.handle().clone());
             agent::events::set_app_handle(app.handle().clone());
             // The microphone answer comes from Warlay's consent and is never saved in the
@@ -558,7 +559,7 @@ pub fn run() {
             commands::system_info::get_system_info,
             commands::agent::get_agent_settings,
             commands::agent::save_agent_settings,
-            commands::agent::get_agent_status,
+            commands::agent::get_network_status,
             commands::agent::retry_peer_mesh,
             commands::session::start_room_session,
             commands::session::stop_room_session,

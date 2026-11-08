@@ -9,7 +9,7 @@ use warlay::engine::{CapturePorts, LoopGuard, MatchmakingConnection};
 
 use super::storage::AgentStore;
 
-pub struct DaemonState {
+pub struct AgentState {
     pub connections: HashMap<String, MatchmakingConnection>,
     pub game_tunnel: Option<warlay::engine::TunnelHandle>,
     pub peer_mesh: Option<Arc<warlay::engine::PeerMeshHandle>>,
@@ -77,7 +77,7 @@ pub struct DaemonState {
 /// running for the active session. Shared by every request that tears one
 /// down (`DisconnectFromHub`, `LeaveRoom`, `DeleteRoom`, `StopHubTunnel`,
 /// and now graceful shutdown) -- previously copy-pasted four times.
-impl DaemonState {
+impl AgentState {
     /// This machine's LAN-bridging rules over the shared state (see
     /// `warlay::engine::LanBridge`). Cheap: clones a few `Arc`s.
     pub fn lan_bridge(&self) -> warlay::engine::LanBridge {
@@ -112,7 +112,7 @@ impl DaemonState {
     }
 }
 
-pub fn teardown_tunnel_and_lan(s: &mut DaemonState) {
+pub fn teardown_tunnel_and_lan(s: &mut AgentState) {
     let had_tunnel = s.game_tunnel.is_some();
     let had_capture = s.lan_capture.is_some();
     let had_rebroadcast = s.lan_rebroadcast.is_some();
