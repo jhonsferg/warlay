@@ -10,6 +10,11 @@ updates:
       # Must stay on the version Tauri uses (desktop links both); upgraded
       # together with Tauri by hand.
       - dependency-name: windows
+      # bincode 3.0.0 is a tombstone: its maintainers ended the project and
+      # published a release that deliberately fails to compile
+      # (https://xkcd.com/2347/). Stay on 1.x.
+      - dependency-name: bincode
+        update-types: ["version-update:semver-major"]
     groups:
       cargo-minor:
         update-types: [minor, patch]
