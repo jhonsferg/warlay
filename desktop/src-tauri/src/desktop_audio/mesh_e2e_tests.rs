@@ -46,7 +46,10 @@ async fn two_linked_members() -> (Arc<PeerMeshHandle>, Arc<PeerMeshHandle>, Uuid
     let listener = member(listener_id, false);
     let start = tokio::time::Instant::now();
     while sender.connected_peers().is_empty() || listener.connected_peers().is_empty() {
-        assert!(start.elapsed() < Duration::from_secs(10), "the two members never linked");
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "the two members never linked"
+        );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     (sender, listener, sender_id, listener_id)
@@ -90,9 +93,19 @@ async fn a_tone_played_on_this_pc_reaches_the_other_member_intact() {
     let _ = game.kill();
     let _ = webview.kill();
 
-    assert!(packets.len() > 50, "only {} packets arrived: the stream is not flowing", packets.len());
+    assert!(
+        packets.len() > 50,
+        "only {} packets arrived: the stream is not flowing",
+        packets.len()
+    );
     assert!(packets.iter().all(|p| p.len() < 1000), "a packet exceeds a datagram");
     let tone = loudest_tone(&decode(&packets), 440.0);
-    println!("{} packets reached the listener; 440 Hz amplitude after decoding: {tone:.0}", packets.len());
-    assert!(tone > 8000.0, "the tone did not survive capture -> Opus -> mesh -> decode ({tone:.0})");
+    println!(
+        "{} packets reached the listener; 440 Hz amplitude after decoding: {tone:.0}",
+        packets.len()
+    );
+    assert!(
+        tone > 8000.0,
+        "the tone did not survive capture -> Opus -> mesh -> decode ({tone:.0})"
+    );
 }
