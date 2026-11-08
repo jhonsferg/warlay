@@ -1,4 +1,4 @@
-use argon2::password_hash::{Output, ParamsString, PasswordHash, SaltString};
+use argon2::password_hash::phc::{Output, ParamsString, PasswordHash, Salt};
 use argon2::{Algorithm, Argon2, Block, Params, Version};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -139,7 +139,7 @@ fn argon2_into(argon: &Argon2, params: &Params, password: &[u8], salt: &[u8], ou
 fn hash_password_blocking(password: &str) -> ApiResult<String> {
     let mut salt_bytes = [0_u8; 16];
     getrandom::fill(&mut salt_bytes).map_err(ApiError::internal)?;
-    let salt = SaltString::encode_b64(&salt_bytes).map_err(ApiError::internal)?;
+    let salt = Salt::new(&salt_bytes).map_err(ApiError::internal)?;
     let (algorithm, version, params) = (Algorithm::default(), Version::default(), Params::default());
     let mut out = [0_u8; Params::DEFAULT_OUTPUT_LEN];
     argon2_into(
@@ -154,7 +154,7 @@ fn hash_password_blocking(password: &str) -> ApiResult<String> {
         algorithm: algorithm.ident(),
         version: Some(version.into()),
         params: ParamsString::try_from(&params).map_err(ApiError::internal)?,
-        salt: Some(salt.as_salt()),
+        salt: Some(salt),
         hash: Some(Output::new(&out).map_err(ApiError::internal)?),
     };
     Ok(hash.to_string())
@@ -165,18 +165,17 @@ fn hash_password_blocking(password: &str) -> ApiResult<String> {
 fn verify_password_blocking(password: &str, hash: &str) -> bool {
     let check = || -> Option<bool> {
         let parsed = PasswordHash::new(hash).ok()?;
-        let algorithm = Algorithm::try_from(parsed.algorithm).ok()?;
+        let algorithm = Algorithm::try_from(parsed.algorithm.as_str()).ok()?;
         let version = parsed.version.map_or(Ok(Version::default()), Version::try_from).ok()?;
         let params = Params::try_from(&parsed).ok()?;
         let expected = parsed.hash?;
-        let mut salt_buf = [0_u8; 64];
-        let salt = parsed.salt?.decode_b64(&mut salt_buf).ok()?;
+        let salt = parsed.salt?;
         let mut out = vec![0_u8; expected.len()];
         argon2_into(
             &Argon2::new(algorithm, version, params.clone()),
             &params,
             password.as_bytes(),
-            salt,
+            salt.as_ref(),
             &mut out,
         )
         .ok()?;
@@ -310,9 +309,9 @@ mod tests {
         assert!(ours.starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
         // ...and hashes from the crate (existing accounts) verify with ours,
         // including ones made with other parameters.
-        let salt = SaltString::encode_b64(b"0123456789abcdef").unwrap();
+        let salt = b"0123456789abcdef";
         let standard = Argon2::default()
-            .hash_password(b"correct horse", &salt)
+            .hash_password_with_salt(b"correct horse", salt)
             .unwrap()
             .to_string();
         assert!(verify_password_blocking("correct horse", &standard));
@@ -322,7 +321,10 @@ mod tests {
             Version::V0x13,
             Params::new(1024, 1, 1, None).unwrap(),
         );
-        let other = cheap.hash_password(b"correct horse", &salt).unwrap().to_string();
+        let other = cheap
+            .hash_password_with_salt(b"correct horse", salt)
+            .unwrap()
+            .to_string();
         assert!(verify_password_blocking("correct horse", &other));
     }
 
