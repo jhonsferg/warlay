@@ -359,6 +359,17 @@ pub fn run() {
     tracing::info!(log_file = %log_path.display(), "logging initialized");
 
     tauri::Builder::default()
+        // Must be the first plugin: only one elevated warlay.exe may own the
+        // raw LAN capture and the agent state. A second launch exits right
+        // away and this callback (running in the first instance) brings the
+        // existing window to the front instead.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
