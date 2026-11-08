@@ -45,9 +45,6 @@ pub fn clear_room_session(s: &mut DaemonState) {
     if let Some(mesh) = s.peer_mesh.take() {
         mesh.abort();
     }
-    if let Some(task) = s.voice_poll_task.take() {
-        task.abort();
-    }
     s.room_session = None;
     teardown_tunnel_and_lan(s);
 }
@@ -94,7 +91,6 @@ pub async fn start_room_session(
         relay_addr: relay,
     }));
     s.peer_mesh = Some(mesh.clone());
-    s.voice_poll_task = None;
 
     let inbound_state = state.clone();
     let inbound_mesh = mesh.clone();
