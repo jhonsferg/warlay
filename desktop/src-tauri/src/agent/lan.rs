@@ -45,9 +45,7 @@ pub async fn spawn_lan_mesh(
     let (tx_rebroadcast, rx_rebroadcast) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     s.lan_relay_tx = Some(tx_rebroadcast);
 
-    let loop_guard_for_capture = s.lan_loop_guard.clone();
-    let game_started_for_capture = s.game_started.clone();
-    let own_game_hosting_for_capture = s.own_game_hosting.clone();
+    let bridge_for_capture = s.lan_bridge();
 
     let (cap_tx, mut cap_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     let cap_tx_clone = cap_tx.clone();
@@ -66,37 +64,16 @@ pub async fn spawn_lan_mesh(
 
     s.lan_capture = Some(
         warlay::engine::spawn_lan_capture(capture_ports, lan_discovery_enabled, move |bytes| {
-            // Echo check FIRST: every packet we replay onto the local
-            // network comes back through this promiscuous socket as an
-            // echo of our own IP, and now that every member's captures are
-            // relayed here too, letting echoes through would both re-relay
-            // them and — worse — misread another member's re-announced game
-            // as OUR OWN, firing a bogus GameEnded on whoever happened to
-            // be hosting. Everything below therefore reads only genuinely
-            // own-WC3 traffic.
-            //
-            // Observer-only, same contract as the echo check: bytes are
-            // only read here, never modified/delayed, still forwarded as-is
-            // via `cap_tx.send(bytes)`.
-            if loop_guard_for_capture.is_echo(&bytes) {
-                return;
-            }
-            // Host-state sniff for `own_game_hosting`: a WC3 screen that
-            // announces (CREATEGAME/REFRESHGAME — both observed coming from
-            // a hosting session) is hosting; one that searches
-            // (SEARCHGAME) or destroys its game (DECREATEGAME) is browsing
-            // again. A re-announced game is also the only real signal W3GS
-            // gives us that a previous session is over (see
-            // `contains_create_game`'s doc) -- the swap only fires once per
-            // detected game (and never on the room's very first
-            // CREATEGAME, since `game_started` starts false).
-            if warlay::engine::contains_create_game(&bytes) || warlay::engine::contains_refresh_game(&bytes) {
-                own_game_hosting_for_capture.store(true, std::sync::atomic::Ordering::SeqCst);
-                if game_started_for_capture.swap(false, std::sync::atomic::Ordering::SeqCst) {
-                    let _ = game_ended_tx.send(());
+            // Echo check, host/browse state tracking and game-ended
+            // detection are `LanBridge::classify_own_capture`; this callback
+            // runs on a raw thread so it may only send on the channel.
+            match bridge_for_capture.classify_own_capture(&bytes) {
+                warlay::engine::OwnCapture::Echo => return,
+                warlay::engine::OwnCapture::Forward { game_ended } => {
+                    if game_ended {
+                        let _ = game_ended_tx.send(());
+                    }
                 }
-            } else if warlay::engine::contains_search_game(&bytes) || warlay::engine::contains_decreate_game(&bytes) {
-                own_game_hosting_for_capture.store(false, std::sync::atomic::Ordering::SeqCst);
             }
             let _ = cap_tx.send(bytes);
         })
