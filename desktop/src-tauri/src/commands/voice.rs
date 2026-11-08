@@ -44,6 +44,35 @@ pub async fn send_voice_frame(request: Request<'_>, state: State<'_, AppState>) 
     Ok(mesh.map(|mesh| mesh.broadcast_voice_frame(&frame)).unwrap_or(0))
 }
 
+/// Starts sharing the PC's sound with the room (everything but Warlay's own
+/// audio). Needs an active room session; idempotent while already sharing.
+#[tauri::command]
+pub async fn start_desktop_audio(state: State<'_, AppState>) -> Result<(), AppError> {
+    if state.desktop_audio.lock().unwrap().is_some() {
+        return Ok(());
+    }
+    let agent_state = state.agent_state.lock().unwrap().clone();
+    let mesh = match agent_state {
+        Some(agent_state) => agent_state.lock().await.peer_mesh.clone(),
+        None => None,
+    };
+    let mesh = mesh.ok_or_else(|| AppError::InvalidInput("no hay una sala activa para compartir el audio".to_string()))?;
+    // Opening WASAPI blocks for a moment: keep it off the async runtime.
+    let share = tauri::async_runtime::spawn_blocking(move || crate::desktop_audio::start(mesh))
+        .await
+        .map_err(|e| AppError::InvalidInput(format!("la captura no pudo iniciar: {e}")))?
+        .map_err(AppError::InvalidInput)?;
+    *state.desktop_audio.lock().unwrap() = Some(share);
+    Ok(())
+}
+
+/// Stops sharing the PC's sound. Safe to call when nothing is shared.
+#[tauri::command]
+pub fn stop_desktop_audio(state: State<'_, AppState>) {
+    // Dropping the share stops the capture thread.
+    state.desktop_audio.lock().unwrap().take();
+}
+
 /// Remembers (or withdraws) the user's answer to Warlay's own microphone
 /// dialog. Must be set BEFORE the webview calls `getUserMedia`: the
 /// permission policy (`permissions::decide`) reads it.
