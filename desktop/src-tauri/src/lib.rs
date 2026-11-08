@@ -12,6 +12,7 @@ mod permissions;
 pub use warlay::protocol;
 mod state;
 mod storage;
+mod updater;
 pub use warlay::transport;
 
 use agent::state::AgentState;
@@ -512,6 +513,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
+            commands::updater::check_for_update,
+            commands::updater::install_update,
+            commands::updater::open_release_page,
             commands::voice::send_voice_frame,
             commands::voice::start_desktop_audio,
             commands::voice::stop_desktop_audio,
