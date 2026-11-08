@@ -7,7 +7,6 @@ mod log_bridge;
 mod log_cleanup;
 mod log_control;
 mod network;
-mod overlay;
 pub use warlay::protocol;
 mod state;
 mod storage;
@@ -393,12 +392,6 @@ pub fn run() {
             *state.agent_state.lock().unwrap() = Some(agent_state.clone());
             *state.app_handle.lock().unwrap() = Some(app.handle().clone());
             agent::events::set_app_handle(app.handle().clone());
-            // Non-fatal on purpose: the overlay is a cosmetic add-on, and
-            // the rest of the app (matchmaking, LAN, chat) has no reason to
-            // fail to start just because this window couldn't be created.
-            if let Err(error) = overlay::setup_overlay(app.handle()) {
-                tracing::warn!(%error, "failed to create overlay window, continuing without it");
-            }
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -458,32 +451,6 @@ pub fn run() {
                     if running != was_running {
                         tracing::info!(running, "estado de Warcraft III cambió");
                         let _ = app_handle.emit("game://running-state-changed", running);
-                        overlay::set_overlay_visible(&app_handle, running);
-                    } else if running {
-                        overlay::update_overlay_position(&app_handle, std::path::Path::new(&path));
-                    }
-                }
-            });
-
-            // A second, much faster loop dedicated purely to holding the
-            // overlay at the top of the z-order. The poller above only
-            // needs to recompute the overlay's position every couple of
-            // seconds, but winning a z-order fight against the game
-            // reclaiming topmost for itself on every focus change needs a
-            // noticeably tighter cadence than that -- kept as its own loop
-            // (instead of just tightening the interval above) so this can
-            // run often without repeating the heavier process/window
-            // enumeration work that poller also does. Reads the
-            // already-computed `game_running` flag rather than checking
-            // itself, so it stays cheap.
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_millis(400));
-                loop {
-                    interval.tick().await;
-                    let state = app_handle.state::<AppState>();
-                    if state.game_running.load(std::sync::atomic::Ordering::SeqCst) {
-                        overlay::reassert_overlay_topmost(&app_handle);
                     }
                 }
             });
@@ -552,7 +519,6 @@ pub fn run() {
             commands::matchmaking::start_hosting_tunnel,
             commands::matchmaking::start_joining_tunnel,
             commands::matchmaking::stop_hub_tunnel,
-            commands::matchmaking::get_room_members,
             commands::servers::list_servers,
             commands::servers::add_server,
             commands::servers::remove_server,
@@ -564,7 +530,6 @@ pub fn run() {
             commands::settings::get_log_usage,
             commands::settings::clean_logs_now,
             commands::system_info::get_system_info,
-            commands::overlay::set_overlay_interactive,
             commands::agent::get_agent_settings,
             commands::agent::save_agent_settings,
             commands::agent::get_agent_status,
@@ -572,7 +537,6 @@ pub fn run() {
             commands::session::start_room_session,
             commands::session::stop_room_session,
             commands::session::start_game_tunnel,
-            commands::session::set_overlay_roster,
             commands::session::update_room_helper,
         ])
         .run(tauri::generate_context!())
