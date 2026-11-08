@@ -64,9 +64,3 @@ pub async fn retry_peer_mesh(state: State<'_, AppState>, app: AppHandle) -> Resu
     let agent_state = require_agent_state(&state)?;
     success_or_err(handle_request(AgentRequest::RetryPeerMesh, agent_state, app).await)
 }
-
-/// Temporary alias for the former command name.
-#[tauri::command]
-pub async fn get_agent_status(state: State<'_, AppState>, app: AppHandle) -> Result<NetworkStatus, AppError> {
-    get_network_status(state, app).await
-}
