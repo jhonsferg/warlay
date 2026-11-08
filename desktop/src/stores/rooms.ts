@@ -31,22 +31,11 @@ export const useRooms = defineStore("rooms", () => {
     session.value = next;
     try {
       await native.startRoomSession(next);
-      syncOverlay(next.room);
       // The mute shortcut works from the moment we are in a room.
       void useVoice().listenOnly();
     } finally {
       startPolling();
     }
-  }
-
-  /** The in-game overlay shows the roster (and who's talking). */
-  function syncOverlay(room: RoomView | null) {
-    void native
-      .setOverlayRoster(
-        room?.id ?? null,
-        (room?.members ?? []).map((m) => ({ clientId: m.id, displayName: m.displayName })),
-      )
-      .catch(() => {});
   }
 
   function startPolling() {
@@ -74,7 +63,6 @@ export const useRooms = defineStore("rooms", () => {
   async function endLocal() {
     session.value = null;
     stopPolling();
-    syncOverlay(null);
     await useVoice().leave();
     try {
       await native.stopRoomSession();
@@ -179,7 +167,6 @@ export const useRooms = defineStore("rooms", () => {
         return "kicked" as const;
       }
       session.value = { ...session.value, room };
-      syncOverlay(room);
     }
     return null;
   }
