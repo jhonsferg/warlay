@@ -13,7 +13,7 @@ body:
       label: Component
       options:
         - Desktop client
-        - Network agent (warlay.exe --daemon)
+        - Network agent (inside warlay.exe)
         - Server (hub)
         - Release / installer
         - Other

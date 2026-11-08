@@ -17,8 +17,7 @@ Use Conventional Commits: `feat: ...`, `fix: ...`, `docs: ...`, `feat!: ...`
 ## Components affected
 
 - [ ] `server` (hub)
-- [ ] `daemon` (network agent: `crates/agent`, embedded in `warlay.exe`)
-- [ ] `desktop` (client UI / Tauri backend)
+- [ ] `desktop` (client UI / Tauri backend, including the network agent)
 - [ ] Shared crates (`crates/`)
 - [ ] CI / release pipeline
 

@@ -3,10 +3,10 @@ Warlay - version portable
 
 Este ZIP contiene la version portable de Warlay: no necesita instalador.
 
-  warlay.exe   -> Cliente de escritorio (interfaz grafica) y, en segundo
-                  plano, el Warlay Network Agent que detecta partidas LAN
-                  y tuneliza el trafico del juego. Son el mismo archivo:
-                  la app se abre a si misma en modo agente (--daemon).
+  warlay.exe   -> Cliente de escritorio de Warlay. Un solo programa hace
+                  todo: la interfaz grafica y tambien detectar partidas
+                  LAN y tunelizar el trafico del juego. No hay ningun
+                  servicio ni proceso aparte que instalar o iniciar.
 
 Como usarla
 -----------
@@ -17,19 +17,7 @@ Como usarla
    trafico en la red local requiere privilegios elevados; Warlay no usa
    esos privilegios para nada mas. Windows seguira pidiendolo cada vez
    que abras la app.
-4. Listo. La app se conecta automaticamente al agente y ya puedes
-   registrar servidores, crear o unirte a salas, y jugar.
-
-Inicio automatico con Windows (opcional)
------------------------------------------
-Warlay inicia el agente por su cuenta cada vez que abris warlay.exe. Si
-preferis que arranque solo al iniciar sesion en Windows, sin abrir la app,
-podes activarlo vos mismo (sirve igual para la version instalada):
-
-1. Abri una terminal (cmd o PowerShell) EN LA CARPETA donde extrajiste
-   este ZIP.
-2. Ejecuta como administrador:  warlay.exe --install
-3. Para desactivarlo mas adelante:  warlay.exe --uninstall
+4. Listo. Ya puedes registrar servidores, crear o unirte a salas, y jugar.
 
 Diferencias con el instalador
 ------------------------------
@@ -37,8 +25,7 @@ Diferencias con el instalador
   directos y un desinstalador que detiene la app antes de borrarla.
 - La version portable no modifica el sistema: solo usa la carpeta donde
   la extrajiste. Podes moverla, copiarla a un USB, o borrarla sin dejar
-  rastro (salvo que hayas ejecutado warlay.exe --install, en cuyo caso
-  desinstalalo primero con warlay.exe --uninstall).
+  rastro (salvo los datos de la aplicacion, descritos abajo).
 
 Datos de la aplicacion
 -----------------------

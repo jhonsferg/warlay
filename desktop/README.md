@@ -3,11 +3,11 @@
 `warlay.exe` is the Windows application players use: register servers, browse
 and join rooms, chat, talk, and launch Warcraft III. It is a
 [Tauri 2](https://tauri.app) app with a Vue 3 + TypeScript frontend and a Rust
-backend. Privileged networking (LAN capture, game tunnels) runs in the
-network agent ([`crates/agent`](../crates/agent)), which the client talks to
-over a named pipe and starts as a second instance of itself with
-`warlay.exe --daemon` - one binary for both roles (see
-[daemon/README.md](../daemon/README.md)).
+backend. Privileged networking (LAN capture, game tunnels, hub
+connections, voice relay) is done by the **network agent**, which is part of
+this same backend (`src-tauri/src/agent`) and runs inside the `warlay.exe`
+process. There is no daemon, no second process and no named pipe: one
+executable does everything.
 
 ## Contents
 
@@ -32,8 +32,8 @@ over a named pipe and starts as a second instance of itself with
   shortcut.
 - **LAN tab** - the legacy lan-mesh flow: scan local subnets, find relay
   bridges, list observed games, and turn this PC into a mesh peer.
-- **Agent and console views** - agent status and settings, live logs, log
-  level control.
+- **Agent settings and console** - agent status and settings, live logs,
+  log level control.
 
 ## Architecture
 
@@ -42,29 +42,37 @@ flowchart LR
     root["desktop/"]
 
     root --> frontend["src/<br/>Vue 3 frontend"]
-    frontend --> api["api.ts<br/>typed wrappers over<br/>Tauri invoke and listen"]
+    frontend --> api["api.ts and services/<br/>typed wrappers over Tauri invoke<br/>and listen, HTTP and realtime clients"]
     frontend --> types["types.ts<br/>DTO mirrors and<br/>address parsing"]
-    frontend --> store["store/<br/>Pinia stores: servers, rooms,<br/>chat, settings, agent, lanMesh"]
-    frontend --> components["components/<br/>UI by feature: rail, rooms, servers,<br/>chat, lan, settings, console, base"]
-    frontend --> helpers["composables/ and utils/<br/>shared helpers,<br/>zod validation schemas"]
-    frontend --> assets["assets/<br/>sounds and SCSS design tokens"]
+    frontend --> store["stores/<br/>Pinia stores: session, rooms,<br/>chat, social, voice, settings"]
+    frontend --> pages["pages/ and router/<br/>login, lobby, room, friends,<br/>discover, community, settings"]
+    frontend --> ui["ui/<br/>atoms, molecules, organisms:<br/>the design-system components"]
+    frontend --> styles["styles/ and assets/<br/>theme tokens and SCSS"]
 
     root --> backend["src-tauri/<br/>Rust backend: crate desktop,<br/>binary warlay"]
     backend --> commands["src/commands/<br/>Tauri command handlers, the only<br/>layer touching AppHandle and State"]
-    backend --> ipc["src/agent/events.rs<br/>Tauri event emitter for the agent"]
+    backend --> agent["src/agent/<br/>the network agent: request handlers,<br/>room sessions, LAN, voice, state"]
     backend --> clientStorage["src/storage/<br/>SQLite: client identity,<br/>servers and keys, settings"]
     backend --> network["src/network/<br/>lan-mesh discovery<br/>and relay client"]
     backend --> launcher["src/launcher/<br/>starts and tracks<br/>the game process"]
+    backend --> audio["src/desktop_audio/<br/>WASAPI capture and Opus<br/>encoding of desktop audio"]
     backend --> tauriConf["tauri.conf.json<br/>window and NSIS bundle<br/>configuration"]
 
     root --> scripts["scripts/<br/>portable zip build helper"]
 ```
 
-The backend never opens hub connections or tunnels itself: commands such as
-`connect_to_server`, `start_hosting_tunnel` or `launch_game` are forwarded to
-the agent as `DaemonRequest`s (see `crates/protocol/src/ipc.rs`), and the
-agent pushes events back (`HubMessage`, `TunnelStatusChanged`, voice
-frames, ...), which the backend re-emits to the frontend as Tauri events.
+The frontend only talks to Tauri commands. Commands that need networking
+(`connect_to_server`, `start_hosting_tunnel`, `launch_game`, ...) build a
+`DaemonRequest` (the historical name of the agent's request type, see
+`crates/protocol/src/ipc.rs`) and call `agent::handlers::handle_request`
+directly, in the same process. The agent keeps its state in `DaemonState`
+and pushes events back (`HubMessage`, `TunnelStatusChanged`, voice frames,
+...) through `agent/events.rs`, which emits them to the frontend as Tauri
+events.
+
+On start, the frontend shows a loading screen (logo, name and version over an
+indeterminate progress bar, defined in `index.html`) that is dismissed once
+the session has been restored and the first route is ready.
 
 ## How a hub game reaches your LAN screen
 
@@ -86,7 +94,7 @@ over TCP. The agent reproduces both across the internet:
 
 `SIO_RCVALL` requires administrator rights, which is why `warlay.exe` carries
 a `requireAdministrator` manifest (`src-tauri/build.rs`) and runs elevated as
-a whole; joiners only replay and connect, but run the same agent.
+a whole; joiners only replay and connect, but run the same code.
 
 ## Development
 
@@ -98,19 +106,12 @@ npm run tauri dev
 ```
 
 `npm run tauri dev` starts Vite on port 1420 and opens the app against it.
-The client starts the agent itself when it opens (it runs a second instance
-of `warlay.exe --daemon` inside the same process), so there is nothing else
-to launch. To run the agent by hand instead:
-
-```sh
-cargo run -p desktop -- --daemon   # the desktop binary in agent mode
-cargo run -p daemon                  # the standalone agent binary (dev only)
-```
+The agent runs inside the client, so there is nothing else to launch.
 
 Plain `cargo build` of `src-tauri` always targets the dev server URL; use
-`npx tauri build` for a binary that embeds the frontend. Both the client and
-its agent request elevation (UAC prompt on every launch), so the agent-side
-commands need an elevated shell too.
+`npx tauri build` for a binary that embeds the frontend. The client requests
+elevation (UAC prompt on every launch), so run it from an elevated shell when
+developing features that need the LAN capture.
 
 ## Building
 
