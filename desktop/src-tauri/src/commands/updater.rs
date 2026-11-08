@@ -5,10 +5,56 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::core::error::AppError;
+use crate::state::AppState;
 use crate::updater::{self, release, UpdateStatus};
+
+/// What "Acerca de" shows about this installation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    pub name: &'static str,
+    pub version: String,
+    /// Short commit this build was made from (`local` outside CI).
+    pub build: String,
+    /// When this build was made (Unix seconds): its release date.
+    pub released_at: i64,
+    /// When this version was installed or last updated (Unix seconds).
+    pub installed_at: i64,
+}
+
+pub fn app_info(version: &str, build: &str, released_at: i64, installed_at: i64) -> AppInfo {
+    AppInfo {
+        name: "Warlay",
+        version: version.to_string(),
+        build: build.to_string(),
+        released_at,
+        installed_at,
+    }
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Version, build and dates of this installation. Works offline.
+#[tauri::command]
+pub fn get_app_info(app: AppHandle, state: State<'_, AppState>) -> Result<AppInfo, AppError> {
+    let version = app.package_info().version.to_string();
+    let installed_at = state.store.note_running_version(&version, now_unix())?;
+    let released_at = env!("WARLAY_BUILD_UNIX").parse().unwrap_or(0);
+    Ok(app_info(
+        &version,
+        env!("WARLAY_BUILD_COMMIT"),
+        released_at,
+        installed_at,
+    ))
+}
 
 /// Download progress event, throttled to a few per second.
 pub const PROGRESS_EVENT: &str = "update://progress";
@@ -121,6 +167,22 @@ mod tests {
         assert!(open_release_page("https://github.com/other/repo/releases".to_string()).is_err());
         assert!(open_release_page("file:///C:/Windows/System32/calc.exe".to_string()).is_err());
         assert!(open_release_page("javascript:alert(1)".to_string()).is_err());
+    }
+
+    #[test]
+    fn app_info_carries_the_name_and_uses_the_keys_the_frontend_reads() {
+        let json = serde_json::to_value(app_info("0.10.0", "abc1234", 100, 200)).unwrap();
+        assert_eq!(json["name"], "Warlay");
+        assert_eq!(json["version"], "0.10.0");
+        assert_eq!(json["build"], "abc1234");
+        assert_eq!(json["releasedAt"], 100);
+        assert_eq!(json["installedAt"], 200);
+    }
+
+    #[test]
+    fn the_build_is_stamped_by_the_build_script() {
+        assert!(!env!("WARLAY_BUILD_COMMIT").is_empty());
+        assert!(env!("WARLAY_BUILD_UNIX").parse::<i64>().unwrap() > 1_700_000_000);
     }
 
     #[test]
