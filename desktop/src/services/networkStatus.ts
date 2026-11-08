@@ -11,6 +11,25 @@ export interface PeerLinkStatus {
   isHost: boolean;
   p2pAddr: string | null;
   state: "not_attempted" | "connecting" | "connected" | "relayed" | "failed";
+  /** Round-trip time of the live link in ms (the player's ping); null with no connection. */
+  rttMs: number | null;
+}
+
+export type PingTone = "success" | "warning" | "danger";
+
+/** How a ping reads at a glance: good up to 80 ms, playable up to 150 ms. */
+export function pingTone(ms: number): PingTone {
+  if (ms <= 80) return "success";
+  if (ms <= 150) return "warning";
+  return "danger";
+}
+
+/** The ping to show next to a player, or null when there is nothing to show
+ * (no live link yet, or the status predates pings). */
+export function pingLabel(rttMs: number | null | undefined): { text: string; tone: PingTone } | null {
+  if (rttMs == null || !Number.isFinite(rttMs) || rttMs < 0) return null;
+  const ms = Math.max(1, Math.round(rttMs)); // a live link is never "0 ms"
+  return { text: `${ms} ms`, tone: pingTone(ms) };
 }
 
 export interface NetworkStatus {
