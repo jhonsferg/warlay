@@ -5,6 +5,7 @@ import { type NoiseLevel, normalizeNoiseLevel } from "../../services/voicePrefs"
 import { useSettings } from "../../stores/settings";
 import { useToasts } from "../../stores/toasts";
 import { useVoice } from "../../stores/voice";
+import WSwitch from "../atoms/WSwitch.vue";
 import FormField from "../molecules/FormField.vue";
 
 /** Input device and noise level for the in-room voice. Applies on its own. */
@@ -44,12 +45,18 @@ const HINTS: Record<NoiseLevel, string> = {
     "Usa una red neuronal (RNNoise) para quitar teclado, ventilador y ruidos de fondo. No elimina a otra persona hablando cerca.",
 };
 
-async function save(patch: { micDeviceId?: string; noiseSuppression?: NoiseLevel }) {
+async function save(patch: { micDeviceId?: string; noiseSuppression?: NoiseLevel; shareDesktopAudio?: boolean }) {
   try {
     await settings.setVoicePrefs({
       micDeviceId: patch.micDeviceId ?? settings.micDeviceId,
       noiseSuppression: patch.noiseSuppression ?? settings.noiseSuppression,
+      shareDesktopAudio: patch.shareDesktopAudio ?? settings.shareDesktopAudio,
     });
+    // The PC's sound starts or stops right away when already in voice.
+    if (patch.shareDesktopAudio !== undefined) {
+      await voice.syncDesktopShare(settings.shareDesktopAudio);
+      return;
+    }
     if (voice.active) toasts.info("Ajuste guardado", "Se aplicará la próxima vez que te unas a la voz.");
   } catch {
     toasts.error("No se pudo guardar el ajuste de voz");
@@ -94,6 +101,22 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
         <option v-for="l in NOISE_LEVELS" :key="l.value" :value="l.value">{{ l.label }}</option>
       </select>
     </FormField>
+
+    <div class="voice-settings__share">
+      <div>
+        <strong>Compartir el audio del escritorio</strong>
+        <p class="voice-settings__note" data-testid="share-hint">
+          Los jugadores de la sala oirán el sonido de tu PC (tu juego, música, un vídeo) mientras estés en la voz.
+          El audio de Warlay, es decir sus voces, nunca se reenvía. Requiere Windows 11.
+        </p>
+      </div>
+      <WSwitch
+        :model-value="settings.shareDesktopAudio"
+        label="Compartir el audio del escritorio"
+        data-testid="share-desktop-audio"
+        @update:model-value="save({ shareDesktopAudio: $event })"
+      />
+    </div>
   </section>
 </template>
 
@@ -115,6 +138,15 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
     margin: 0;
     color: var(--text-3);
     font-size: var(--fs-sm);
+  }
+
+  &__share {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--s-4);
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--line);
   }
 
   &__select {
