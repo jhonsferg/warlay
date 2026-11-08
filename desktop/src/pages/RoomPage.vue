@@ -9,6 +9,7 @@ import {
   Radio,
   Repeat2,
   ShieldCheck,
+  Signal,
   UserMinus,
   UserPlus,
   Waypoints,
@@ -17,6 +18,7 @@ import {
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { errorMessage } from "../services/http";
+import { pingLabel } from "../services/networkStatus";
 import type { UserSummary } from "../services/types";
 import { useRooms } from "../stores/rooms";
 import { useSession } from "../stores/session";
@@ -77,6 +79,11 @@ function linkOf(member: UserSummary): Link | null {
     default:
       return { label: "Esperando", tone: "neutral", icon: Radio };
   }
+}
+
+/** The ping to this player: only members with a live link have one. */
+function pingOf(member: UserSummary) {
+  return pingLabel(rooms.linkOf(member.id)?.rttMs);
 }
 
 const directCount = computed(() => rooms.links.filter((l) => l.state === "connected").length);
@@ -206,9 +213,12 @@ async function kick(member: UserSummary) {
                 <Crown v-if="m.id === room.host.id" class="slot__crown" :size="14" />
               </strong>
               <span v-if="m.id === session.me?.id" class="slot__you">Tú</span>
-              <WBadge v-else-if="linkOf(m)" :tone="linkOf(m)!.tone"
-                ><component :is="linkOf(m)!.icon" />{{ linkOf(m)!.label }}</WBadge
-              >
+              <div v-else-if="linkOf(m)" class="slot__badges">
+                <WBadge :tone="linkOf(m)!.tone"><component :is="linkOf(m)!.icon" />{{ linkOf(m)!.label }}</WBadge>
+                <WBadge v-if="pingOf(m)" :tone="pingOf(m)!.tone" data-testid="ping"
+                  ><Signal />{{ pingOf(m)!.text }}</WBadge
+                >
+              </div>
             </div>
             <WIconButton
               v-if="m.id !== session.me?.id && !isFriend(m.id) && !isPending(m.id)"
@@ -388,6 +398,11 @@ async function kick(member: UserSummary) {
       gap: 6px;
       max-width: 100%;
     }
+  }
+  &__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
   }
   &__crown {
     color: var(--in-room);
