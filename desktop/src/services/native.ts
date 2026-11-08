@@ -138,6 +138,8 @@ export const native = {
   sendVoiceFrame: (frame: Uint8Array) => invoke<number>("send_voice_frame", frame as unknown as Record<string, unknown>),
   onVoiceFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
     listen<{ from: string; data: string }[]>("voice://frames", handler),
+  setMicConsent: (granted: boolean) => invoke<void>("set_mic_consent", { granted }),
+  openMicPrivacySettings: () => invoke<void>("open_mic_privacy_settings"),
   registerVoiceShortcut: (accelerator?: string) => invoke<string>("register_voice_shortcut", { accelerator }),
   unregisterVoiceShortcut: () => invoke<void>("unregister_voice_shortcut"),
   /** The global mute shortcut was pressed (works while the game has focus). */
