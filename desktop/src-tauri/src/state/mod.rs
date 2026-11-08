@@ -1,14 +1,13 @@
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
-use crate::agent::state::AgentState;
 use crate::network::RelayClientHandle;
+use crate::runtime::state::RuntimeState;
 use crate::storage::ClientStore;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use tauri::AppHandle;
 use tokio::task::JoinHandle;
-use uuid::Uuid;
 
 /// Managed Tauri state. Every slot is a singleton by design — starting a new
 /// connection/tunnel/poller/process replaces (and stops) whatever was
@@ -20,23 +19,16 @@ pub struct AppState {
     pub relay_client: Mutex<Option<RelayClientHandle>>,
     /// LAN-mesh mode: background poller for a selected relay's game list.
     pub game_poller: Mutex<Option<JoinHandle<()>>>,
-    /// Whichever server currently owns the one real game session this
-    /// machine can have active at a time. Set when this client creates or
-    /// joins a room, cleared when that room is left, deleted, or removed out
-    /// from under it. Lets code that isn't itself scoped to a specific
-    /// server (the LAN-mesh relay callbacks) find the one server it should
-    /// actually talk to.
-    pub active_room_server: Mutex<Option<Uuid>>,
     /// Watches the launched game process for exit so the UI can show "saliste
     /// de la partida" and auto-leave the room.
     pub game_exit_watcher: Mutex<Option<JoinHandle<()>>>,
-    /// The agent now runs inside this same process (see `src/agent/`): its
-    /// mutable state lives here, and commands talk to it directly instead of
-    /// over a named pipe. `None` until `.setup()` finishes booting it.
-    pub agent_state: Mutex<Option<Arc<TokioMutex<AgentState>>>>,
-    /// Cloned `AppHandle` so the agent's event pushes (hub status, tunnel
-    /// status, voice frames, ...) can be emitted as Tauri events to the
-    /// frontend instead of being written to a pipe. Set in `.setup()`.
+    /// The network runtime (see `src/runtime/`): its mutable state lives
+    /// here and commands talk to it directly. `None` until `.setup()`
+    /// finishes booting it.
+    pub runtime_state: Mutex<Option<Arc<TokioMutex<RuntimeState>>>>,
+    /// Cloned `AppHandle` so the runtime's event pushes (tunnel status,
+    /// voice frames, ...) can be emitted as Tauri events to the
+    /// frontend. Set in `.setup()`.
     pub app_handle: Mutex<Option<AppHandle>>,
     /// The one shared source of truth for "is the configured game exe
     /// currently running", written by three independent code paths
@@ -69,9 +61,8 @@ impl AppState {
             store,
             relay_client: Mutex::new(None),
             game_poller: Mutex::new(None),
-            active_room_server: Mutex::new(None),
             game_exit_watcher: Mutex::new(None),
-            agent_state: Mutex::new(None),
+            runtime_state: Mutex::new(None),
             app_handle: Mutex::new(None),
             game_running: AtomicBool::new(false),
             game_job: Mutex::new(None),
