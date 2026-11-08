@@ -15,7 +15,6 @@ pub struct DaemonState {
     pub peer_mesh: Option<Arc<warlay::engine::PeerMeshHandle>>,
     /// The active room session (new architecture: helper + ticket), if any.
     pub room_session: Option<super::session::RoomSessionInfo>,
-    pub voice_poll_task: Option<tokio::task::JoinHandle<()>>,
     pub lan_capture: Option<warlay::engine::LanCaptureHandle>,
     pub lan_rebroadcast: Option<warlay::engine::LanRebroadcastHandle>,
     pub lan_relay_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
@@ -96,7 +95,6 @@ impl DaemonState {
             game_tunnel: None,
             peer_mesh: None,
             room_session: None,
-            voice_poll_task: None,
             lan_capture: None,
             lan_rebroadcast: None,
             lan_relay_tx: None,
