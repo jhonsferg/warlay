@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check } from "@lucide/vue";
+import { Check, UserCheck } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { errorMessage } from "../../services/http";
 import { useSocial } from "../../stores/social";
@@ -33,7 +33,9 @@ async function send(userId: string) {
       v-if="candidates.length === 0"
       title="No hay a quién invitar"
       text="Todos tus amigos ya están aquí, o aún no agregaste ninguno."
-    />
+    >
+      <template #icon><UserCheck /></template>
+    </EmptyState>
     <div class="invite__list">
       <FriendRow v-for="f in candidates" :key="f.id" :friend="f">
         <template #actions>
