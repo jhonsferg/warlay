@@ -79,6 +79,11 @@ fn default_log_retention_days() -> u32 {
     7
 }
 
+/// "off" | "standard" | "strong" -- see the voice settings in the frontend.
+fn default_noise_suppression() -> String {
+    "standard".to_string()
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -116,4 +121,21 @@ pub struct AppSettings {
     // once at every launch, and again immediately whenever this changes.
     #[serde(default = "default_log_retention_days")]
     pub log_retention_days: u32,
+    // True once the user accepted Warlay's own "use the microphone" dialog.
+    // `permissions::decide` only answers Allow to the webview's microphone
+    // request while this is set, so WebView2's default prompt never shows.
+    #[serde(default)]
+    pub mic_consent: bool,
+    // A `MediaDeviceInfo.deviceId` from `enumerateDevices()`; "" is the OS
+    // default input. Opaque here, only meaningful to the browser engine.
+    #[serde(default)]
+    pub mic_device_id: String,
+    // How aggressively the microphone is cleaned: "off", "standard" (the
+    // browser's own suppression) or "strong" (RNNoise on top).
+    #[serde(default = "default_noise_suppression")]
+    pub noise_suppression: String,
 }
+
+#[cfg(test)]
+#[path = "dto_tests.rs"]
+mod tests;
