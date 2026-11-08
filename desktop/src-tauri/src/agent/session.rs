@@ -103,6 +103,8 @@ pub async fn start_room_session(
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
+            // Voice rides the same 20 ms tick: one batched event per tick.
+            super::voice::emit_voice_frames(inbound_mesh.poll_voice_frames());
             let packets = inbound_mesh.poll_lan_packets();
             if packets.is_empty() {
                 continue;
