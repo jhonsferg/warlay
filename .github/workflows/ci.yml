@@ -83,6 +83,9 @@ jobs:
         working-directory: desktop
         run: npm run build
       - name: Test
+        # Test-only manifest (Common Controls v6, no elevation); see desktop/src-tauri/build.rs.
+        env:
+          WARLAY_TEST_MANIFEST: "1"
         run: cargo test --workspace --locked
 
   docker:
