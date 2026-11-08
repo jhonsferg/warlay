@@ -2,22 +2,13 @@
 // the actual networking. In a plain browser (vite dev, Playwright) there is
 // no shell: every call is recorded and answered by a harmless stand-in, so
 // the whole UI can be exercised and screenshotted without Windows.
+import type { NetworkStatus } from "./networkStatus";
 import type { HelperInfo, RoomSession } from "./types";
 
-export interface PeerLinkStatus {
-  clientId: string;
-  isHost: boolean;
-  p2pAddr: string | null;
-  state: "not_attempted" | "connecting" | "connected" | "relayed" | "failed";
-}
+export type { NetworkStatus, PeerLinkStatus } from "./networkStatus";
 
-export interface AgentStatus {
-  uptimeSecs: number;
-  hubConnections: number;
-  tunnelActive: boolean;
-  lanDiscoveryEnabled: boolean;
-  meshPeers: PeerLinkStatus[];
-}
+/** Former name of {@link NetworkStatus}, kept until every screen has moved. */
+export type AgentStatus = NetworkStatus;
 
 /** The network agent's own configuration (it applies a new log level at once). */
 export interface AgentSettings {
@@ -50,11 +41,11 @@ interface NativeCall {
 
 declare global {
   interface Window {
-    __warlayNative?: { calls: NativeCall[]; status: AgentStatus };
+    __warlayNative?: { calls: NativeCall[]; status: NetworkStatus };
   }
 }
 
-function browserStub(): { calls: NativeCall[]; status: AgentStatus } {
+function browserStub(): { calls: NativeCall[]; status: NetworkStatus } {
   window.__warlayNative ??= {
     calls: [],
     status: { uptimeSecs: 0, hubConnections: 0, tunnelActive: false, lanDiscoveryEnabled: true, meshPeers: [] },
@@ -69,7 +60,7 @@ async function invoke<T>(command: string, args: Record<string, unknown> = {}): P
   }
   const stub = browserStub();
   stub.calls.push({ command, args });
-  if (command === "get_agent_status") return stub.status as T;
+  if (command === "get_network_status" || command === "get_agent_status") return stub.status as T;
   if (command === "load_settings") {
     const raw = localStorage.getItem("warlay.browserSettings");
     return (raw ? JSON.parse(raw) : { gameExecutablePath: "", gameArgs: "" }) as T;
@@ -122,7 +113,11 @@ export const native = {
 
   launchGame: (path: string, args: string[]) =>
     invoke<unknown>("launch_game", { executablePath: path, args, workingDir: null }),
-  agentStatus: () => invoke<AgentStatus>("get_agent_status"),
+  agentStatus: () => invoke<NetworkStatus>("get_network_status"),
+  /** What the agent is doing right now (P2P links, tunnel, hubs): read once... */
+  networkStatus: () => invoke<NetworkStatus>("get_network_status"),
+  /** ...then pushed by the backend whenever it changes (no polling). */
+  onNetworkStatus: (handler: (status: NetworkStatus) => void) => listen<NetworkStatus>("network://status", handler),
   retryPeerMesh: () => invoke<void>("retry_peer_mesh"),
 
   loadSettings: () => invoke<GameSettings & Record<string, unknown>>("load_settings"),
