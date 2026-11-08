@@ -36,7 +36,11 @@ fn one_second_of_audio_becomes_fifty_packets() {
     assert_eq!(packets.len(), 50);
     assert_eq!(enc.buffered(), 0);
     // 64 kbit/s is ~160 bytes per 20 ms: far below a datagram's MTU.
-    assert!(packets.iter().all(|p| !p.is_empty() && p.len() < 600), "{:?}", packets.iter().map(Vec::len).max());
+    assert!(
+        packets.iter().all(|p| !p.is_empty() && p.len() < 600),
+        "{:?}",
+        packets.iter().map(Vec::len).max()
+    );
 }
 
 #[test]
@@ -72,7 +76,10 @@ fn a_partial_frame_waits_for_the_rest() {
 #[test]
 fn digital_silence_costs_no_bandwidth() {
     let mut enc = DesktopEncoder::new().unwrap();
-    assert_eq!(enc.push(&vec![0i16; FRAME_SAMPLES * 10], |_| panic!("silence must not be sent")), 0);
+    assert_eq!(
+        enc.push(&vec![0i16; FRAME_SAMPLES * 10], |_| panic!("silence must not be sent")),
+        0
+    );
     // ...but a single audible sample in a frame is enough to send it.
     let mut frame = vec![0i16; FRAME_SAMPLES];
     frame[100] = 3000;
