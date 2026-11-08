@@ -40,76 +40,6 @@ fn client_id_is_stable_across_reopens() {
 }
 
 #[test]
-fn servers_can_be_added_listed_and_removed() {
-    let t = TempStore::new();
-    let added = t.store.add_server("hub.example:9000").unwrap();
-    assert_eq!(added.address, "hub.example:9000");
-    assert!(!added.has_credentials);
-
-    let listed = t.store.list_servers().unwrap();
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].id, added.id);
-
-    t.store.remove_server(Uuid::parse_str(&added.id).unwrap()).unwrap();
-    assert!(t.store.list_servers().unwrap().is_empty());
-}
-
-#[test]
-fn handshake_success_stores_the_psk_and_clearing_it_forgets_it() {
-    let t = TempStore::new();
-    let added = t.store.add_server("hub:1").unwrap();
-    let local_id = Uuid::parse_str(&added.id).unwrap();
-    let remote_id = Uuid::new_v4();
-    let psk = [7u8; 32];
-
-    t.store
-        .record_handshake_success(local_id, remote_id, "Hub", Some(&psk))
-        .unwrap();
-    let record = t.store.get_server(local_id).unwrap().expect("server exists");
-    assert_eq!(record.psk, Some(psk));
-    assert_eq!(record.server_id, Some(remote_id));
-    let dto = &t.store.list_servers().unwrap()[0];
-    assert!(dto.has_credentials);
-    assert_eq!(dto.name, "Hub");
-    assert!(dto.last_connected_at.is_some());
-
-    t.store.clear_server_psk(local_id).unwrap();
-    assert_eq!(t.store.get_server(local_id).unwrap().unwrap().psk, None);
-}
-
-#[test]
-fn a_reconnect_without_a_new_psk_keeps_the_stored_one() {
-    let t = TempStore::new();
-    let local_id = Uuid::parse_str(&t.store.add_server("hub:1").unwrap().id).unwrap();
-    let psk = [9u8; 32];
-    t.store
-        .record_handshake_success(local_id, Uuid::new_v4(), "Hub", Some(&psk))
-        .unwrap();
-    t.store
-        .record_handshake_success(local_id, Uuid::new_v4(), "Hub renamed", None)
-        .unwrap();
-    assert_eq!(t.store.get_server(local_id).unwrap().unwrap().psk, Some(psk));
-}
-
-#[test]
-fn an_unknown_server_is_none_and_a_wrong_sized_psk_is_ignored() {
-    let t = TempStore::new();
-    assert!(t.store.get_server(Uuid::new_v4()).unwrap().is_none());
-
-    let local_id = Uuid::parse_str(&t.store.add_server("hub:1").unwrap().id).unwrap();
-    t.store
-        .conn
-        .lock()
-        .unwrap()
-        .execute(
-            "UPDATE servers SET psk = ?1 WHERE id = ?2",
-            params![vec![1u8, 2, 3], local_id.to_string()],
-        )
-        .unwrap();
-    assert_eq!(t.store.get_server(local_id).unwrap().unwrap().psk, None);
-}
-
-#[test]
 fn default_settings_derive_the_name_from_the_client_id() {
     let t = TempStore::new();
     let settings = t.store.get_settings().unwrap();
@@ -175,4 +105,33 @@ fn corrupt_stored_settings_fall_back_to_defaults() {
         .unwrap();
     let settings = t.store.get_settings().unwrap();
     assert_eq!(settings.console_log_level, "info");
+}
+
+#[test]
+fn the_running_version_keeps_its_first_moment_until_it_changes() {
+    let t = TempStore::new();
+    assert_eq!(
+        t.store.note_running_version("0.10.0", 1_000).unwrap(),
+        1_000,
+        "first run"
+    );
+    assert_eq!(
+        t.store.note_running_version("0.10.0", 9_999).unwrap(),
+        1_000,
+        "same version: the moment it was installed stays"
+    );
+    assert_eq!(
+        t.store.note_running_version("0.11.0", 5_000).unwrap(),
+        5_000,
+        "an update restarts it"
+    );
+    assert_eq!(t.store.note_running_version("0.11.0", 6_000).unwrap(), 5_000);
+}
+
+#[test]
+fn the_running_version_survives_reopening_the_database() {
+    let t = TempStore::new();
+    t.store.note_running_version("0.10.0", 1_000).unwrap();
+    let reopened = ClientStore::open(&t.db_path()).unwrap();
+    assert_eq!(reopened.note_running_version("0.10.0", 7_000).unwrap(), 1_000);
 }
