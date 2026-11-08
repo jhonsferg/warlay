@@ -2,8 +2,10 @@ import { defineStore } from "pinia";
 import { onScopeDispose, ref } from "vue";
 import { native } from "../services/native";
 import { VoiceEngine, voiceSupported } from "../services/voice";
+import { meterLevel, smoothLevel } from "../services/voiceActivity";
 import { speakingNow } from "../services/voiceJitter";
 import { classifyMicError } from "../services/voicePrefs";
+import { useSession } from "./session";
 import { useSettings } from "./settings";
 import { useToasts } from "./toasts";
 
@@ -21,6 +23,7 @@ export type MicDialog = "ask" | "blocked" | null;
 /** In-room voice chat: mic on/off like Meet, and who is speaking. */
 export const useVoice = defineStore("voice", () => {
   const settings = useSettings();
+  const session = useSession();
   const toasts = useToasts();
   /** The microphone/engine is open (the user joined voice). */
   const active = ref(false);
@@ -33,10 +36,27 @@ export const useVoice = defineStore("voice", () => {
   /** This PC's sound is being shared with the room right now. */
   const sharingDesktop = ref(false);
 
+  /** Smoothed 0..1 volume of whoever is speaking, for the rings' size. */
+  const levels = ref<Record<string, number>>({});
+
   const lastFrameAt = new Map<string, number>();
+  const rawLevel = new Map<string, number>();
+  const shownLevel = new Map<string, number>();
+
+  /** A voice was just heard: the ring lights up at once, not on the next tick. */
+  function heard(id: string, level: number) {
+    lastFrameAt.set(id, performance.now());
+    rawLevel.set(id, Math.max(rawLevel.get(id) ?? 0, meterLevel(level)));
+    if (!speaking.value.includes(id)) speaking.value = [...speaking.value, id];
+  }
+
   const engine = new VoiceEngine({
     send: (frame) => {
       void native.sendVoiceFrame(frame).catch(() => {});
+    },
+    onLevel: (from, level) => {
+      const id = from ?? session.me?.id;
+      if (id) heard(id, level);
     },
   });
   let unlistenFrames: (() => void) | null = null;
@@ -50,7 +70,9 @@ export const useVoice = defineStore("voice", () => {
       unlistenFrames = await native.onVoiceFrames((batch) => {
         const now = performance.now();
         for (const { from, data } of batch) {
+          // The ring lights up on arrival; its size follows the decoded level.
           lastFrameAt.set(from, now);
+          if (!speaking.value.includes(from)) speaking.value = [...speaking.value, from];
           engine.push(from, fromBase64(data));
         }
       });
@@ -64,7 +86,17 @@ export const useVoice = defineStore("voice", () => {
       speakingTimer = setInterval(() => {
         const next = speakingNow(lastFrameAt, performance.now());
         if (next.join() !== speaking.value.join()) speaking.value = next;
-      }, 150);
+        // Meter: rises at once, falls gradually (like Meet and Teams).
+        const out: Record<string, number> = {};
+        for (const id of next) {
+          const level = smoothLevel(shownLevel.get(id) ?? 0, rawLevel.get(id) ?? 0);
+          shownLevel.set(id, level);
+          out[id] = Math.round(level * 100) / 100;
+        }
+        for (const id of [...shownLevel.keys()]) if (!next.includes(id)) shownLevel.delete(id);
+        rawLevel.clear();
+        levels.value = out;
+      }, 60);
     }
   }
 
@@ -180,7 +212,10 @@ export const useVoice = defineStore("voice", () => {
     active.value = false;
     muted.value = true;
     speaking.value = [];
+    levels.value = {};
     lastFrameAt.clear();
+    rawLevel.clear();
+    shownLevel.clear();
     // A failing unlisten must never leave voice half torn down.
     for (const stop of [unlistenFrames, unlistenDesktop, unlistenToggle]) {
       try {
@@ -205,6 +240,7 @@ export const useVoice = defineStore("voice", () => {
     error,
     dialog,
     speaking,
+    levels,
     sharingDesktop,
     syncDesktopShare,
     toggle,
