@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { isDesktop } from "./services/native";
 import { installAppLifecycle } from "./stores/app";
 import { useSession } from "./stores/session";
+import ConfirmDialog from "./ui/organisms/ConfirmDialog.vue";
 import ToastHost from "./ui/organisms/ToastHost.vue";
 
 const session = useSession();
@@ -28,6 +29,7 @@ onMounted(() => {
 
 <template>
   <RouterView />
+  <ConfirmDialog />
   <ToastHost />
 </template>
 
