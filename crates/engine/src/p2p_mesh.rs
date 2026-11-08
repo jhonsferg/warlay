@@ -198,6 +198,7 @@ pub struct PeerMeshSharedState {
     pub own_registration_addr: Option<SocketAddr>,
     lan_tx: tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
     voice_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
+    desktop_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
     /// Where `STREAM_LOCAL_GAME` streams get bridged while a game tunnel is
     /// running on this machine; `None` means "no tunnel yet" and makes the
     /// dispatchers hold (bounded) instead of dropping sessions that raced us.
@@ -216,6 +217,7 @@ pub struct PeerMeshHandle {
     state: Arc<std::sync::RwLock<PeerMeshSharedState>>,
     lan_rx: std::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>,
     voice_rx: std::sync::Mutex<tokio::sync::mpsc::Receiver<(Uuid, Vec<u8>)>>,
+    desktop_rx: std::sync::Mutex<tokio::sync::mpsc::Receiver<(Uuid, Vec<u8>)>>,
     /// Where the mesh registers (rendezvous) and relays, changeable live.
     helper_tx: tokio::sync::watch::Sender<(SocketAddr, Option<SocketAddr>)>,
 }
@@ -363,6 +365,26 @@ impl PeerMeshHandle {
             .count()
     }
 
+    /// Sends one encoded frame of this member's shared desktop audio to every
+    /// connected peer (unreliable, like voice). Returns how many it reached.
+    pub fn broadcast_desktop_frame(&self, frame: &[u8]) -> usize {
+        self.connected_peers()
+            .iter()
+            .filter(|(peer_id, _)| self.send_tagged(*peer_id, DATAGRAM_DESKTOP, frame))
+            .count()
+    }
+
+    /// Desktop-audio frames received from peers since the last call.
+    pub fn poll_desktop_frames(&self) -> Vec<(Uuid, Vec<u8>)> {
+        let mut items = Vec::new();
+        if let Ok(mut rx) = self.desktop_rx.lock() {
+            while let Ok(item) = rx.try_recv() {
+                items.push(item);
+            }
+        }
+        items
+    }
+
     /// Voice frames received from peers since the last call, tagged with the
     /// sender. The queue is bounded: if nobody polls, the oldest unread
     /// frames stay and newer ones are dropped rather than growing memory.
@@ -437,6 +459,8 @@ impl PeerMeshHandle {
 /// First byte of every mesh datagram, saying what it carries.
 const DATAGRAM_LAN: u8 = 0x02;
 const DATAGRAM_VOICE: u8 = 0x03;
+/// The sender's shared desktop audio (a second, independent stream).
+const DATAGRAM_DESKTOP: u8 = 0x04;
 
 /// Frames buffered for the consumer before newer ones are dropped: ~5 s of
 /// 20 ms frames from one talker, a few hundred ms from a full room.
@@ -498,6 +522,7 @@ impl PeerMesh {
         };
         let (lan_tx, lan_rx) = tokio::sync::mpsc::unbounded_channel();
         let (voice_tx, voice_rx) = tokio::sync::mpsc::channel(VOICE_QUEUE_FRAMES);
+        let (desktop_tx, desktop_rx) = tokio::sync::mpsc::channel(VOICE_QUEUE_FRAMES);
         let state = Arc::new(std::sync::RwLock::new(PeerMeshSharedState {
             own_client_id,
             is_host,
@@ -511,6 +536,7 @@ impl PeerMesh {
             own_registration_addr: None,
             lan_tx,
             voice_tx,
+            desktop_tx,
             local_game: None,
             relay,
             sync_routes: HashMap::new(),
@@ -536,6 +562,7 @@ impl PeerMesh {
             state,
             lan_rx: std::sync::Mutex::new(lan_rx),
             voice_rx: std::sync::Mutex::new(voice_rx),
+            desktop_rx: std::sync::Mutex::new(desktop_rx),
             helper_tx,
         }
     }
@@ -1264,8 +1291,9 @@ fn trigger_connection_attempts(
                         let handle_task = handle_arc.clone();
                         let lan_tx = st.lan_tx.clone();
                         let voice_tx = st.voice_tx.clone();
+                        let desktop_tx = st.desktop_tx.clone();
                         let datagram_task = tokio::spawn(async move {
-                            run_datagram_listener_for_peer(peer_id, handle_task, lan_tx, voice_tx).await;
+                            run_datagram_listener_for_peer(peer_id, handle_task, lan_tx, voice_tx, desktop_tx).await;
                         });
                         st.datagram_tasks.push(datagram_task);
                     }
@@ -1513,11 +1541,16 @@ fn route_datagram(
     bytes: &[u8],
     lan_tx: &tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
     voice_tx: &tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
+    desktop_tx: &tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
 ) -> bool {
     match bytes.split_first() {
         Some((&DATAGRAM_LAN, payload)) => lan_tx.send((peer_id, payload.to_vec())).is_ok(),
         Some((&DATAGRAM_VOICE, payload)) => {
             let _ = voice_tx.try_send((peer_id, payload.to_vec()));
+            true
+        }
+        Some((&DATAGRAM_DESKTOP, payload)) => {
+            let _ = desktop_tx.try_send((peer_id, payload.to_vec()));
             true
         }
         _ => true,
@@ -1529,11 +1562,12 @@ async fn run_datagram_listener_for_peer(
     handle_peer: Arc<P2pTunnelHandle>,
     lan_tx: tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
     voice_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
+    desktop_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
 ) {
     loop {
         match handle_peer.connection.read_datagram().await {
             Ok(bytes) => {
-                if !route_datagram(peer_id, &bytes, &lan_tx, &voice_tx) {
+                if !route_datagram(peer_id, &bytes, &lan_tx, &voice_tx, &desktop_tx) {
                     break;
                 }
             }
@@ -1575,17 +1609,22 @@ mod tests {
         let peer = Uuid::new_v4();
         let (lan_tx, mut lan_rx) = tokio::sync::mpsc::unbounded_channel();
         let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel(4);
+        let (desktop_tx, mut desktop_rx) = tokio::sync::mpsc::channel(4);
 
-        assert!(route_datagram(peer, &[DATAGRAM_LAN, 1, 2, 3], &lan_tx, &voice_tx));
-        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 9, 8], &lan_tx, &voice_tx));
+        assert!(route_datagram(peer, &[DATAGRAM_LAN, 1, 2, 3], &lan_tx, &voice_tx, &desktop_tx));
+        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 9, 8], &lan_tx, &voice_tx, &desktop_tx));
+        assert!(route_datagram(peer, &[DATAGRAM_DESKTOP, 5, 6, 7], &lan_tx, &voice_tx, &desktop_tx));
         // Unknown tags and empty datagrams are ignored, never fatal.
-        assert!(route_datagram(peer, &[0x7F, 1], &lan_tx, &voice_tx));
-        assert!(route_datagram(peer, &[], &lan_tx, &voice_tx));
+        assert!(route_datagram(peer, &[0x7F, 1], &lan_tx, &voice_tx, &desktop_tx));
+        assert!(route_datagram(peer, &[], &lan_tx, &voice_tx, &desktop_tx));
 
         assert_eq!(lan_rx.try_recv().unwrap(), (peer, vec![1, 2, 3]));
         assert!(lan_rx.try_recv().is_err());
         assert_eq!(voice_rx.try_recv().unwrap(), (peer, vec![9, 8]));
         assert!(voice_rx.try_recv().is_err());
+        // Desktop audio is its own stream: never mixed into voice.
+        assert_eq!(desktop_rx.try_recv().unwrap(), (peer, vec![5, 6, 7]));
+        assert!(desktop_rx.try_recv().is_err());
     }
 
     #[test]
@@ -1593,9 +1632,10 @@ mod tests {
         let peer = Uuid::new_v4();
         let (lan_tx, _lan_rx) = tokio::sync::mpsc::unbounded_channel();
         let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel(2);
+        let (desktop_tx, _desktop_rx) = tokio::sync::mpsc::channel(2);
 
         for i in 0..5u8 {
-            assert!(route_datagram(peer, &[DATAGRAM_VOICE, i], &lan_tx, &voice_tx));
+            assert!(route_datagram(peer, &[DATAGRAM_VOICE, i], &lan_tx, &voice_tx, &desktop_tx));
         }
         // Only the first two fit; the rest were dropped, not queued.
         assert_eq!(voice_rx.try_recv().unwrap().1, vec![0]);
@@ -1603,15 +1643,16 @@ mod tests {
         assert!(voice_rx.try_recv().is_err());
 
         drop(voice_rx);
-        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 7], &lan_tx, &voice_tx));
+        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 7], &lan_tx, &voice_tx, &desktop_tx));
     }
 
     #[test]
     fn the_listener_stops_only_when_the_lan_consumer_is_gone() {
         let (lan_tx, lan_rx) = tokio::sync::mpsc::unbounded_channel();
         let (voice_tx, _voice_rx) = tokio::sync::mpsc::channel(1);
+        let (desktop_tx, _desktop_rx) = tokio::sync::mpsc::channel(1);
         drop(lan_rx);
-        assert!(!route_datagram(Uuid::new_v4(), &[DATAGRAM_LAN, 1], &lan_tx, &voice_tx));
+        assert!(!route_datagram(Uuid::new_v4(), &[DATAGRAM_LAN, 1], &lan_tx, &voice_tx, &desktop_tx));
     }
 
     #[test]
@@ -1781,6 +1822,18 @@ mod tests {
         assert_eq!(at_host, vec![(joiner_id, b"opus-from-joiner".to_vec())]);
         assert_eq!(at_joiner, vec![(host_id, b"opus-from-host".to_vec())]);
         assert!(host.poll_lan_packets().is_empty() && joiner.poll_lan_packets().is_empty());
+
+        // Shared desktop audio is a separate stream from the microphone.
+        assert_eq!(joiner.broadcast_desktop_frame(b"desktop-from-joiner"), 1);
+        let start = tokio::time::Instant::now();
+        let mut desktop_at_host = Vec::new();
+        while desktop_at_host.is_empty() {
+            assert!(start.elapsed() < Duration::from_secs(5), "desktop frames never arrived");
+            desktop_at_host.extend(host.poll_desktop_frames());
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(desktop_at_host, vec![(joiner_id, b"desktop-from-joiner".to_vec())]);
+        assert!(host.poll_voice_frames().is_empty(), "desktop audio must not leak into voice");
 
         // Without a valid ticket nobody gets in.
         let intruder = PeerMesh::spawn_with(MeshConfig {
