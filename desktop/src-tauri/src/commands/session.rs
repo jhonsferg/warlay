@@ -51,21 +51,6 @@ pub async fn start_game_tunnel(app: AppHandle, state: State<'_, AppState>, game_
     success_or_err(handle_request(DaemonRequest::StartGameTunnel { game_port }, agent_state, app).await)
 }
 
-/// The new frontend owns the room roster (it comes from the main server);
-/// this keeps the in-game overlay's copy current and pushes it live.
-#[tauri::command]
-pub fn set_overlay_roster(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    room_id: Option<String>,
-    members: Vec<warlay::protocol::RoomMember>,
-) {
-    use tauri::Emitter;
-    let room = room_id.and_then(|id| uuid::Uuid::parse_str(&id).ok());
-    *state.active_room.lock().unwrap() = room.map(|id| (id, members.clone()));
-    let _ = app.emit("overlay://roster", &members);
-}
-
 #[tauri::command]
 pub async fn update_room_helper(
     app: AppHandle,
