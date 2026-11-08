@@ -13,7 +13,7 @@ Security issues must be reported privately, see [SECURITY.md](SECURITY.md).
 | -------------------------------- | --------------- | ------------------------- |
 | [Rust](https://rustup.rs)        | stable          | every component           |
 | [Node.js](https://nodejs.org)    | 20 LTS or newer | `desktop/`                |
-| Windows 10/11 + MSVC build tools | -               | `desktop/`  |
+| Windows 10/11 + MSVC build tools | -               | `desktop/`                |
 | Docker                           | optional        | building the server image |
 
 The server and the shared crates build on Linux, macOS and Windows. The
