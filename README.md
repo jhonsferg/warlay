@@ -103,11 +103,11 @@ flowchart LR
     tunnel <-->|TCP relay, fallback| joinerDaemon
 ```
 
-| Component                       | Runs on                             | Role                                                    |
-| ------------------------------- | ----------------------------------- | ------------------------------------------------------- |
-| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.    |
+| Component                       | Runs on                             | Role                                                      |
+| ------------------------------- | ----------------------------------- | --------------------------------------------------------- |
+| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.      |
 | [`daemon/`](daemon/README.md)   | Player's PC (Windows, elevated)     | Network agent: LAN capture/replay, game tunnel, P2P mesh. |
-| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: the user interface (Tauri 2 + Vue 3).      |
+| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: the user interface (Tauri 2 + Vue 3).       |
 
 ### Network ports (server)
 
@@ -199,14 +199,14 @@ that runs inside `warlay.exe` when started with `--daemon`.
 
 ### Prerequisites
 
-| Tool                                                                                    | Needed for                       | Notes                                                                      |
-| --------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------- |
-| [Rust](https://rustup.rs) stable                                                        | everything                       | On Windows use the default `x86_64-pc-windows-msvc` toolchain.             |
-| [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | desktop client (Windows)          | Workload **Desktop development with C++** (MSVC compiler and Windows SDK). |
-| [Node.js](https://nodejs.org) 20 LTS or newer                                           | desktop client                   | Ships with `npm`.                                                          |
-| [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)            | running the desktop client       | Preinstalled on Windows 10 and 11.                                         |
-| C toolchain (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS)     | server on Linux/macOS            | Compiles the bundled SQLite and the `ring` crypto library.                 |
-| [Docker](https://docs.docker.com/engine/install/)                                       | container image                  | Optional.                                                                  |
+| Tool                                                                                    | Needed for                 | Notes                                                                      |
+| --------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
+| [Rust](https://rustup.rs) stable                                                        | everything                 | On Windows use the default `x86_64-pc-windows-msvc` toolchain.             |
+| [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | desktop client (Windows)   | Workload **Desktop development with C++** (MSVC compiler and Windows SDK). |
+| [Node.js](https://nodejs.org) 20 LTS or newer                                           | desktop client             | Ships with `npm`.                                                          |
+| [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)            | running the desktop client | Preinstalled on Windows 10 and 11.                                         |
+| C toolchain (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS)     | server on Linux/macOS      | Compiles the bundled SQLite and the `ring` crypto library.                 |
+| [Docker](https://docs.docker.com/engine/install/)                                       | container image            | Optional.                                                                  |
 
 Nothing else is required: NSIS (the installer builder) is downloaded by the
 Tauri CLI on first use, SQLite is compiled in, and the Opus voice codec is
@@ -244,10 +244,10 @@ npx tauri build
 before compiling the client. The results are in `target/release/` at the
 repository root:
 
-| Path                                                     | Content                              |
-| -------------------------------------------------------- | ------------------------------------ |
-| `target/release/bundle/nsis/Warlay_X.Y.Z_x64-setup.exe`  | Installer (client + uninstaller)     |
-| `target/release/warlay.exe`                              | Client and agent, in one executable  |
+| Path                                                    | Content                             |
+| ------------------------------------------------------- | ----------------------------------- |
+| `target/release/bundle/nsis/Warlay_X.Y.Z_x64-setup.exe` | Installer (client + uninstaller)    |
+| `target/release/warlay.exe`                             | Client and agent, in one executable |
 
 **Portable build** - a zip with `warlay.exe` and usage notes, for players
 who do not want to install anything:
@@ -1431,7 +1431,7 @@ tunnel pairing and relays.
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | The client cannot connect to `wss://hub.example.com`       | Port 443 blocked, nginx not reloaded, or the certificate does not cover the hostname. Run step 10.      |
 | Rooms work but joining a game never connects               | Port 7443/tcp (TLS tunnel) or 7779/udp (rendezvous) blocked by the firewall or the provider's firewall. |
-| The host's game does not appear in _Local Area Network_    | The agent is not running elevated on the host's PC. Restart the client and accept the UAC prompt.      |
+| The host's game does not appear in _Local Area Network_    | The agent is not running elevated on the host's PC. Restart the client and accept the UAC prompt.       |
 | Port 7777 or 7778 reachable from the internet behind nginx | Docker publishes ports past `ufw`. Bind them to `127.0.0.1` as in step 6.                               |
 | Every player has to register again after an update         | The container was started without the `warlay-data` volume.                                             |
 
