@@ -152,6 +152,17 @@ pub async fn start_room_session(
                                     }
                                 }
                                 warlay::engine::rewrite_gameinfo_port(&mut bytes, port);
+                                // What actually goes onto the LAN is the
+                                // rewritten packet, and the capture sees it
+                                // come back from our own IP. Marking only
+                                // the original bytes (above) let that echo
+                                // through as "our WC3's own traffic": it
+                                // was relayed back to the mesh and every
+                                // member re-pointed the game at the
+                                // echoer's joiner port instead of the real
+                                // host's, so the join went to the wrong
+                                // member.
+                                loop_guard.mark(&bytes);
                             }
                             Err(error) => warn!(%error, %from, "no se pudo abrir el puerto local de unión para el par"),
                         }
