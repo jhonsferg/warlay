@@ -136,6 +136,15 @@ export const native = {
     return typeof picked === "string" ? picked : null;
   },
 
+  /** One encoded Opus frame of our microphone, sent to the room over the mesh. */
+  sendVoiceFrame: (frame: Uint8Array) => invoke<number>("send_voice_frame", frame as unknown as Record<string, unknown>),
+  onVoiceFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
+    listen<{ from: string; data: string }[]>("voice://frames", handler),
+  registerVoiceShortcut: (accelerator?: string) => invoke<string>("register_voice_shortcut", { accelerator }),
+  unregisterVoiceShortcut: () => invoke<void>("unregister_voice_shortcut"),
+  /** The global mute shortcut was pressed (works while the game has focus). */
+  onVoiceToggle: (handler: () => void) => listen<void>("voice://toggle-mute", handler),
+
   onGameStarted: (handler: () => void) => listen<void>("session://game-started", handler),
   onGameEnded: (handler: () => void) => listen<void>("session://game-ended", handler),
   onTunnelStatus: (handler: (running: boolean) => void) => listen<boolean>("hubTunnel://status-changed", handler),
