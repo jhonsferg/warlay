@@ -71,8 +71,7 @@ screen, then carries the real game session either directly between players
 flowchart LR
     subgraph host["Player A (host)"]
         hostGame["Warcraft III"]
-        hostUi["Desktop client<br/>warlay.exe"]
-        hostDaemon["Agent<br/>warlay.exe --daemon"]
+        hostClient["Desktop client<br/>warlay.exe<br/>(UI + network agent)"]
     end
 
     subgraph hub["Warlay server (VPS)"]
@@ -84,12 +83,9 @@ flowchart LR
 
     subgraph joiner["Player B (joiner)"]
         joinerGame["Warcraft III"]
-        joinerUi["Desktop client<br/>warlay.exe"]
-        joinerDaemon["Agent<br/>warlay.exe --daemon"]
+        joinerClient["Desktop client<br/>warlay.exe<br/>(UI + network agent)"]
     end
 
-    hostUi <-->|named pipe| hostDaemon
-    joinerUi <-->|named pipe| joinerDaemon
     hostGame <-->|LAN broadcast and game TCP| hostDaemon
     joinerGame <-->|LAN broadcast and game TCP| joinerDaemon
 
@@ -106,8 +102,13 @@ flowchart LR
 | Component                       | Runs on                             | Role                                                      |
 | ------------------------------- | ----------------------------------- | --------------------------------------------------------- |
 | [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.      |
-| [`daemon/`](daemon/README.md)   | Player's PC (Windows, elevated)     | Network agent: LAN capture/replay, game tunnel, P2P mesh. |
-| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: the user interface (Tauri 2 + Vue 3).       |
+| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: UI (Tauri 2 + Vue 3) and network agent.     |
+
+There is no separate daemon or service: the desktop client is the only
+program on the player's PC. Its Rust backend runs the network agent (hub
+connections, LAN capture and replay, game tunnel, P2P mesh, voice relay) in
+the same process, and the Vue frontend talks to it through Tauri commands and
+events.
 
 ### Network ports (server)
 
@@ -159,8 +160,8 @@ domain, TLS and nginx, follow [Deploying the server on a VPS](#deploying-the-ser
 
 1. Install `warlay-desktop-...-setup.exe` (or unzip the portable build and
    run `warlay.exe`). Windows asks for administrator permission on every
-   launch: the same binary is also the agent, and the agent needs
-   administrator rights to capture LAN traffic.
+   launch: the client also captures LAN traffic itself, which needs
+   administrator rights.
 2. Register the server (`wss://your-domain` or `host:7777`).
 3. Create a room, or join one, and start Warcraft III from the room panel.
 4. The host creates the game in _Local Area Network_; it appears for every
@@ -173,7 +174,7 @@ flowchart LR
     root["warlay/"]
 
     root --> crates["crates/<br/>shared Rust libraries"]
-    crates --> protocol["protocol<br/>wire formats: control plane,<br/>tunnel handshake, daemon IPC"]
+    crates --> protocol["protocol<br/>wire formats: control plane,<br/>tunnel handshake, agent requests"]
     crates --> crypto["crypto<br/>X25519 handshake, ChaCha20-Poly1305<br/>framing, PSK proofs"]
     crates --> transport["transport<br/>async UDP socket wrapper"]
     crates --> matchmaking["matchmaking<br/>rooms, client sessions,<br/>matchmaking hub"]
@@ -181,19 +182,19 @@ flowchart LR
     crates --> storage["storage<br/>SQLite: server identity,<br/>issued client keys"]
     crates --> config["config<br/>TOML settings"]
     crates --> engine["engine<br/>client networking: hub connection,<br/>tunnels, P2P mesh, LAN capture"]
-    crates --> agent["agent<br/>the network agent: pipe server,<br/>session, handlers, autostart"]
     crates --> facade["warlay<br/>facade re-exporting the crates<br/>as warlay::*, feature-gated"]
 
     root --> server["server/<br/>hub binary warlay-server,<br/>Dockerfile, sample configs"]
-    root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend, also runs<br/>the agent (--daemon)"]
+    root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend, which also<br/>runs the network agent in-process"]
     root --> github[".github/<br/>CI, release pipeline,<br/>issue and PR templates"]
 ```
 
 The binaries (`server`, `desktop/src-tauri`) stay thin: protocol, crypto and
 networking logic live in `crates/` and are consumed through the `warlay`
 facade with only the features each binary needs. The server never links the
-Windows-only `engine` crate. The agent itself is a library (`crates/agent`)
-that runs inside `warlay.exe` when started with `--daemon`.
+Windows-only `engine` crate. The network agent lives in the desktop
+backend (`desktop/src-tauri/src/agent`) and runs inside `warlay.exe`; it
+is not a separate binary or process.
 
 ## Building from source
 
@@ -220,8 +221,8 @@ cd warlay
 ### Desktop client (Windows)
 
 One build produces one executable: `warlay.exe` is both the desktop client
-and the network agent (it starts itself in agent mode with `--daemon`).
-No sidecar has to be built separately.
+and the network agent, which runs inside the same process. There is no
+daemon, sidecar or second binary to build or start.
 
 **Development mode** - hot-reloading frontend on top of a debug build:
 
@@ -256,16 +257,6 @@ who do not want to install anything:
 npm run build-portable-zip   # after npx tauri build
 # -> target/release/bundle/nsis/Warlay_X.Y.Z_x64-portable.zip
 ```
-
-**Standalone agent (optional)** - the agent can also be built as its own
-executable for development or for running outside the client:
-
-```powershell
-cargo build --release -p daemon   # dev-only standalone build of the agent
-```
-
-This standalone build is kept for development convenience; the distributed
-desktop build runs the agent inside `warlay.exe` itself.
 
 Binaries link the MSVC runtime statically, so they run on a clean Windows
 installation. The version comes from `desktop/src-tauri/tauri.conf.json`
@@ -325,19 +316,16 @@ Every release also publishes the image as
    [latest release](https://github.com/jhonsferg/warlay/releases/latest) and
    run it (or unzip the portable build anywhere and run `warlay.exe`).
 2. On first launch Windows asks for administrator permission for
-   `warlay.exe`. Accept it: the same binary runs the agent, which needs
-   elevation to capture LAN game broadcasts. Windows will keep asking on
+   `warlay.exe`. Accept it: the client itself captures
+   LAN game broadcasts, which needs elevation. Windows will keep asking on
    every launch of the client.
 3. Register a server with the **+** button in the server rail, using the
    address its operator gave you, for example `wss://hub.example.com`.
 4. Set the Warcraft III executable in **Settings**, then create or join a
    room.
 
-Optional: to start the agent at logon without opening the client, run
-`warlay.exe --install` from an elevated terminal in the installation folder
-(`warlay.exe --uninstall` removes it). Settings and logs are stored in
-`%APPDATA%\com.warlay.lanlauncher\`. Uninstall from **Settings > Apps**; the
-uninstaller stops the agent first.
+Settings and logs are stored in `%APPDATA%\com.warlay.lanlauncher\`.
+Uninstall from **Settings > Apps**; the uninstaller closes the client first.
 
 ## Deploying the server on a VPS
 
@@ -1431,7 +1419,7 @@ tunnel pairing and relays.
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | The client cannot connect to `wss://hub.example.com`       | Port 443 blocked, nginx not reloaded, or the certificate does not cover the hostname. Run step 10.      |
 | Rooms work but joining a game never connects               | Port 7443/tcp (TLS tunnel) or 7779/udp (rendezvous) blocked by the firewall or the provider's firewall. |
-| The host's game does not appear in _Local Area Network_    | The agent is not running elevated on the host's PC. Restart the client and accept the UAC prompt.       |
+| The host's game does not appear in _Local Area Network_    | The client is not running elevated on the host's PC. Restart the client and accept the UAC prompt.       |
 | Port 7777 or 7778 reachable from the internet behind nginx | Docker publishes ports past `ufw`. Bind them to `127.0.0.1` as in step 6.                               |
 | Every player has to register again after an update         | The container was started without the `warlay-data` volume.                                             |
 
