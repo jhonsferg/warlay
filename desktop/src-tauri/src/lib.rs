@@ -511,6 +511,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
+            commands::voice::send_voice_frame,
             commands::e2e::e2e_identity,
             commands::e2e::e2e_encrypt,
             commands::e2e::e2e_decrypt,
