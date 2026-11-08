@@ -140,6 +140,28 @@ fn settings_round_trip_and_log_level_setters_only_touch_their_field() {
 }
 
 #[test]
+fn microphone_consent_starts_off_and_is_remembered_without_touching_other_settings() {
+    let t = TempStore::new();
+    let mut settings = t.store.get_settings().unwrap();
+    assert!(!settings.mic_consent);
+    settings.display_name = "Arthas".into();
+    settings.noise_suppression = "strong".into();
+    t.store.save_settings(&settings).unwrap();
+
+    t.store.set_mic_consent(true).unwrap();
+    let loaded = t.store.get_settings().unwrap();
+    assert!(loaded.mic_consent);
+    assert_eq!(loaded.display_name, "Arthas");
+    assert_eq!(loaded.noise_suppression, "strong");
+
+    // Survives a restart, and can be withdrawn.
+    let reopened = ClientStore::open(&t.db_path()).unwrap();
+    assert!(reopened.get_settings().unwrap().mic_consent);
+    reopened.set_mic_consent(false).unwrap();
+    assert!(!reopened.get_settings().unwrap().mic_consent);
+}
+
+#[test]
 fn corrupt_stored_settings_fall_back_to_defaults() {
     let t = TempStore::new();
     t.store
