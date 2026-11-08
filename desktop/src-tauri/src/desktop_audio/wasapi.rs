@@ -20,9 +20,9 @@ use windows::Win32::Media::Audio::{
     IActivateAudioInterfaceCompletionHandler_Impl, IAudioCaptureClient, IAudioClient, AUDCLNT_BUFFERFLAGS_SILENT,
     AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
     AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, AUDIOCLIENT_ACTIVATION_PARAMS,
-    AUDIOCLIENT_ACTIVATION_PARAMS_0, AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
-    AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS, PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE,
-    VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, WAVEFORMATEX, WAVE_FORMAT_PCM,
+    AUDIOCLIENT_ACTIVATION_PARAMS_0, AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK, AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS,
+    PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE, VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, WAVEFORMATEX,
+    WAVE_FORMAT_PCM,
 };
 use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0};
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, BLOB, COINIT_MULTITHREADED};
@@ -154,7 +154,12 @@ unsafe fn capture_loop(
             Some(&*variant),
             &handler,
         )
-        .map_err(|e| describe("ActivateAudioInterfaceAsync (¿Windows anterior a la compilación 20348?)", e))?;
+        .map_err(|e| {
+            describe(
+                "ActivateAudioInterfaceAsync (¿Windows anterior a la compilación 20348?)",
+                e,
+            )
+        })?;
         done_rx
             .recv_timeout(Duration::from_secs(5))
             .map_err(|_| "la activación del audio del escritorio no terminó".to_string())?;
@@ -196,7 +201,9 @@ unsafe fn capture_loop(
             .map_err(|e| describe("Initialize", e))?;
 
         let event: HANDLE = CreateEventW(None, false, false, None).map_err(|e| describe("CreateEventW", e))?;
-        client.SetEventHandle(event).map_err(|e| describe("SetEventHandle", e))?;
+        client
+            .SetEventHandle(event)
+            .map_err(|e| describe("SetEventHandle", e))?;
         let capture: IAudioCaptureClient = client.GetService().map_err(|e| describe("IAudioCaptureClient", e))?;
         client.Start().map_err(|e| describe("Start", e))?;
         let _ = ready.send(Ok(()));
