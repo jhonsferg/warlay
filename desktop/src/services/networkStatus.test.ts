@@ -1,6 +1,31 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createStatusFeed, idleStatus, uptimeMinutes, type NetworkStatus } from "./networkStatus.ts";
+import {
+  createStatusFeed,
+  idleStatus,
+  pingLabel,
+  pingTone,
+  uptimeMinutes,
+  type NetworkStatus,
+} from "./networkStatus.ts";
+
+test("ping tone goes from good to playable to bad at 80 and 150 ms", () => {
+  assert.equal(pingTone(20), "success");
+  assert.equal(pingTone(80), "success");
+  assert.equal(pingTone(81), "warning");
+  assert.equal(pingTone(150), "warning");
+  assert.equal(pingTone(151), "danger");
+});
+
+test("ping label rounds, never shows 0 ms and hides what is not a ping", () => {
+  assert.deepEqual(pingLabel(42.6), { text: "43 ms", tone: "success" });
+  assert.deepEqual(pingLabel(0), { text: "1 ms", tone: "success" });
+  assert.deepEqual(pingLabel(220), { text: "220 ms", tone: "danger" });
+  assert.equal(pingLabel(null), null);
+  assert.equal(pingLabel(undefined), null);
+  assert.equal(pingLabel(Number.NaN), null);
+  assert.equal(pingLabel(-5), null);
+});
 
 function status(over: Partial<NetworkStatus> = {}): NetworkStatus {
   return { ...idleStatus(), ...over };
