@@ -101,6 +101,7 @@ pub async fn start_room_session(
             interval.tick().await;
             // Voice rides the same 20 ms tick: one batched event per tick.
             super::voice::emit_voice_frames(inbound_mesh.poll_voice_frames());
+            super::voice::emit_desktop_frames(inbound_mesh.poll_desktop_frames());
             let packets = inbound_mesh.poll_lan_packets();
             if packets.is_empty() {
                 continue;
