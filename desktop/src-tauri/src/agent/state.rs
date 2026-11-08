@@ -9,9 +9,6 @@ use warlay::engine::{CapturePorts, LoopGuard, MatchmakingConnection};
 
 use super::storage::AgentStore;
 
-/// Former name of [`AgentState`], kept until every consumer has moved.
-pub type DaemonState = AgentState;
-
 pub struct AgentState {
     pub connections: HashMap<String, MatchmakingConnection>,
     pub game_tunnel: Option<warlay::engine::TunnelHandle>,
