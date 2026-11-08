@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
 
 use crate::core::dto::{ServerMessageEvent, ServerPingEvent, ServerStatusEvent};
-use warlay::protocol::ipc::DaemonResponse;
+use warlay::protocol::ipc::AgentResponse;
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -15,15 +15,15 @@ pub fn app_handle() -> Option<&'static AppHandle> {
     APP_HANDLE.get()
 }
 
-/// Emits a state-broadcast `DaemonResponse` as a Tauri event to the frontend,
+/// Emits a state-broadcast `AgentResponse` as a Tauri event to the frontend,
 /// replacing the old `ipc_server::push_event` that wrote to a named pipe.
 ///
 /// Runs inside the same process as the GUI now, so there is no pipe to
 /// write to -- instead we emit the very same events directly as Tauri
 /// events to the frontend.
-pub fn emit_agent_event(app: &AppHandle, response: &DaemonResponse) {
+pub fn emit_agent_event(app: &AppHandle, response: &AgentResponse) {
     match response {
-        DaemonResponse::HubConnectionState { server_id, connected } => {
+        AgentResponse::HubConnectionState { server_id, connected } => {
             let _ = app.emit(
                 "matchmaking://status",
                 &ServerStatusEvent {
@@ -32,7 +32,7 @@ pub fn emit_agent_event(app: &AppHandle, response: &DaemonResponse) {
                 },
             );
         }
-        DaemonResponse::HubPing { server_id, latency_ms } => {
+        AgentResponse::HubPing { server_id, latency_ms } => {
             let _ = app.emit(
                 "matchmaking://ping",
                 &ServerPingEvent {
@@ -41,7 +41,7 @@ pub fn emit_agent_event(app: &AppHandle, response: &DaemonResponse) {
                 },
             );
         }
-        DaemonResponse::HubMessage { server_id, message } => {
+        AgentResponse::HubMessage { server_id, message } => {
             let _ = app.emit(
                 "matchmaking://message",
                 &ServerMessageEvent {
@@ -50,13 +50,13 @@ pub fn emit_agent_event(app: &AppHandle, response: &DaemonResponse) {
                 },
             );
         }
-        DaemonResponse::GameStarted => {
+        AgentResponse::GameStarted => {
             let _ = app.emit("session://game-started", ());
         }
-        DaemonResponse::GameEnded => {
+        AgentResponse::GameEnded => {
             let _ = app.emit("session://game-ended", ());
         }
-        DaemonResponse::TunnelStatusChanged { running } => {
+        AgentResponse::TunnelStatusChanged { running } => {
             let _ = app.emit("hubTunnel://status-changed", *running);
         }
         _ => {
@@ -67,9 +67,9 @@ pub fn emit_agent_event(app: &AppHandle, response: &DaemonResponse) {
     }
 }
 
-/// Shorthand for a `DaemonResponse::Error` reply.
-pub fn err(request_type: &str, message: impl std::fmt::Display) -> DaemonResponse {
-    DaemonResponse::Error {
+/// Shorthand for a `AgentResponse::Error` reply.
+pub fn err(request_type: &str, message: impl std::fmt::Display) -> AgentResponse {
+    AgentResponse::Error {
         request_type: request_type.to_string(),
         message: message.to_string(),
     }
@@ -78,7 +78,7 @@ pub fn err(request_type: &str, message: impl std::fmt::Display) -> DaemonRespons
 /// Emite un evento de estado del agente al frontend, obteniendo el
 /// `AppHandle` del `OnceLock` rellenado al arrancar. Sustituye al viejo
 /// `ipc_server::push_event` que escribía en el pipe.
-pub fn emit_event(response: &DaemonResponse) {
+pub fn emit_event(response: &AgentResponse) {
     if let Some(app) = APP_HANDLE.get() {
         emit_agent_event(app, response);
     }
