@@ -1,26 +1,28 @@
+mod agent;
 mod commands;
 mod core;
+mod desktop_audio;
 pub use warlay::crypto;
-mod daemon_ipc;
 mod launcher;
 mod log_bridge;
 mod log_cleanup;
 mod log_control;
 mod network;
-mod overlay;
+mod permissions;
 pub use warlay::protocol;
 mod state;
 mod storage;
 pub use warlay::transport;
-pub mod voice;
 
+use agent::state::DaemonState;
 use state::AppState;
+use std::sync::Arc;
 use storage::ClientStore;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tokio::sync::Mutex as TokioMutex;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use warlay::protocol::ipc::DaemonRequest;
 
 /// Same AppData-path-without-an-app-handle trick as `log_cleanup::log_dir` — the
 /// local database needs to be open *before* the tracing subscriber is built
@@ -44,7 +46,7 @@ fn client_db_path() -> std::path::PathBuf {
 /// batch of lines it drains, so routing that through `sync_data()`
 /// (Windows' `FlushFileBuffers`) instead keeps the on-disk size honest for
 /// live tailing, not just after this process's handle finally closes.
-/// Same fix, same reasoning, as `daemon/src/logging.rs`'s equivalent.
+/// Same fix, same reasoning, as `crates/agent/src/logging.rs`'s equivalent.
 struct SyncOnFlush(std::fs::File);
 
 impl std::io::Write for SyncOnFlush {
@@ -179,50 +181,17 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-/// The daemon is a separate process that runs elevated (see
-/// `commands::daemon::spawn_daemon_elevated`), so this app -- which is not --
-/// can neither kill it nor rely on it noticing we left: it would keep every
-/// hub connection, the room's mesh, the game tunnel and the LAN capture
-/// alive, and other players would keep seeing this user as present. "Salir"
-/// is meant to be a real quit, so the daemon is asked to shut itself down
-/// (it releases all of that, answers, and exits its process), and we wait
-/// -- bounded, so quitting can never hang -- until it is really gone before
-/// exiting ourselves.
+/// The agent now runs inside this same process, so there is no separate
+/// process to kill or wait for. "Salir" is meant to be a real quit: it
+/// closes every hub connection, the room's mesh, the game tunnel and the LAN
+/// capture, and other players will stop seeing this user as present.
 fn quit_app(app: &AppHandle) {
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let client = app_handle.state::<AppState>().daemon_client.lock().unwrap().clone();
-        if let Some(client) = client {
-            shutdown_daemon(&client).await;
-        }
-        app_handle.exit(0);
-    });
+    app.exit(0);
 }
 
-/// How long to wait for the daemon to accept the shutdown, and then to be
-/// gone.
+/// Cuánto se espera al agente para que acepte el apagado y libere sus
+/// recursos antes de que la app salga por su cuenta.
 const DAEMON_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
-const DAEMON_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-
-async fn shutdown_daemon(client: &daemon_ipc::DaemonClient) {
-    match tokio::time::timeout(DAEMON_ANSWER_TIMEOUT, client.call(DaemonRequest::Shutdown)).await {
-        Ok(Ok(warlay::protocol::ipc::DaemonResponse::Success { .. })) => {
-            if !commands::daemon::wait_until_daemon_gone(DAEMON_EXIT_TIMEOUT).await {
-                tracing::warn!("el agente aceptó apagarse pero sigue activo tras {DAEMON_EXIT_TIMEOUT:?}");
-            }
-        }
-        // An older daemon that doesn't know `Shutdown` (it answers with an
-        // error), or one that didn't answer in time: at least let go of
-        // everything it holds, as this quit always did.
-        other => {
-            tracing::warn!(
-                ?other,
-                "el agente no aceptó apagarse, se le pide solo soltar las conexiones"
-            );
-            let _ = tokio::time::timeout(DAEMON_ANSWER_TIMEOUT, client.call(DaemonRequest::DisconnectAll)).await;
-        }
-    }
-}
 
 /// Builds the system tray icon so the app can keep running in the
 /// background after the window's own close button is clicked (see `run()`'s
@@ -390,45 +359,60 @@ pub fn run() {
     tracing::info!(log_file = %log_path.display(), "logging initialized");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_dialog::init())
+        // Must be the first plugin: only one elevated warlay.exe may own the
+        // raw LAN capture and the agent state. A second launch exits right
+        // away and this callback (running in the first instance) brings the
+        // existing window to the front instead.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        // The microphone prompt is Warlay's own dialog (see `permissions`):
+        // the webview's request is answered from the stored consent.
+        .on_permission_request(|webview, kind| {
+            use tauri::Manager;
+            let consent = webview
+                .app_handle()
+                .try_state::<AppState>()
+                .and_then(|state| state.store.get_settings().ok())
+                .is_some_and(|settings| settings.mic_consent);
+            let response = permissions::decide(kind, consent);
+            tracing::info!(?kind, consent, ?response, "permiso solicitado por el webview");
+            response
+        })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    use tauri_plugin_global_shortcut::ShortcutState;
-                    let state = app.state::<AppState>();
-                    let is_mic_toggle = state
-                        .mic_toggle_shortcut
-                        .lock()
-                        .expect("mic toggle shortcut lock poisoned")
-                        .as_ref()
-                        == Some(shortcut);
-                    // Toggle on press only -- this shortcut is a switch, not
-                    // a hold, so the release event (which still fires) is
-                    // ignored to avoid toggling twice per key press.
-                    if is_mic_toggle && event.state() == ShortcutState::Pressed {
-                        let current = state.voice_manager.is_self_mic_muted();
-                        let new_state = !current;
-                        state.voice_manager.set_self_mic_muted(new_state);
-                        let _ = app.emit("voice://self-mute-changed", new_state);
+                .with_handler(|app, _shortcut, event| {
+                    // Only the voice mute shortcut is ever registered.
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        use tauri::Emitter;
+                        let _ = app.emit("voice://toggle-mute", ());
                     }
                 })
                 .build(),
         )
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            let mic_toggle_key = settings.mic_toggle_key.clone();
             app.manage(AppState::new(store));
             let state = app.state::<AppState>();
-            *state
-                .mic_toggle_shortcut
-                .lock()
-                .expect("mic toggle shortcut lock poisoned") =
-                voice::register_shortcut(app.handle(), None, &mic_toggle_key);
-            // Non-fatal on purpose: the overlay is a cosmetic add-on, and
-            // the rest of the app (matchmaking, LAN, chat) has no reason to
-            // fail to start just because this window couldn't be created.
-            if let Err(error) = overlay::setup_overlay(app.handle()) {
-                tracing::warn!(%error, "failed to create overlay window, continuing without it");
+            // Initialize the agent state (runs in-process, no separate daemon
+            // process). The agent's networking, LAN capture, tunnels, and hub
+            // connections all operate on this shared DaemonState.
+            let agent_state = Arc::new(TokioMutex::new(DaemonState::new()));
+            *state.agent_state.lock().unwrap() = Some(agent_state.clone());
+            *state.app_handle.lock().unwrap() = Some(app.handle().clone());
+            agent::events::set_app_handle(app.handle().clone());
+            // The microphone answer comes from Warlay's consent and is never saved in the
+            // WebView2 profile (see `permissions::install_native_policy`).
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(error) = permissions::install_native_policy(&window, app.handle().clone()) {
+                    tracing::warn!(%error, "no se pudo instalar la politica de permisos");
+                }
             }
 
             let app_handle = app.handle().clone();
@@ -489,32 +473,6 @@ pub fn run() {
                     if running != was_running {
                         tracing::info!(running, "estado de Warcraft III cambió");
                         let _ = app_handle.emit("game://running-state-changed", running);
-                        overlay::set_overlay_visible(&app_handle, running);
-                    } else if running {
-                        overlay::update_overlay_position(&app_handle, std::path::Path::new(&path));
-                    }
-                }
-            });
-
-            // A second, much faster loop dedicated purely to holding the
-            // overlay at the top of the z-order. The poller above only
-            // needs to recompute the overlay's position every couple of
-            // seconds, but winning a z-order fight against the game
-            // reclaiming topmost for itself on every focus change needs a
-            // noticeably tighter cadence than that -- kept as its own loop
-            // (instead of just tightening the interval above) so this can
-            // run often without repeating the heavier process/window
-            // enumeration work that poller also does. Reads the
-            // already-computed `game_running` flag rather than checking
-            // itself, so it stays cheap.
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_millis(400));
-                loop {
-                    interval.tick().await;
-                    let state = app_handle.state::<AppState>();
-                    if state.game_running.load(std::sync::atomic::Ordering::SeqCst) {
-                        overlay::reassert_overlay_topmost(&app_handle);
                     }
                 }
             });
@@ -552,9 +510,14 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::daemon::check_daemon_ready,
-            commands::daemon::ensure_daemon_running,
             commands::devtools::open_devtools,
+            commands::voice::send_voice_frame,
+            commands::voice::start_desktop_audio,
+            commands::voice::stop_desktop_audio,
+            commands::voice::set_mic_consent,
+            commands::voice::open_mic_privacy_settings,
+            commands::voice::register_voice_shortcut,
+            commands::voice::unregister_voice_shortcut,
             commands::e2e::e2e_identity,
             commands::e2e::e2e_encrypt,
             commands::e2e::e2e_decrypt,
@@ -582,7 +545,6 @@ pub fn run() {
             commands::matchmaking::start_hosting_tunnel,
             commands::matchmaking::start_joining_tunnel,
             commands::matchmaking::stop_hub_tunnel,
-            commands::matchmaking::get_room_members,
             commands::servers::list_servers,
             commands::servers::add_server,
             commands::servers::remove_server,
@@ -594,14 +556,6 @@ pub fn run() {
             commands::settings::get_log_usage,
             commands::settings::clean_logs_now,
             commands::system_info::get_system_info,
-            commands::overlay::set_overlay_interactive,
-            commands::voice::push_voice_frame,
-            commands::voice::start_voice_chat,
-            commands::voice::stop_voice_chat,
-            commands::voice::toggle_mute_peer,
-            commands::voice::get_muted_peers,
-            commands::voice::toggle_self_mic_mute,
-            commands::voice::is_self_mic_muted,
             commands::agent::get_agent_settings,
             commands::agent::save_agent_settings,
             commands::agent::get_agent_status,
@@ -609,7 +563,6 @@ pub fn run() {
             commands::session::start_room_session,
             commands::session::stop_room_session,
             commands::session::start_game_tunnel,
-            commands::session::set_overlay_roster,
             commands::session::update_room_helper,
         ])
         .run(tauri::generate_context!())

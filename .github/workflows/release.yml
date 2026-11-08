@@ -3,8 +3,9 @@ name: Release
 # Every merge into the protected `main` branch publishes a new version:
 #   1. compute the next semantic version from Conventional Commits since the
 #      last `v*` tag (feat -> minor, breaking -> major, anything else -> patch),
-#   2. build the server for Linux/macOS/Windows and the desktop client +
-#      daemon for Windows, stamping that version into every manifest,
+#   2. build the server for Linux/macOS/Windows and the desktop client for
+#      Windows (the network agent ships inside warlay.exe), stamping that
+#      version into every manifest,
 #   3. push the server image to GHCR,
 #   4. tag the commit and publish a GitHub Release with notes and checksums.
 on:
@@ -137,7 +138,7 @@ jobs:
           if-no-files-found: error
 
   desktop:
-    name: Desktop client and daemon (Windows x64)
+    name: Desktop client (Windows x64)
     needs: version
     if: needs.version.outputs.skip != 'true'
     runs-on: windows-latest
@@ -159,8 +160,8 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ env.VERSION }}
-      - name: Build client, daemon sidecar and installer
-        # beforeBuildCommand runs `npm run build && npm run prepare-daemon-sidecar`.
+      - name: Build client and installer
+        # beforeBuildCommand runs `npm run build`.
         working-directory: desktop
         run: npx tauri build
       - name: Build portable zip
@@ -174,12 +175,6 @@ jobs:
           mkdir -p dist
           cp "$bundle/Warlay_${VERSION}_x64-setup.exe" "dist/warlay-desktop-v${VERSION}-windows-x64-setup.exe"
           cp "$bundle/Warlay_${VERSION}_x64-portable.zip" "dist/warlay-desktop-v${VERSION}-windows-x64-portable.zip"
-
-          daemon="warlay-daemon-v${VERSION}-windows-x64"
-          mkdir -p "dist/$daemon"
-          cp target/release/wnetd.exe LICENSE "dist/$daemon/"
-          cp daemon/README.md "dist/$daemon/README.md"
-          (cd dist && 7z a -tzip "$daemon.zip" "$daemon" > /dev/null && rm -rf "$daemon")
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-windows-x64
@@ -270,9 +265,8 @@ jobs:
             echo
             echo "| Component | Platform | File |"
             echo "|-----------|----------|------|"
-            echo "| Desktop client + daemon (installer) | Windows x64 | \`warlay-desktop-v${VERSION}-windows-x64-setup.exe\` |"
-            echo "| Desktop client + daemon (portable) | Windows x64 | \`warlay-desktop-v${VERSION}-windows-x64-portable.zip\` |"
-            echo "| Daemon only | Windows x64 | \`warlay-daemon-v${VERSION}-windows-x64.zip\` |"
+            echo "| Desktop client (installer) | Windows x64 | \`warlay-desktop-v${VERSION}-windows-x64-setup.exe\` |"
+            echo "| Desktop client (portable) | Windows x64 | \`warlay-desktop-v${VERSION}-windows-x64-portable.zip\` |"
             echo "| Server | Linux x64 / ARM64 (static) | \`warlay-server-v${VERSION}-{x86_64,aarch64}-unknown-linux-musl.tar.gz\` |"
             echo "| Server | macOS Intel / Apple Silicon | \`warlay-server-v${VERSION}-{x86_64,aarch64}-apple-darwin.tar.gz\` |"
             echo "| Server | Windows x64 | \`warlay-server-v${VERSION}-x86_64-pc-windows-msvc.zip\` |"

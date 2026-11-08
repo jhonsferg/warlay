@@ -46,16 +46,25 @@ async function invite(userId: string) {
         <p class="activity__eyebrow" :class="`activity__eyebrow--${g.status}`">
           {{ g.label }} — {{ g.friends.length }}
         </p>
-        <FriendRow v-for="f in g.friends" :key="f.id" :friend="f" compact>
+        <FriendRow
+          v-for="f in g.friends"
+          :key="f.id"
+          :friend="f"
+          compact
+          class="activity__friend"
+          @click="router.push(`/friends/${f.id}`)"
+        >
           <template #actions>
-            <WIconButton label="Mensaje" size="sm" @click="router.push(`/dm/${f.id}`)"><MessageCircle /></WIconButton>
+            <WIconButton label="Mensaje" size="sm" @click.stop="router.push(`/friends/${f.id}`)"
+              ><MessageCircle
+            /></WIconButton>
             <WIconButton
               v-if="
                 rooms.current && f.presence.status !== 'offline' && !rooms.current.members.some((m) => m.id === f.id)
               "
               label="Invitar a mi sala"
               size="sm"
-              @click="invite(f.id)"
+              @click.stop="invite(f.id)"
               ><UserPlus
             /></WIconButton>
           </template>

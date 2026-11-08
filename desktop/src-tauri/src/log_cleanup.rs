@@ -4,7 +4,7 @@
 //! at startup, then every hour for as long as the app runs (it lives in the
 //! tray for days, so "once per launch" left old files around), and again,
 //! live, whenever the user changes the retention setting in Ajustes. The
-//! same folder holds the daemon's logs, so this cleans those too.
+//! same folder holds the agent's logs, so this cleans those too.
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -15,7 +15,7 @@ use tauri::Manager;
 const SWEEP_EVERY: Duration = Duration::from_secs(3600);
 
 /// A file touched this recently is a log being written right now (this
-/// process's, or the daemon's): never deleted, whatever the retention.
+/// process's, or the agent's): never deleted, whatever the retention.
 /// Windows lets an open file be deleted, which would silently orphan it.
 const IN_USE_WINDOW: Duration = Duration::from_secs(120);
 

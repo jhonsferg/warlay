@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { Bell, Check, X } from "@lucide/vue";
+import { Bell, Check, Trash2, X } from "@lucide/vue";
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
 import { errorMessage } from "../../services/http";
 import type { AppNotification, InviteView } from "../../services/types";
-import { useCommunities } from "../../stores/communities";
+import { acceptInviteAndOpen } from "../../stores/inviteFlow";
 import { useNotifications } from "../../stores/notifications";
-import { useRooms } from "../../stores/rooms";
 import { useSocial } from "../../stores/social";
 import { useToasts } from "../../stores/toasts";
 import WAvatar from "../atoms/WAvatar.vue";
@@ -15,10 +13,7 @@ import WIconButton from "../atoms/WIconButton.vue";
 
 const notifications = useNotifications();
 const social = useSocial();
-const rooms = useRooms();
-const communities = useCommunities();
 const toasts = useToasts();
-const router = useRouter();
 const open = ref(false);
 
 const badge = computed(() => notifications.unread + notifications.invites.length + social.incoming.length);
@@ -45,18 +40,22 @@ function describe(n: AppNotification): string {
 }
 
 async function accept(invite: InviteView) {
+  if (await acceptInviteAndOpen(invite)) open.value = false;
+}
+
+async function clearAll() {
   try {
-    const result = await notifications.acceptInvite(invite.id);
-    if (result.kind === "room") {
-      await rooms.adopt(result.session);
-      void router.push(`/room/${result.session.room.id}`);
-    } else {
-      await communities.loadMine();
-      void router.push(`/c/${result.communityId}`);
-    }
-    open.value = false;
+    await notifications.clearAll();
   } catch (error) {
-    toasts.error("No se pudo aceptar la invitación", errorMessage(error));
+    toasts.error("No se pudieron limpiar las notificaciones", errorMessage(error));
+  }
+}
+
+async function removeOne(id: string) {
+  try {
+    await notifications.remove(id);
+  } catch (error) {
+    toasts.error("No se pudo quitar la notificación", errorMessage(error));
   }
 }
 
@@ -78,6 +77,14 @@ const ago = (iso: string) => {
     <section v-if="open" class="notif__panel" aria-label="Notificaciones">
       <header class="notif__head">
         <h3>Actividad</h3>
+        <WButton
+          variant="ghost"
+          size="sm"
+          data-testid="notifications-clear"
+          :disabled="notifications.items.length === 0"
+          @click="clearAll"
+          ><template #icon><Trash2 /></template>Limpiar</WButton
+        >
       </header>
 
       <div v-if="notifications.invites.length || social.incoming.length" class="notif__group">
@@ -120,6 +127,14 @@ const ago = (iso: string) => {
           <span class="notif__pip" />
           <p>{{ describe(n) }}</p>
           <time>{{ ago(n.createdAt) }}</time>
+          <WIconButton
+            class="notif__remove"
+            label="Quitar notificación"
+            size="sm"
+            data-testid="notification-remove"
+            @click="removeOne(n.id)"
+            ><X
+          /></WIconButton>
         </div>
       </div>
     </section>
@@ -152,6 +167,9 @@ const ago = (iso: string) => {
   }
 
   &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: var(--s-4) var(--s-4) var(--s-2);
     h3 {
       margin: 0;
@@ -203,6 +221,13 @@ const ago = (iso: string) => {
     border-radius: 50%;
     flex-shrink: 0;
     background: transparent;
+  }
+  &__remove {
+    opacity: 0;
+  }
+  &__item:hover &__remove,
+  &__remove:focus-visible {
+    opacity: 1;
   }
   &__item--unread &__pip {
     background: var(--accent);

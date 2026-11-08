@@ -21,6 +21,18 @@ export const useNotifications = defineStore("notifications", () => {
     items.value = items.value.map((n) => ({ ...n, read: true }));
   }
 
+  /** Clears the list. Invitations and friend requests waiting for an answer stay. */
+  async function clearAll() {
+    if (items.value.length === 0) return;
+    await api.clear();
+    items.value = [];
+  }
+
+  async function remove(id: string) {
+    await api.remove(id);
+    items.value = items.value.filter((n) => n.id !== id);
+  }
+
   async function acceptInvite(id: string) {
     const result = await invitesApi.accept(id);
     invites.value = invites.value.filter((i) => i.id !== id);
@@ -51,6 +63,8 @@ export const useNotifications = defineStore("notifications", () => {
     unread,
     load,
     markAllRead,
+    clearAll,
+    remove,
     acceptInvite,
     declineInvite,
     applyNotification,

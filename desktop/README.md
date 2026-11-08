@@ -4,8 +4,10 @@
 and join rooms, chat, talk, and launch Warcraft III. It is a
 [Tauri 2](https://tauri.app) app with a Vue 3 + TypeScript frontend and a Rust
 backend. Privileged networking (LAN capture, game tunnels) runs in the
-separate [daemon](../daemon/README.md), which the client talks to over a
-named pipe and ships as a Tauri sidecar.
+network agent ([`crates/agent`](../crates/agent)), which the client talks to
+over a named pipe and starts as a second instance of itself with
+`warlay.exe --daemon` - one binary for both roles (see
+[daemon/README.md](../daemon/README.md)).
 
 ## Contents
 
@@ -25,11 +27,12 @@ named pipe and ships as a Tauri sidecar.
   real time, with roster, activity log and automatic "in progress" detection.
 - **Game launch** - starts Warcraft III with the configured executable and
   arguments once the room's tunnel is ready.
-- **Chat and voice** - room and private text chat, Opus voice chat with an
-  in-game overlay and a global microphone mute shortcut.
+- **Chat and voice** - room and private text chat, Opus voice chat in the
+  room (captured and played in the webview) with a global microphone mute
+  shortcut.
 - **LAN tab** - the legacy lan-mesh flow: scan local subnets, find relay
   bridges, list observed games, and turn this PC into a mesh peer.
-- **Agent and console views** - daemon status and settings, live logs, log
+- **Agent and console views** - agent status and settings, live logs, log
   level control.
 
 ## Architecture
@@ -48,27 +51,25 @@ flowchart LR
 
     root --> backend["src-tauri/<br/>Rust backend: crate desktop,<br/>binary warlay"]
     backend --> commands["src/commands/<br/>Tauri command handlers, the only<br/>layer touching AppHandle and State"]
-    backend --> ipc["src/daemon_ipc.rs<br/>named pipe client for the daemon"]
+    backend --> ipc["src/agent/events.rs<br/>Tauri event emitter for the agent"]
     backend --> clientStorage["src/storage/<br/>SQLite: client identity,<br/>servers and keys, settings"]
-    backend --> voice["src/voice/<br/>audio capture and playback,<br/>Opus codec, jitter buffer"]
     backend --> network["src/network/<br/>lan-mesh discovery<br/>and relay client"]
     backend --> launcher["src/launcher/<br/>starts and tracks<br/>the game process"]
-    backend --> overlay["src/overlay.rs<br/>click-through in-game<br/>overlay window"]
-    backend --> tauriConf["tauri.conf.json<br/>window, NSIS bundle<br/>and sidecar configuration"]
+    backend --> tauriConf["tauri.conf.json<br/>window and NSIS bundle<br/>configuration"]
 
-    root --> scripts["scripts/<br/>build helpers: daemon sidecar,<br/>portable zip"]
+    root --> scripts["scripts/<br/>portable zip build helper"]
 ```
 
 The backend never opens hub connections or tunnels itself: commands such as
 `connect_to_server`, `start_hosting_tunnel` or `launch_game` are forwarded to
-the daemon as `DaemonRequest`s (see `crates/protocol/src/ipc.rs`), and the
-daemon pushes events back (`HubMessage`, `TunnelStatusChanged`, voice
+the agent as `DaemonRequest`s (see `crates/protocol/src/ipc.rs`), and the
+agent pushes events back (`HubMessage`, `TunnelStatusChanged`, voice
 frames, ...), which the backend re-emits to the frontend as Tauri events.
 
 ## How a hub game reaches your LAN screen
 
 Warcraft III discovers LAN games with UDP broadcasts on port 6112 and plays
-over TCP. The daemon reproduces both across the internet:
+over TCP. The agent reproduces both across the internet:
 
 1. **Capture (host).** `lan_capture` (in `crates/engine`) opens a raw socket
    per local interface in Windows' `SIO_RCVALL` mode - the driver-free
@@ -77,14 +78,15 @@ over TCP. The daemon reproduces both across the internet:
 2. **Replay (joiners).** `lan_rebroadcast` replays those exact bytes on each
    joiner's local network, so the game appears in _Local Area Network_ with
    no protocol guesswork.
-3. **Tunnel.** When the joiner's game connects, the daemon carries the TCP
+3. **Tunnel.** When the joiner's game connects, the agent carries the TCP
    session either over a direct QUIC connection between the players (after
    NAT hole punching through the hub's rendezvous service) or, as a
    fallback, through the hub's TCP tunnel. With a `wss://` server the tunnel
    is TLS-wrapped and the server certificate is verified.
 
-`SIO_RCVALL` requires administrator rights, which is why the daemon runs
-elevated; joiners only replay and connect, but run the same daemon.
+`SIO_RCVALL` requires administrator rights, which is why `warlay.exe` carries
+a `requireAdministrator` manifest (`src-tauri/build.rs`) and runs elevated as
+a whole; joiners only replay and connect, but run the same agent.
 
 ## Development
 
@@ -92,22 +94,29 @@ Requirements: Windows, Rust stable, Node.js 20+.
 
 ```sh
 npm ci
-npm run prepare-daemon-sidecar   # builds wnetd.exe into src-tauri/binaries/
 npm run tauri dev
 ```
 
 `npm run tauri dev` starts Vite on port 1420 and opens the app against it.
-Start the daemon elevated (`target/release/wnetd.exe`, or let the client
-launch it) so the client has an agent to talk to.
+The client starts the agent itself when it opens (it runs a second instance
+of `warlay.exe --daemon` inside the same process), so there is nothing else
+to launch. To run the agent by hand instead:
+
+```sh
+cargo run -p desktop -- --daemon   # the desktop binary in agent mode
+cargo run -p daemon                  # the standalone agent binary (dev only)
+```
 
 Plain `cargo build` of `src-tauri` always targets the dev server URL; use
-`npx tauri build` for a binary that embeds the frontend.
+`npx tauri build` for a binary that embeds the frontend. Both the client and
+its agent request elevation (UAC prompt on every launch), so the agent-side
+commands need an elevated shell too.
 
 ## Building
 
 ```sh
-npx tauri build                 # frontend + daemon sidecar + warlay.exe + NSIS installer
-npm run build-portable-zip      # zip with warlay.exe, wnetd.exe and LEEME.txt
+npx tauri build                 # frontend + warlay.exe (client and agent) + NSIS installer
+npm run build-portable-zip      # zip with warlay.exe and LEEME.txt
 ```
 
 Artifacts end up in `../target/release/bundle/nsis/`. Binaries link the MSVC

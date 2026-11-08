@@ -69,7 +69,22 @@ async function leave() {
 }
 
 async function remove() {
-  if (!confirm(`¿Eliminar ${community.value?.name}? Esta acción no se puede deshacer.`)) return;
+  const name = community.value?.name ?? "esta comunidad";
+  const members = community.value?.memberCount ?? 0;
+  const accepted = await dialogs.confirm({
+    title: `Eliminar «${name}»`,
+    message: "Esta acción es permanente y no se puede deshacer.",
+    bullets: [
+      "No podrás recuperar la comunidad, sus salas ni el historial de su chat.",
+      members > 1
+        ? `Sus ${members} miembros la perderán al instante y no podrás recuperarlos como grupo.`
+        : "No quedará ningún miembro en ella.",
+      "Las invitaciones pendientes a esta comunidad dejarán de funcionar.",
+    ],
+    confirmLabel: "Eliminar comunidad",
+    tone: "danger",
+  });
+  if (!accepted) return;
   try {
     await communities.remove(id.value);
     void router.push("/");

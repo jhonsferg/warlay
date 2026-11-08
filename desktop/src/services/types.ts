@@ -6,6 +6,8 @@ export type PresenceStatus = "offline" | "online" | "in_room" | "in_game";
 export interface Presence {
   status: PresenceStatus;
   roomId: string | null;
+  /** When an offline user was last connected (null if online or never seen). */
+  lastSeenAt?: string | null;
 }
 
 export interface UserSummary {

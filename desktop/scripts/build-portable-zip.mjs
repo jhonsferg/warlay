@@ -1,8 +1,9 @@
-// Packages the already-built warlay.exe + wnetd.exe into a portable .zip
-// (no installer needed) next to the NSIS installer output, so both
-// distribution forms live in the same folder -- run after `npm run tauri
-// build` (or `tauri build`), which is what actually produces both exes and
-// the bundle/nsis directory this writes into.
+// Packages the already-built warlay.exe into a portable .zip (no installer
+// needed) next to the NSIS installer output, so both distribution forms live
+// in the same folder -- run after `npm run tauri build` (or `tauri build`),
+// which is what actually produces it and the bundle/nsis directory this
+// writes into. The agent is inside warlay.exe itself, so there is no second
+// executable to carry.
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,10 +19,9 @@ const tauriConf = JSON.parse(readFileSync(path.join(here, "..", "src-tauri", "ta
 const version = tauriConf.version;
 
 const warlayExe = path.join(releaseDir, "warlay.exe");
-const wnetdExe = path.join(releaseDir, "wnetd.exe");
 const leemeSrc = path.join(here, "portable-zip-leeme.txt");
 
-for (const required of [warlayExe, wnetdExe, leemeSrc, bundleNsisDir]) {
+for (const required of [warlayExe, leemeSrc, bundleNsisDir]) {
   if (!existsSync(required)) {
     throw new Error(`expected ${required} to exist -- run 'npm run tauri build' first`);
   }
@@ -29,15 +29,13 @@ for (const required of [warlayExe, wnetdExe, leemeSrc, bundleNsisDir]) {
 
 const stageDir = mkdtempSync(path.join(tmpdir(), "warlay-portable-"));
 copyFileSync(warlayExe, path.join(stageDir, "warlay.exe"));
-copyFileSync(wnetdExe, path.join(stageDir, "wnetd.exe"));
 copyFileSync(leemeSrc, path.join(stageDir, "LEEME.txt"));
 
 const zipPath = path.join(bundleNsisDir, `Warlay_${version}_x64-portable.zip`);
 if (existsSync(zipPath)) rmSync(zipPath);
 
 // Compress-Archive (not a cross-platform zip lib) matches this being a
-// Windows-only distributable anyway -- same reasoning as shelling out to
-// cargo/rustc in prepare-daemon-sidecar.mjs.
+// Windows-only distributable anyway.
 execFileSync(
   "powershell.exe",
   [

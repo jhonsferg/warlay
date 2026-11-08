@@ -38,7 +38,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
-        overlay: fileURLToPath(new URL("./overlay.html", import.meta.url)),
       },
     },
   },

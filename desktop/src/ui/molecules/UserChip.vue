@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { lastSeenText } from "../../services/lastSeen";
 import type { Presence, UserSummary } from "../../services/types";
 import WAvatar from "../atoms/WAvatar.vue";
-import { presenceLabel } from "../presence";
+import { useNow } from "../useNow";
 
 const props = withDefaults(
   defineProps<{ user: UserSummary; presence?: Presence | null; size?: "sm" | "md" | "lg"; subtitle?: string | null }>(),
   { presence: null, size: "md", subtitle: null },
 );
 
+const now = useNow();
 const secondLine = computed(
-  () => props.subtitle ?? (props.presence ? presenceLabel(props.presence.status) : `@${props.user.username}`),
+  () => props.subtitle ?? (props.presence ? lastSeenText(props.presence, now.value) : `@${props.user.username}`),
 );
 </script>
 
