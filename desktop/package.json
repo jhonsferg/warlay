@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test:unit": "node --test src/services/*.test.ts",
     "tauri": "tauri",
     "build-portable-zip": "node scripts/build-portable-zip.mjs",
     "dist": "tauri build && npm run build-portable-zip"
