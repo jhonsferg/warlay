@@ -88,3 +88,12 @@ test("a local .env is ignored by git and an example is provided", () => {
   assert.ok(tracked.includes("desktop/.env.example"), "desktop/.env.example is versioned");
   assert.ok(!tracked.some((file) => /(^|\/)\.env$/.test(file)), "no real .env is versioned");
 });
+
+test("Ajustes does not show or edit the server address", () => {
+  const advanced = readFileSync(join(root, "desktop/src/ui/organisms/AdvancedSettingsSection.vue"), "utf8");
+  assert.doesNotMatch(advanced, /mainServerUrl|Servidor de Warlay|server-url|readonly/i);
+  const settings = readFileSync(join(root, "desktop/src/pages/SettingsPage.vue"), "utf8");
+  assert.doesNotMatch(settings, /mainServerUrl|setMainServerUrl|Servidor de Warlay/);
+  const http = readFileSync(join(root, "desktop/src/services/http.ts"), "utf8");
+  assert.doesNotMatch(http, /setMainServerUrl|localStorage\.getItem\(SERVER/);
+});
