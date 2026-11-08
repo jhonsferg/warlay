@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { FolderOpen, Gamepad2, KeyRound, Palette, Settings, User } from "@lucide/vue";
-import { computed, onMounted, ref } from "vue";
+import { FolderOpen, Gamepad2, KeyRound, LogOut, Palette, Settings, User } from "@lucide/vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { auth } from "../services/api";
 import { errorMessage } from "../services/http";
 import { isDesktop, native } from "../services/native";
 import { AVATAR_COLORS } from "../ui/palette";
+import { useDialogs } from "../stores/dialogs";
+import { useRooms } from "../stores/rooms";
 import { useSession } from "../stores/session";
 import { useSettings } from "../stores/settings";
 import { useToasts } from "../stores/toasts";
@@ -22,9 +25,20 @@ import AppShell from "../ui/templates/AppShell.vue";
 const session = useSession();
 const settings = useSettings();
 const toasts = useToasts();
+const dialogs = useDialogs();
+const rooms = useRooms();
+const router = useRouter();
 
 type Tab = "account" | "game" | "advanced";
-const tab = ref<Tab>("account");
+const route = useRoute();
+// A link such as /settings?tab=advanced opens that tab straight away.
+const tab = ref<Tab>((["account", "game", "advanced"] as const).find((t) => t === route.query.tab) ?? "account");
+watch(
+  () => route.query.tab,
+  (next) => {
+    if (next === "account" || next === "game" || next === "advanced") tab.value = next;
+  },
+);
 
 const displayName = ref(session.me?.displayName ?? "");
 const bio = ref(session.me?.bio ?? "");
@@ -52,6 +66,20 @@ async function saveProfile() {
   } finally {
     savingProfile.value = false;
   }
+}
+
+async function logout() {
+  const accepted = await dialogs.confirm({
+    title: "Cerrar sesión",
+    message: "¿Seguro que quieres cerrar sesión?",
+    bullets: ["Saldrás de la sala en la que estés.", "Tendrás que iniciar sesión de nuevo para volver a entrar."],
+    confirmLabel: "Cerrar sesión",
+    tone: "danger",
+  });
+  if (!accepted) return;
+  await rooms.leave().catch(() => {});
+  await session.logout();
+  void router.push("/login");
 }
 
 async function changePassword() {
@@ -156,6 +184,18 @@ onMounted(() => {
             @click="changePassword"
           >
             Cambiar contraseña
+          </WButton>
+        </div>
+      </section>
+
+      <section class="settings__card">
+        <h3><LogOut /> Sesión</h3>
+        <p class="settings__muted">
+          Cierra la sesión en este equipo. Tendrás que iniciar sesión de nuevo para volver a entrar.
+        </p>
+        <div class="settings__actions">
+          <WButton variant="danger" data-testid="logout" @click="logout">
+            <template #icon><LogOut /></template>Cerrar sesión
           </WButton>
         </div>
       </section>
