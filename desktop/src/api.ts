@@ -250,5 +250,3 @@ export function onGameRunningStateChanged(handler: (running: boolean) => void): 
 export function onLogLine(handler: (line: string) => void): Promise<UnlistenFn> {
   return listen<string>("log://line", (event) => handler(event.payload));
 }
-
-
