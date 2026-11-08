@@ -29,7 +29,7 @@ pub fn set_log_level(state: State<'_, AppState>, target: LogTarget, level: Strin
     Ok(())
 }
 
-/// How much the log folder (the app's and the agent's) holds right now.
+/// How much the log folder (the app's) holds right now.
 #[tauri::command]
 pub fn get_log_usage() -> log_cleanup::LogUsage {
     log_cleanup::usage(&log_cleanup::log_dir())
