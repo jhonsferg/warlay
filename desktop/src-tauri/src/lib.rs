@@ -370,6 +370,17 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    // Only the voice mute shortcut is ever registered.
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        use tauri::Emitter;
+                        let _ = app.emit("voice://toggle-mute", ());
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
@@ -512,6 +523,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
             commands::voice::send_voice_frame,
+            commands::voice::register_voice_shortcut,
+            commands::voice::unregister_voice_shortcut,
             commands::e2e::e2e_identity,
             commands::e2e::e2e_encrypt,
             commands::e2e::e2e_decrypt,
