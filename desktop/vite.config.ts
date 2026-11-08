@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from "node:url";
 import vue from "@vitejs/plugin-vue";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
+import { serverUrlProblem, SERVER_URL_VAR } from "./src/services/serverUrl";
 
 const { version } = JSON.parse(readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf8")) as {
   version: string;
@@ -22,6 +23,17 @@ const mixinsPath = fileURLToPath(new URL("./src/styles/_mixins.scss", import.met
 export default defineConfig({
   plugins: [
     vue(),
+    // The server address is injected at build time and is not in the source:
+    // a production build without a valid one must fail here, not ship an app
+    // that cannot reach any server.
+    {
+      name: "require-server-url",
+      configResolved(config) {
+        if (config.command !== "build") return;
+        const problem = serverUrlProblem(config.env[SERVER_URL_VAR] as string | undefined);
+        if (problem) throw new Error(problem);
+      },
+    },
     // Stamps the app version into the splash screen in index.html.
     {
       name: "splash-version",
