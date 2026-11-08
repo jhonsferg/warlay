@@ -140,6 +140,12 @@ export const native = {
     listen<{ from: string; data: string }[]>("voice://frames", handler),
   setMicConsent: (granted: boolean) => invoke<void>("set_mic_consent", { granted }),
   openMicPrivacySettings: () => invoke<void>("open_mic_privacy_settings"),
+  /** Starts sharing this PC's sound with the room (Warlay's own audio excluded). */
+  startDesktopAudio: () => invoke<void>("start_desktop_audio"),
+  stopDesktopAudio: () => invoke<void>("stop_desktop_audio"),
+  /** Other members' shared desktop audio (stereo), separate from their voice. */
+  onDesktopFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
+    listen<{ from: string; data: string }[]>("voice://desktop-frames", handler),
   registerVoiceShortcut: (accelerator?: string) => invoke<string>("register_voice_shortcut", { accelerator }),
   unregisterVoiceShortcut: () => invoke<void>("unregister_voice_shortcut"),
   /** The global mute shortcut was pressed (works while the game has focus). */
