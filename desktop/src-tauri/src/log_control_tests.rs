@@ -8,7 +8,10 @@ fn levels_apply_live_and_a_bad_directive_is_rejected() {
     let (console_a, handle_a) = reload::Layer::new(EnvFilter::new("info"));
     let (console_b, handle_b) = reload::Layer::new(EnvFilter::new("info"));
     let (file, handle_f) = reload::Layer::new(EnvFilter::new("debug"));
-    let _subscriber = tracing_subscriber::registry().with(console_a).with(console_b).with(file);
+    let _subscriber = tracing_subscriber::registry()
+        .with(console_a)
+        .with(console_b)
+        .with(file);
     init(handle_a.clone().into(), handle_b.into(), handle_f.clone().into());
 
     set_level(LogTarget::Console, "warn").unwrap();
@@ -23,5 +26,8 @@ fn levels_apply_live_and_a_bad_directive_is_rejected() {
     let err = set_level(LogTarget::Console, "=== no ===[").unwrap_err();
     assert!(!err.is_empty());
     // A rejected directive leaves the previous level in place.
-    assert!(handle_a.with_current(|f| f.to_string()).unwrap().contains("engine=trace"));
+    assert!(handle_a
+        .with_current(|f| f.to_string())
+        .unwrap()
+        .contains("engine=trace"));
 }
