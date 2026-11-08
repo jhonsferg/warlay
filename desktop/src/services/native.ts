@@ -118,8 +118,6 @@ export const native = {
   stopRoomSession: () => invoke<void>("stop_room_session"),
   updateRoomHelper: (helper: HelperInfo) =>
     invoke<void>("update_room_helper", { rendezvousAddr: helper.rendezvousAddr, relayAddr: helper.relayAddr }),
-  setOverlayRoster: (roomId: string | null, members: { clientId: string; displayName: string }[]) =>
-    invoke<void>("set_overlay_roster", { roomId, members }),
   startGameTunnel: (gamePort: number) => invoke<void>("start_game_tunnel", { gamePort }),
 
   launchGame: (path: string, args: string[]) =>
