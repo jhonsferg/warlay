@@ -2,8 +2,11 @@
 //! Opus frame here as a raw binary body and it is sent to every connected
 //! member over the mesh (unreliable datagrams, like real-time audio wants).
 
+use std::str::FromStr;
+
 use tauri::ipc::{InvokeBody, Request};
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::core::error::AppError;
 use crate::state::AppState;
@@ -41,9 +44,61 @@ pub async fn send_voice_frame(request: Request<'_>, state: State<'_, AppState>) 
     Ok(mesh.map(|mesh| mesh.broadcast_voice_frame(&frame)).unwrap_or(0))
 }
 
+/// Default global mute toggle, usable while the game has focus.
+pub const DEFAULT_MUTE_SHORTCUT: &str = "Ctrl+Shift+M";
+
+fn parse_accelerator(accelerator: &str) -> Result<Shortcut, AppError> {
+    Shortcut::from_str(accelerator.trim())
+        .map_err(|e| AppError::InvalidInput(format!("atajo '{accelerator}' no válido: {e}")))
+}
+
+/// Registers the global mute shortcut (replacing a previous one). Only
+/// registered while the user is in voice, so the key isn't hijacked the rest
+/// of the time. Returns the accelerator in effect.
+#[tauri::command]
+pub fn register_voice_shortcut(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    accelerator: Option<String>,
+) -> Result<String, AppError> {
+    let accelerator = accelerator.unwrap_or_else(|| DEFAULT_MUTE_SHORTCUT.to_string());
+    let shortcut = parse_accelerator(&accelerator)?;
+    let mut current = state.voice_shortcut.lock().unwrap();
+    if let Some(previous) = current.take() {
+        let _ = app.global_shortcut().unregister(previous);
+    }
+    app.global_shortcut()
+        .register(shortcut)
+        .map_err(|e| AppError::InvalidInput(format!("no se pudo registrar '{accelerator}': {e}")))?;
+    *current = Some(shortcut);
+    Ok(accelerator)
+}
+
+#[tauri::command]
+pub fn unregister_voice_shortcut(app: AppHandle, state: State<'_, AppState>) {
+    if let Some(shortcut) = state.voice_shortcut.lock().unwrap().take() {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_shortcut_and_common_accelerators_parse() {
+        assert!(parse_accelerator(DEFAULT_MUTE_SHORTCUT).is_ok());
+        assert!(parse_accelerator("  Alt+M ").is_ok());
+        assert!(parse_accelerator("F9").is_ok());
+    }
+
+    #[test]
+    fn garbage_accelerators_are_rejected_with_a_readable_error() {
+        for bad in ["", "Ctrl+", "Ctrl+Shift+NoSuchKey", "+++"] {
+            let err = parse_accelerator(bad).unwrap_err();
+            assert!(matches!(err, AppError::InvalidInput(_)), "{bad:?}");
+        }
+    }
 
     #[test]
     fn only_small_non_empty_raw_bodies_are_accepted() {
