@@ -6,7 +6,7 @@ use tracing::{debug, info, trace, warn};
 
 /// Space-separated hex of `bytes`, for `trace!` dumps. Built only when asked
 /// for: the callers check `tracing::enabled!` first, since a hex string per
-/// packet is exactly what made the daemon's log huge at the default level.
+/// packet is exactly what made the client's log huge at the default level.
 pub(crate) fn hex_dump(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ")
 }

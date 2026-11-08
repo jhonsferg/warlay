@@ -1,16 +1,12 @@
-use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tracing::info;
 
-use warlay::engine::{CapturePorts, LoopGuard, MatchmakingConnection};
+use warlay::engine::{CapturePorts, LoopGuard};
 
-use super::storage::AgentStore;
-
-pub struct AgentState {
-    pub connections: HashMap<String, MatchmakingConnection>,
+pub struct RuntimeState {
     pub game_tunnel: Option<warlay::engine::TunnelHandle>,
     pub peer_mesh: Option<Arc<warlay::engine::PeerMeshHandle>>,
     /// The active room session (new architecture: helper + ticket), if any.
@@ -38,20 +34,6 @@ pub struct AgentState {
     /// `start_game_gateway`): one dedicated port per peer, so the port in
     /// a rewritten `GAMEINFO` says whose game the local WC3 is joining.
     pub game_gateway: Option<Arc<warlay::engine::GameGatewayHandle>>,
-    pub active_room_server: Option<String>,
-    /// Which specific room `active_room_server` refers to. Needed because
-    /// every hub-pushed `ServerMessage` (`RoomCreated`, `RoomRemoved`, ...)
-    /// is handled in its own independently-spawned task with no ordering
-    /// guarantee between them: creating a new room while already hosting
-    /// one makes the hub auto-delete the old room first (broadcasting
-    /// `RoomRemoved` for it) and then send `RoomCreated` for the new one --
-    /// if the `RoomRemoved` handler task for the stale room happens to
-    /// finish *after* the `RoomCreated` handler for the new room already
-    /// set up its mesh, a check keyed only on "is there *some* active room
-    /// on this server" can't tell the two apart and wrongly tears down the
-    /// brand new room's state. Comparing this against the room ID actually
-    /// named in the message closes that race.
-    pub active_room_id: Option<uuid::Uuid>,
     /// Set by the `COUNTDOWN_START` sniff (see `StartHostingTunnel`'s
     /// `on_game_started` callback), cleared by the `CREATEGAME` sniff (see
     /// `spawn_lan_mesh`'s capture callback) -- an atomic check-and-reset so
@@ -59,25 +41,16 @@ pub struct AgentState {
     /// and never on the room's very first `CREATEGAME` (the flag starts
     /// `false`, so that one is a no-op).
     pub game_started: Arc<std::sync::atomic::AtomicBool>,
-    /// The agent's own settings store -- see `storage.rs`'s doc comment
-    /// for why this is a separate table from the desktop client's own
-    /// store, even though both share the same `warlay.db` file.
-    pub agent_store: AgentStore,
-    /// Live toggle checked by the LAN-capture callback (`lan.rs`) on every
-    /// captured packet -- an `Arc<AtomicBool>` rather than a value read
-    /// once at spawn time, so flipping it from the "Agente" panel takes
-    /// effect immediately even for a capture that's already running, no
-    /// tunnel restart needed.
+    /// Switch the LAN-capture callback (`lan.rs`) checks on every captured
+    /// packet. Always on: LAN discovery is part of how Warlay works.
     pub lan_discovery_enabled: Arc<AtomicBool>,
-    /// For the "Agente" panel's uptime display.
-    pub started_at: std::time::Instant,
 }
 
 /// Aborts whatever tunnel/LAN-capture/rebroadcast tasks are currently
 /// running for the active session. Shared by every request that tears one
 /// down (`DisconnectFromHub`, `LeaveRoom`, `DeleteRoom`, `StopHubTunnel`,
 /// and now graceful shutdown) -- previously copy-pasted four times.
-impl AgentState {
+impl RuntimeState {
     /// This machine's LAN-bridging rules over the shared state (see
     /// `warlay::engine::LanBridge`). Cheap: clones a few `Arc`s.
     pub fn lan_bridge(&self) -> warlay::engine::LanBridge {
@@ -91,7 +64,6 @@ impl AgentState {
 
     pub fn new() -> Self {
         Self {
-            connections: HashMap::new(),
             game_tunnel: None,
             peer_mesh: None,
             room_session: None,
@@ -102,17 +74,13 @@ impl AgentState {
             lan_capture_ports: CapturePorts::default(),
             own_game_hosting: Arc::new(AtomicBool::new(false)),
             game_gateway: None,
-            active_room_server: None,
-            active_room_id: None,
             game_started: Arc::new(AtomicBool::new(false)),
-            agent_store: AgentStore::open(),
             lan_discovery_enabled: Arc::new(AtomicBool::new(true)),
-            started_at: Instant::now(),
         }
     }
 }
 
-pub fn teardown_tunnel_and_lan(s: &mut AgentState) {
+pub fn teardown_tunnel_and_lan(s: &mut RuntimeState) {
     let had_tunnel = s.game_tunnel.is_some();
     let had_capture = s.lan_capture.is_some();
     let had_rebroadcast = s.lan_rebroadcast.is_some();

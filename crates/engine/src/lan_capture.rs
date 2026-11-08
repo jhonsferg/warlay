@@ -215,7 +215,7 @@ fn run_capture_loop(
         match classify_packet(&buffer[..received as usize], ports, local_ips) {
             CaptureOutcome::Relayed(payload) => {
                 // Checked per-packet (not just once at spawn time) so
-                // toggling this off from the "Agente" panel takes effect
+                // flipping this switch takes effect
                 // immediately for a capture that's already running, and
                 // actually cuts the log/relay noise at its source instead
                 // of just muting a downstream consumer of it.

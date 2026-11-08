@@ -2,21 +2,15 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use super::state::AgentState;
-use warlay::protocol::ipc::AgentResponse;
+use super::state::RuntimeState;
+use warlay::protocol::ipc::RuntimeResponse;
 
 /// Starts this machine's LAN side of the room: the scoped capture, the
 /// rebroadcast socket, and the outbound relay to the other members.
 ///
-/// `override_port`: legacy hub sessions redirect the `GAMEINFO` they
-/// replay onto the local network to one fixed tunnel port. Room sessions
-/// pass `None` — there, each peer's `GAMEINFO` is rewritten to that peer's
-/// own dedicated joiner port by `session.rs` *before* the rebroadcast.
-pub async fn spawn_lan_mesh(
-    state_ref: Arc<tokio::sync::Mutex<AgentState>>,
-    game_port: u16,
-    override_port: Option<u16>,
-) -> Result<(), String> {
+/// Each peer's `GAMEINFO` is rewritten to that peer's own dedicated joiner
+/// port by `session.rs` *before* the rebroadcast.
+pub async fn spawn_lan_mesh(state_ref: Arc<tokio::sync::Mutex<RuntimeState>>, game_port: u16) -> Result<(), String> {
     let mut s = state_ref.lock().await;
     if let Some(c) = s.lan_capture.take() {
         c.abort();
@@ -25,18 +19,14 @@ pub async fn spawn_lan_mesh(
         r.abort();
     }
 
-    // The room's game port (and, in legacy sessions, the fixed tunnel
-    // port) are the capture's starting set. Every member starts with the
+    // The room's game port is the capture's starting set. Every member starts with the
     // game port — not just the room host: anyone may host a game the
     // others join, and a browsing WC3's own queries toward the games it
     // sees must be relayed on every member, not only one. Room sessions
     // append each peer's joiner port as its rewritten GAMEINFO gets
     // replayed locally, so the scope grows with the games this WC3 can
     // actually see and join.
-    let capture_ports: warlay::engine::CapturePorts = Arc::new(std::sync::Mutex::new(match override_port {
-        Some(port) if port != game_port => vec![game_port, port],
-        _ => vec![game_port],
-    }));
+    let capture_ports: warlay::engine::CapturePorts = Arc::new(std::sync::Mutex::new(vec![game_port]));
     s.lan_capture_ports = capture_ports.clone();
     // A fresh tunnel starts with nothing of ours hosting: the sniff in the
     // capture callback re-sets it the moment our own WC3 announces a game.
@@ -88,12 +78,7 @@ pub async fn spawn_lan_mesh(
                 // The UI owns the room on the main server.
                 drop(s);
                 info!("CREATEGAME detectado: partida anterior terminó");
-                super::events::emit_event(&AgentResponse::GameEnded)
-            } else if let Some(active_id) = &s.active_room_server {
-                if let Some(conn) = s.connections.get(active_id) {
-                    info!(server_id = %active_id, "CREATEGAME detectado: partida anterior terminó, marcando sala disponible");
-                    conn.send(warlay::protocol::ClientMessage::SetRoomAvailable);
-                }
+                super::events::emit_event(&RuntimeResponse::GameEnded)
             } else {
                 info!("CREATEGAME detectado pero no hay sala activa registrada, se ignora");
             }
@@ -104,7 +89,7 @@ pub async fn spawn_lan_mesh(
         warlay::engine::spawn_lan_rebroadcast(
             game_port,
             rx_rebroadcast,
-            override_port, // legacy fixed redirect; room sessions rewrite per peer upstream
+            None, // no fixed redirect: each peer's GAMEINFO is rewritten upstream
             move |bytes| {
                 let _ = cap_tx_clone.send(bytes);
             },
@@ -113,25 +98,20 @@ pub async fn spawn_lan_mesh(
         .map_err(|e| format!("no se pudo iniciar la retransmisión LAN: {e}"))?,
     );
 
-    let active_id = s.active_room_server.clone();
     let state_for_task = state_ref.clone();
 
-    info!(game_port, ?override_port, "LAN mesh started");
+    info!(game_port, "LAN mesh started");
 
     tokio::spawn(async move {
         loop {
             tokio::select! {
                 Some(payload) = cap_rx.recv() => {
                     let s_guard = state_for_task.lock().await;
-                    // Room sessions carry LAN broadcasts straight to the
-                    // other players over the mesh, never through a server.
+                    // LAN broadcasts travel straight to the other players
+                    // over the mesh, never through a server.
                     if s_guard.room_session.is_some() {
                         if let Some(mesh) = &s_guard.peer_mesh {
                             mesh.broadcast_lan_packet(&payload);
-                        }
-                    } else if let Some(active) = &active_id {
-                        if let Some(conn) = s_guard.connections.get(active) {
-                            conn.send(warlay::protocol::ClientMessage::RelayLanPacket { bytes: payload });
                         }
                     }
                 }

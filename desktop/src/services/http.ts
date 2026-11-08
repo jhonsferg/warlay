@@ -1,7 +1,6 @@
 import type { ApiErrorBody, Tokens } from "./types";
 
 const TOKENS_KEY = "warlay.tokens";
-const SERVER_KEY = "warlay.mainServer";
 
 /** The production API, baked into the source itself. A build must always know
  * where its server is without depending on the build environment: CI does not
@@ -10,19 +9,13 @@ const SERVER_KEY = "warlay.mainServer";
  * server even while it was up. */
 const PRODUCTION_MAIN_URL = "https://api.warlay.codesoftlabs.com";
 
-/** The main server's base URL: a user override (Ajustes > Avanzado), a
- * build-time default, the embedded production server, or — only while
- * developing — a local one. */
+/** The main server's base URL, fixed by the build (shown read-only in
+ * Ajustes > Avanzado): a build-time default, the embedded production server,
+ * or — only while developing — a local one. */
 export function mainServerUrl(): string {
-  const override = localStorage.getItem(SERVER_KEY);
-  const fallback =
+  const url =
     import.meta.env.VITE_WARLAY_MAIN_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8080" : PRODUCTION_MAIN_URL);
-  return (override || fallback).replace(/\/+$/, "");
-}
-
-export function setMainServerUrl(url: string | null): void {
-  if (url && url.trim()) localStorage.setItem(SERVER_KEY, url.trim());
-  else localStorage.removeItem(SERVER_KEY);
+  return url.replace(/\/+$/, "");
 }
 
 export class ApiError extends Error {

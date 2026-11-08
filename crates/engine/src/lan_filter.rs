@@ -7,7 +7,7 @@ use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 
 /// The UDP destination ports this capture relays. Shared live with the
-/// daemon (rather than read once at spawn): the room's game port goes in
+/// client (rather than read once at spawn): the room's game port goes in
 /// from the start, and each peer's dedicated local joiner port is appended
 /// when that peer's rewritten `GAMEINFO` is replayed locally -- so the
 /// capture sees this WC3's own queries toward the exact game it is about

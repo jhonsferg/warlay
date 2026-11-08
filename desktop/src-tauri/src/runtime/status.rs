@@ -1,9 +1,8 @@
-//! The agent's network status, read in-process and pushed to the UI.
+//! The network status, read in-process and pushed to the UI.
 //!
-//! The UI used to poll `get_network_status` every few seconds. Now a single
-//! watcher task looks at the agent's state once a second and emits the
-//! [`STATUS_EVENT`] Tauri event only when something other than uptime
-//! changed (hub connections, tunnel, LAN discovery, P2P links). Nothing is
+//! A single watcher task looks at the runtime state once a second and emits
+//! the [`STATUS_EVENT`] Tauri event only when something changed (the game
+//! tunnel, P2P links or a real shift in their ping). Nothing is
 //! sent while nothing happens; the UI still reads the current value once on
 //! demand through `get_network_status`.
 
@@ -14,7 +13,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use warlay::protocol::ipc::{NetworkStatus, PeerLinkStatus};
 
-use super::state::AgentState;
+use super::state::RuntimeState;
 
 /// Tauri event carrying a [`NetworkStatus`].
 pub const STATUS_EVENT: &str = "network://status";
@@ -22,8 +21,8 @@ pub const STATUS_EVENT: &str = "network://status";
 /// How often the watcher looks at the state. Cheap: one lock and a copy.
 const WATCH_INTERVAL: Duration = Duration::from_secs(1);
 
-/// What the agent is doing right now.
-pub fn snapshot(s: &AgentState) -> NetworkStatus {
+/// What the network is doing right now.
+pub fn snapshot(s: &RuntimeState) -> NetworkStatus {
     let mesh_peers = s
         .peer_mesh
         .as_ref()
@@ -42,10 +41,7 @@ pub fn snapshot(s: &AgentState) -> NetworkStatus {
         .unwrap_or_default();
 
     NetworkStatus {
-        uptime_secs: s.started_at.elapsed().as_secs(),
-        hub_connections: s.connections.len(),
         tunnel_active: s.game_tunnel.is_some(),
-        lan_discovery_enabled: s.lan_discovery_enabled.load(std::sync::atomic::Ordering::Relaxed),
         mesh_peers,
     }
 }
@@ -57,7 +53,7 @@ pub fn should_emit(last: Option<&NetworkStatus>, next: &NetworkStatus) -> bool {
 }
 
 /// Starts the watcher that emits [`STATUS_EVENT`] on every real change.
-pub fn spawn_watcher(app: AppHandle, state: Arc<Mutex<AgentState>>) {
+pub fn spawn_watcher(app: AppHandle, state: Arc<Mutex<RuntimeState>>) {
     tauri::async_runtime::spawn(async move {
         let mut last: Option<NetworkStatus> = None;
         let mut tick = tokio::time::interval(WATCH_INTERVAL);
@@ -75,46 +71,53 @@ pub fn spawn_watcher(app: AppHandle, state: Arc<Mutex<AgentState>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::Ordering;
 
-    #[test]
-    fn a_fresh_agent_reports_an_idle_network() {
-        let s = AgentState::new();
-        let status = snapshot(&s);
-        assert_eq!(status.hub_connections, 0);
-        assert!(!status.tunnel_active);
-        assert!(status.mesh_peers.is_empty());
-        assert!(status.lan_discovery_enabled);
+    fn linked(rtt_ms: u32) -> PeerLinkStatus {
+        PeerLinkStatus {
+            client_id: "a".to_string(),
+            is_host: false,
+            p2p_addr: None,
+            state: "connected".to_string(),
+            rtt_ms: Some(rtt_ms),
+        }
     }
 
     #[test]
-    fn the_snapshot_follows_the_live_lan_discovery_toggle() {
-        let s = AgentState::new();
-        s.lan_discovery_enabled.store(false, Ordering::Relaxed);
-        assert!(!snapshot(&s).lan_discovery_enabled);
-        s.lan_discovery_enabled.store(true, Ordering::Relaxed);
-        assert!(snapshot(&s).lan_discovery_enabled);
+    fn a_fresh_runtime_reports_an_idle_network() {
+        let status = snapshot(&RuntimeState::new());
+        assert!(!status.tunnel_active);
+        assert!(status.mesh_peers.is_empty());
     }
 
     #[test]
     fn the_first_status_is_always_emitted() {
-        assert!(should_emit(None, &snapshot(&AgentState::new())));
+        assert!(should_emit(None, &snapshot(&RuntimeState::new())));
     }
 
     #[test]
     fn an_unchanged_status_is_not_emitted_again() {
-        let s = AgentState::new();
+        let s = RuntimeState::new();
         let first = snapshot(&s);
-        let mut later = snapshot(&s);
-        later.uptime_secs += 60;
-        assert!(!should_emit(Some(&first), &later));
+        assert!(!should_emit(Some(&first), &snapshot(&s)));
     }
 
     #[test]
     fn a_real_change_is_emitted() {
-        let s = AgentState::new();
-        let before = snapshot(&s);
-        s.lan_discovery_enabled.store(false, Ordering::Relaxed);
-        assert!(should_emit(Some(&before), &snapshot(&s)));
+        let before = snapshot(&RuntimeState::new());
+        let mut after = before.clone();
+        after.tunnel_active = true;
+        assert!(should_emit(Some(&before), &after));
+    }
+
+    #[test]
+    fn ping_jitter_is_not_emitted_but_a_real_shift_is() {
+        let mut before = snapshot(&RuntimeState::new());
+        before.mesh_peers = vec![linked(40)];
+        let mut jitter = before.clone();
+        jitter.mesh_peers = vec![linked(46)];
+        let mut shift = before.clone();
+        shift.mesh_peers = vec![linked(95)];
+        assert!(!should_emit(Some(&before), &jitter));
+        assert!(should_emit(Some(&before), &shift));
     }
 }

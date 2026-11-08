@@ -4,7 +4,7 @@ name: Release
 #   1. compute the next semantic version from Conventional Commits since the
 #      last `v*` tag (feat -> minor, breaking -> major, anything else -> patch),
 #   2. build the server for Linux/macOS/Windows and the desktop client for
-#      Windows (the network agent ships inside warlay.exe), stamping that
+#      Windows (one executable, warlay.exe), stamping that
 #      version into every manifest,
 #   3. push the server image to GHCR,
 #   4. tag the commit and publish a GitHub Release with notes and checksums.

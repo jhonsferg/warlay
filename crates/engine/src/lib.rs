@@ -11,7 +11,6 @@ mod lan_capture;
 mod lan_capture;
 mod lan_filter;
 mod lan_rebroadcast;
-mod matchmaking_client;
 mod p2p_mesh;
 mod p2p_tunnel;
 mod relay_client;
@@ -27,7 +26,6 @@ pub use lan_bridge::{JoinPorts, LanBridge, OwnCapture};
 pub use lan_capture::{spawn as spawn_lan_capture, LanCaptureHandle};
 pub use lan_filter::CapturePorts;
 pub use lan_rebroadcast::{spawn as spawn_lan_rebroadcast, LanRebroadcastHandle};
-pub use matchmaking_client::MatchmakingConnection;
 pub use p2p_mesh::{MeshConfig, PathToHost, PeerLinkState, PeerMesh, PeerMeshHandle};
 pub use p2p_tunnel::{connect_via_relay, punch_and_connect, P2pTunnelHandle};
 pub use relay_client::{RelayClient, RelayClientHandle};
@@ -63,16 +61,8 @@ pub enum NetworkError {
     InterfaceEnumeration(#[source] std::io::Error),
     #[error("relay did not respond within the configured timeout")]
     Timeout,
-    #[error("websocket connection failed: {0}")]
-    WebSocket(String),
     #[error("'{0}' is not a valid hub address (expected host:port, ws://host or wss://host)")]
     InvalidHubAddress(String),
-    #[error("not connected to a matchmaking server")]
-    NotConnected,
     #[error("tunnel error: {0}")]
     Tunnel(#[from] tcp_tunnel_client::TunnelError),
-    #[error("'{server_name}' requires a password")]
-    PasswordRequired { server_name: String },
-    #[error("{message}")]
-    AuthRejected { message: String, retry_as_new: bool },
 }

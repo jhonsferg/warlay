@@ -38,7 +38,7 @@ Knowing what Warlay does and does not protect against helps triage reports:
   active man-in-the-middle.
 - **Peer-to-peer tunnel**: direct QUIC connections between players are
   encrypted but peers are not authenticated (there is no PKI for players).
-- **Agent**: runs elevated because Windows requires it for raw LAN capture
-  (`SIO_RCVALL`). Its pipe is restricted by ACL to interactive users, `SYSTEM`
-  and Administrators (no remote or anonymous access), and the agent checks
-  the executable of every connecting client process.
+- **Desktop client**: runs elevated because Windows requires it for raw LAN
+  capture (`SIO_RCVALL`). It exposes no local service, pipe or listening
+  socket for other programs to talk to: the UI and the network code run in
+  the same process.

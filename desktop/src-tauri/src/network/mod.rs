@@ -27,12 +27,4 @@ pub enum NetworkError {
     InterfaceEnumeration(#[source] std::io::Error),
     #[error("relay did not respond within the configured timeout")]
     Timeout,
-    #[error("websocket connection failed: {0}")]
-    WebSocket(String),
-    #[error("not connected to a matchmaking server")]
-    NotConnected,
-    #[error("'{server_name}' requires a password")]
-    PasswordRequired { server_name: String },
-    #[error("{message}")]
-    AuthRejected { message: String, retry_as_new: bool },
 }

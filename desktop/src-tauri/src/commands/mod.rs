@@ -1,12 +1,12 @@
-pub mod agent;
 pub mod devtools;
 pub mod discovery;
 pub mod e2e;
 pub mod launcher;
-pub mod matchmaking;
+pub mod network;
 pub mod relay;
-pub mod servers;
+pub mod runtime;
 pub mod session;
 pub mod settings;
 pub mod system_info;
+pub mod updater;
 pub mod voice;

@@ -50,8 +50,8 @@ pub fn contains_create_game(buf: &[u8]) -> bool {
 
 /// A browsing client announcing it wants to see the games on the LAN.
 /// Together with `contains_decreate_game`, this is the *browser-side*
-/// half of the two-way state the daemon keeps about this machine's own
-/// WC3 (see the daemon's `own_game_hosting` docs): a WC3 screen that
+/// half of the two-way state the client keeps about this machine's own
+/// WC3 (see the client's `own_game_hosting` docs): a WC3 screen that
 /// searches is browsing, never hosting.
 pub fn contains_search_game(buf: &[u8]) -> bool {
     buf.windows(2).any(|w| w[0] == W3GS_MAGIC && w[1] == W3GS_SEARCHGAME)
@@ -80,9 +80,9 @@ pub fn contains_game_info(buf: &[u8]) -> bool {
 /// True for the W3GS messages that *describe a hosted game*: the lifecycle
 /// broadcasts (`CREATEGAME`/`REFRESHGAME`/`DECREATEGAME`) and `GAMEINFO`.
 ///
-/// These are exactly what the daemon stops replaying onto this machine's
+/// These are exactly what the client stops replaying onto this machine's
 /// local network while **this machine's own WC3 is hosting** (see the
-/// daemon's `own_game_hosting`): while we're in our own lobby we can't
+/// client's `own_game_hosting`): while we're in our own lobby we can't
 /// join anything (so the remote games are useless to us), and a remote
 /// `GAMEINFO` landing on the socket right as our own WC3 runs its create
 /// handshake is the one packet that never occurs on a real LAN in that

@@ -14,7 +14,7 @@ export const useRooms = defineStore("rooms", () => {
   const session = ref<RoomSession | null>(null);
   const links = ref<PeerLinkStatus[]>([]);
   const tunnelActive = ref(false);
-  // The agent's link/tunnel status is read once and then pushed by the backend
+  // The network status (links, ping, tunnel) is read once and then pushed by the backend
   // on every change (no polling); followed only while we are in a room.
   const statusFeed = createStatusFeed({ fetch: native.networkStatus, listen: native.onNetworkStatus }, (status) => {
     links.value = status.meshPeers ?? [];

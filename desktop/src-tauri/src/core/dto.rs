@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use warlay::protocol::ServerMessage;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,45 +31,6 @@ pub struct RelayStatusDto {
     pub peers: Vec<String>,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerDto {
-    pub id: String,
-    pub name: String,
-    pub address: String,
-    pub server_id: Option<String>,
-    pub has_credentials: bool,
-    pub last_connected_at: Option<u64>,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(tag = "status", rename_all = "camelCase")]
-pub enum ConnectStatusDto {
-    Connected { server_name: String },
-    PasswordRequired { server_name: String },
-    Rejected { message: String, retry_as_new: bool },
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerStatusEvent {
-    pub server_id: String,
-    pub connected: bool,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerPingEvent {
-    pub server_id: String,
-    pub ping_ms: u64,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerMessageEvent {
-    pub server_id: String,
-    pub message: ServerMessage,
-}
 fn default_master_volume() -> f32 {
     1.0
 }

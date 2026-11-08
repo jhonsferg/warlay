@@ -1,4 +1,3 @@
-mod agent;
 mod commands;
 mod core;
 mod desktop_audio;
@@ -10,11 +9,13 @@ mod log_control;
 mod network;
 mod permissions;
 pub use warlay::protocol;
+mod runtime;
 mod state;
 mod storage;
+mod updater;
 pub use warlay::transport;
 
-use agent::state::AgentState;
+use runtime::state::RuntimeState;
 use state::AppState;
 use std::sync::Arc;
 use storage::ClientStore;
@@ -46,7 +47,6 @@ fn client_db_path() -> std::path::PathBuf {
 /// batch of lines it drains, so routing that through `sync_data()`
 /// (Windows' `FlushFileBuffers`) instead keeps the on-disk size honest for
 /// live tailing, not just after this process's handle finally closes.
-/// Same fix, same reasoning, as `crates/agent/src/logging.rs`'s equivalent.
 struct SyncOnFlush(std::fs::File);
 
 impl std::io::Write for SyncOnFlush {
@@ -181,17 +181,12 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-/// The agent now runs inside this same process, so there is no separate
-/// process to kill or wait for. "Salir" is meant to be a real quit: it
-/// closes every hub connection, the room's mesh, the game tunnel and the LAN
-/// capture, and other players will stop seeing this user as present.
+/// "Salir" is meant to be a real quit: exiting the process closes every hub
+/// connection, the room's mesh, the game tunnel and the LAN capture, and
+/// other players stop seeing this user as present.
 fn quit_app(app: &AppHandle) {
     app.exit(0);
 }
-
-/// Cuánto se espera al agente para que acepte el apagado y libere sus
-/// recursos antes de que la app salga por su cuenta.
-const DAEMON_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Builds the system tray icon so the app can keep running in the
 /// background after the window's own close button is clicked (see `run()`'s
@@ -360,7 +355,7 @@ pub fn run() {
 
     tauri::Builder::default()
         // Must be the first plugin: only one elevated warlay.exe may own the
-        // raw LAN capture and the agent state. A second launch exits right
+        // raw LAN capture and the runtime state. A second launch exits right
         // away and this callback (running in the first instance) brings the
         // existing window to the front instead.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -399,14 +394,13 @@ pub fn run() {
         .setup(move |app| {
             app.manage(AppState::new(store));
             let state = app.state::<AppState>();
-            // Initialize the agent state (runs in-process, no separate daemon
-            // process). The agent's networking, LAN capture, tunnels, and hub
-            // connections all operate on this shared AgentState.
-            let agent_state = Arc::new(TokioMutex::new(AgentState::new()));
-            *state.agent_state.lock().unwrap() = Some(agent_state.clone());
-            agent::status::spawn_watcher(app.handle().clone(), agent_state.clone());
+            // The shared runtime state: hub connections, LAN capture, tunnels
+            // and the P2P mesh all operate on it, inside this process.
+            let runtime_state = Arc::new(TokioMutex::new(RuntimeState::new()));
+            *state.runtime_state.lock().unwrap() = Some(runtime_state.clone());
+            runtime::status::spawn_watcher(app.handle().clone(), runtime_state.clone());
             *state.app_handle.lock().unwrap() = Some(app.handle().clone());
-            agent::events::set_app_handle(app.handle().clone());
+            runtime::events::set_app_handle(app.handle().clone());
             // The microphone answer comes from Warlay's consent and is never saved in the
             // WebView2 profile (see `permissions::install_native_policy`).
             #[cfg(windows)]
@@ -512,6 +506,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
+            commands::updater::get_app_info,
+            commands::updater::check_for_update,
+            commands::updater::install_update,
+            commands::updater::open_release_page,
             commands::voice::send_voice_frame,
             commands::voice::start_desktop_audio,
             commands::voice::stop_desktop_audio,
@@ -533,23 +531,6 @@ pub fn run() {
             commands::launcher::launch_game,
             commands::launcher::path_exists,
             commands::launcher::is_game_running,
-            commands::matchmaking::connect_to_server,
-            commands::matchmaking::disconnect_from_server,
-            commands::matchmaking::create_room,
-            commands::matchmaking::join_room,
-            commands::matchmaking::leave_room,
-            commands::matchmaking::delete_room,
-            commands::matchmaking::set_room_in_progress,
-            commands::matchmaking::set_room_available,
-            commands::matchmaking::send_chat_message,
-            commands::matchmaking::send_private_message,
-            commands::matchmaking::start_hosting_tunnel,
-            commands::matchmaking::start_joining_tunnel,
-            commands::matchmaking::stop_hub_tunnel,
-            commands::servers::list_servers,
-            commands::servers::add_server,
-            commands::servers::remove_server,
-            commands::servers::get_client_id,
             commands::settings::load_settings,
             commands::settings::save_settings,
             commands::settings::set_log_level,
@@ -557,10 +538,7 @@ pub fn run() {
             commands::settings::get_log_usage,
             commands::settings::clean_logs_now,
             commands::system_info::get_system_info,
-            commands::agent::get_agent_settings,
-            commands::agent::save_agent_settings,
-            commands::agent::get_network_status,
-            commands::agent::retry_peer_mesh,
+            commands::network::get_network_status,
             commands::session::start_room_session,
             commands::session::stop_room_session,
             commands::session::start_game_tunnel,

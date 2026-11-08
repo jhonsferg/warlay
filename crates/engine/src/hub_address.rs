@@ -2,7 +2,7 @@ use super::NetworkError;
 use url::Url;
 
 /// A hub's address exactly as the desktop app stores it, normalized into
-/// the WebSocket URL the matchmaking client dials.
+/// the WebSocket URL for the hub.
 ///
 /// Accepted forms:
 /// - `host:port` -- legacy, plain `ws://host:port/ws` (no TLS).

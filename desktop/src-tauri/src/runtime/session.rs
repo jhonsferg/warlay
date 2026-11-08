@@ -1,5 +1,5 @@
 //! Room sessions of the new architecture: the main server hands the UI a
-//! room ticket and the helper assigned to the room; the agent joins the
+//! room ticket and the helper assigned to the room; the runtime joins the
 //! room's P2P mesh through that helper and carries the game, its LAN
 //! announcements and voice directly between the players.
 
@@ -13,11 +13,11 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use warlay::protocol::ipc::AgentResponse;
+use warlay::protocol::ipc::RuntimeResponse;
 
 use super::events::{emit_event, err};
 use super::lan::spawn_lan_mesh;
-use super::state::{teardown_tunnel_and_lan, AgentState};
+use super::state::{teardown_tunnel_and_lan, RuntimeState};
 
 pub struct RoomSessionInfo {
     pub room_id: Uuid,
@@ -41,7 +41,7 @@ async fn resolve(addr: &str) -> Result<SocketAddr, String> {
 }
 
 /// Ends the current room session (mesh, game tunnel, LAN bridging).
-pub fn clear_room_session(s: &mut AgentState) {
+pub fn clear_room_session(s: &mut RuntimeState) {
     if let Some(mesh) = s.peer_mesh.take() {
         mesh.abort();
     }
@@ -51,14 +51,14 @@ pub fn clear_room_session(s: &mut AgentState) {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn start_room_session(
-    state: Arc<Mutex<AgentState>>,
+    state: Arc<Mutex<RuntimeState>>,
     room_id: String,
     user_id: String,
     is_host: bool,
     rendezvous_addr: String,
     relay_addr: String,
     ticket: String,
-) -> AgentResponse {
+) -> RuntimeResponse {
     let (Ok(room_id), Ok(user_id)) = (Uuid::parse_str(&room_id), Uuid::parse_str(&user_id)) else {
         return err("StartRoomSession", "id de sala o de usuario inválido");
     };
@@ -131,21 +131,21 @@ pub async fn start_room_session(
         lan_inbound_task,
     });
     info!(%room_id, %user_id, is_host, %rendezvous, ?relay, "sesión de sala P2P iniciada");
-    AgentResponse::Success {
+    RuntimeResponse::Success {
         request_type: "StartRoomSession".to_string(),
     }
 }
 
-pub async fn stop_room_session(state: Arc<Mutex<AgentState>>) -> AgentResponse {
+pub async fn stop_room_session(state: Arc<Mutex<RuntimeState>>) -> RuntimeResponse {
     let mut s = state.lock().await;
     let had_session = s.room_session.is_some();
     clear_room_session(&mut s);
     drop(s);
     if had_session {
         info!("sesión de sala P2P terminada");
-        emit_event(&AgentResponse::TunnelStatusChanged { running: false });
+        emit_event(&RuntimeResponse::TunnelStatusChanged { running: false });
     }
-    AgentResponse::Success {
+    RuntimeResponse::Success {
         request_type: "StopRoomSession".to_string(),
     }
 }
@@ -153,7 +153,7 @@ pub async fn stop_room_session(state: Arc<Mutex<AgentState>>) -> AgentResponse {
 /// Starts this member's game tunnel. Both halves on every member, host or
 /// not: anyone may host a game the others join, and anyone may join a
 /// game another member hosts.
-pub async fn start_game_tunnel(state: Arc<Mutex<AgentState>>, game_port: u16) -> AgentResponse {
+pub async fn start_game_tunnel(state: Arc<Mutex<RuntimeState>>, game_port: u16) -> RuntimeResponse {
     let (mesh, room_id, is_host) = {
         let s = state.lock().await;
         match (&s.peer_mesh, &s.room_session) {
@@ -174,7 +174,7 @@ pub async fn start_game_tunnel(state: Arc<Mutex<AgentState>>, game_port: u16) ->
                 .await
                 .game_started
                 .store(true, std::sync::atomic::Ordering::SeqCst);
-            emit_event(&AgentResponse::GameStarted);
+            emit_event(&RuntimeResponse::GameStarted);
         });
     });
     // Join side: one dedicated local port per peer, bound on demand as
@@ -192,21 +192,21 @@ pub async fn start_game_tunnel(state: Arc<Mutex<AgentState>>, game_port: u16) ->
         }
     }
 
-    if let Err(e) = spawn_lan_mesh(state.clone(), game_port, None).await {
+    if let Err(e) = spawn_lan_mesh(state.clone(), game_port).await {
         return err("StartGameTunnel", e);
     }
     info!(%room_id, is_host, game_port, "túnel de juego P2P iniciado");
-    emit_event(&AgentResponse::TunnelStatusChanged { running: true });
-    AgentResponse::Success {
+    emit_event(&RuntimeResponse::TunnelStatusChanged { running: true });
+    RuntimeResponse::Success {
         request_type: "StartGameTunnel".to_string(),
     }
 }
 
 pub async fn update_room_helper(
-    state: Arc<Mutex<AgentState>>,
+    state: Arc<Mutex<RuntimeState>>,
     rendezvous_addr: String,
     relay_addr: String,
-) -> AgentResponse {
+) -> RuntimeResponse {
     let rendezvous = match resolve(&rendezvous_addr).await {
         Ok(addr) => addr,
         Err(message) => return err("UpdateRoomHelper", message),
@@ -217,7 +217,7 @@ pub async fn update_room_helper(
         Some(mesh) if s.room_session.is_some() => {
             mesh.switch_helper(rendezvous, relay);
             info!(%rendezvous, ?relay, "sala movida a otro ayudante");
-            AgentResponse::Success {
+            RuntimeResponse::Success {
                 request_type: "UpdateRoomHelper".to_string(),
             }
         }

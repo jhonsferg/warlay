@@ -1,11 +1,38 @@
+/// What identifies this build in "Acerca de": the short commit and the moment
+/// it was built (the release date of a CI build).
+fn stamp_build() {
+    println!("cargo:rerun-if-env-changed=GITHUB_SHA");
+    let commit = std::env::var("GITHUB_SHA")
+        .ok()
+        .filter(|sha| sha.len() >= 7)
+        .map(|sha| sha[..7].to_string())
+        .or_else(|| {
+            std::process::Command::new("git")
+                .args(["rev-parse", "--short=7", "HEAD"])
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .and_then(|out| String::from_utf8(out.stdout).ok())
+                .map(|text| text.trim().to_string())
+        })
+        .filter(|commit| !commit.is_empty())
+        .unwrap_or_else(|| "local".to_string());
+    let built = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    println!("cargo:rustc-env=WARLAY_BUILD_COMMIT={commit}");
+    println!("cargo:rustc-env=WARLAY_BUILD_UNIX={built}");
+}
+
 fn main() {
+    stamp_build();
     // Tauri embeds a default manifest (`asInvoker`: no elevation) unless the
     // build script hands it one, and a PE carries exactly ONE manifest. This
-    // is where "the agent lives inside this binary" becomes true: without
-    // `requireAdministrator` here, warlay.exe would start unelevated and the
-    // agent instance it spawns would silently fail to open the raw LAN
-    // capture socket, only revealing itself on the first game - the exact
-    // failure mode documented in `desktop/src-tauri/build.rs`.
+    // is what lets the client capture LAN game broadcasts: without
+    // `requireAdministrator` here, warlay.exe would start unelevated and its
+    // raw LAN capture socket would silently fail to open, only revealing
+    // itself on the first game.
     //
     // The manifest is a separate file rather than an inline string because it
     // must stay comparable with Tauri's default: the Common Controls v6

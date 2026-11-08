@@ -399,11 +399,11 @@ impl PeerMeshHandle {
     }
 
     /// A snapshot of every peer this mesh knows about and how far its
-    /// direct-link negotiation with each has gotten — for the "Agente"
-    /// diagnostic panel. Deliberately a plain tuple (not `PeerEntry`
+    /// direct-link negotiation with each has gotten — for the
+    /// network status. Deliberately a plain tuple (not `PeerEntry`
     /// itself): `PeerLinkState::Connected` carries a live
     /// `Arc<P2pTunnelHandle>` that has no business leaving this crate, and
-    /// the caller (the daemon) maps this into `protocol::ipc`'s own
+    /// the caller (the client) maps this into `protocol::ipc`'s own
     /// serializable DTO.
     ///
     /// The last element is the round-trip time of the live link in

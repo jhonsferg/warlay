@@ -2,7 +2,7 @@
 // needed) next to the NSIS installer output, so both distribution forms live
 // in the same folder -- run after `npm run tauri build` (or `tauri build`),
 // which is what actually produces it and the bundle/nsis directory this
-// writes into. The agent is inside warlay.exe itself, so there is no second
+// writes into. Everything is in warlay.exe itself, so there is no second
 // executable to carry.
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";

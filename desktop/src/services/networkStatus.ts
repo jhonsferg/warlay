@@ -1,7 +1,8 @@
-// The agent's network status (P2P links, game tunnel, hub connections).
+// The network status (P2P links with their ping, game tunnel, hub
+// connections).
 //
-// The agent runs inside this app, so reading it is an in-process call (a
-// Tauri `invoke`), not a network request. Instead of polling it, screens read
+// The network runtime lives inside this app, so reading it is an in-process
+// call (a Tauri `invoke`), not a network request. Instead of polling it, screens read
 // it once and then follow the `network://status` event the backend emits only
 // when something changes. This module holds the pure logic for that, so it
 // can be unit-tested without Vue or Tauri.
@@ -33,23 +34,13 @@ export function pingLabel(rttMs: number | null | undefined): { text: string; ton
 }
 
 export interface NetworkStatus {
-  uptimeSecs: number;
-  hubConnections: number;
   tunnelActive: boolean;
-  lanDiscoveryEnabled: boolean;
   meshPeers: PeerLinkStatus[];
 }
 
 /** What the screens show before the first status arrives. */
 export function idleStatus(): NetworkStatus {
-  return { uptimeSecs: 0, hubConnections: 0, tunnelActive: false, lanDiscoveryEnabled: true, meshPeers: [] };
-}
-
-/** Whole minutes the agent has been up, counting time since `receivedAtMs`
- * (the status only carries the uptime it had when it was read). */
-export function uptimeMinutes(status: NetworkStatus, receivedAtMs: number, nowMs: number): number {
-  const extra = Math.max(0, nowMs - receivedAtMs) / 1000;
-  return Math.round((status.uptimeSecs + extra) / 60);
+  return { tunnelActive: false, meshPeers: [] };
 }
 
 export interface StatusFeedDeps {

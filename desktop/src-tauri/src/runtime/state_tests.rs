@@ -3,8 +3,7 @@ use std::sync::atomic::Ordering;
 
 #[test]
 fn a_fresh_state_is_idle() {
-    let s = AgentState::new();
-    assert!(s.connections.is_empty());
+    let s = RuntimeState::new();
     assert!(s.room_session.is_none());
     assert!(s.peer_mesh.is_none());
     assert!(s.game_gateway.is_none());
@@ -13,12 +12,12 @@ fn a_fresh_state_is_idle() {
 }
 
 #[test]
-fn the_lan_bridge_shares_live_state_with_the_agent() {
-    let s = AgentState::new();
+fn the_lan_bridge_shares_live_state_with_the_runtime() {
+    let s = RuntimeState::new();
     let bridge = s.lan_bridge();
 
     // Flags flipped through the bridge (the capture thread) are what the
-    // agent reads, and the reverse.
+    // runtime reads, and the reverse.
     bridge.own_game_hosting.store(true, Ordering::SeqCst);
     assert!(s.own_game_hosting.load(Ordering::SeqCst));
     s.game_started.store(true, Ordering::SeqCst);

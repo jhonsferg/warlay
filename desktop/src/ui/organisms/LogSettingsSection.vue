@@ -2,7 +2,7 @@
 import { FileText, Trash2 } from "@lucide/vue";
 import { onMounted, ref } from "vue";
 import { errorMessage } from "../../services/http";
-import { isDesktop, native, type AgentSettings, type LogUsage } from "../../services/native";
+import { isDesktop, native, type LogUsage } from "../../services/native";
 import { useSettings } from "../../stores/settings";
 import { useToasts } from "../../stores/toasts";
 import WButton from "../atoms/WButton.vue";
@@ -22,8 +22,6 @@ const LEVELS = [
 
 const RETENTION_DAYS = [1, 3, 7, 14, 30, 90];
 
-const agent = ref<AgentSettings | null>(null);
-const agentUnavailable = ref(false);
 const usage = ref<LogUsage | null>(null);
 const busy = ref(false);
 
@@ -42,27 +40,14 @@ async function refreshUsage() {
   }
 }
 
-async function setAgentLevel(level: string) {
-  if (!agent.value) return;
-  const previous = agent.value;
-  agent.value = { ...previous, logLevel: level };
-  try {
-    await native.saveAgentSettings(agent.value);
-    toasts.success("Nivel del agente actualizado", "Se aplicó al instante.");
-  } catch (e) {
-    agent.value = previous;
-    toasts.error("No se pudo cambiar el nivel del agente", errorMessage(e));
-  }
-}
-
-async function setAppLevel(level: string) {
+async function setLevel(level: string) {
   const previous = settings.fileLogLevel;
   try {
     await settings.setFileLogLevel(level);
-    toasts.success("Nivel de la aplicación actualizado", "Se aplicó al instante.");
+    toasts.success("Nivel de detalle actualizado", "Se aplicó al instante.");
   } catch (e) {
     settings.fileLogLevel = previous;
-    toasts.error("No se pudo cambiar el nivel de la aplicación", errorMessage(e));
+    toasts.error("No se pudo cambiar el nivel de detalle", errorMessage(e));
   }
 }
 
@@ -94,16 +79,10 @@ async function cleanNow(allInactive: boolean) {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   if (!isDesktop) return;
   void settings.load().catch(() => {});
   void refreshUsage();
-  try {
-    agent.value = (await native.agentSettings()) ?? null;
-  } catch {
-    agent.value = null;
-  }
-  agentUnavailable.value = agent.value === null;
 });
 </script>
 
@@ -118,32 +97,13 @@ onMounted(async () => {
         <p class="log-settings__muted">
           Más detalle significa archivos mucho más grandes. Los cambios se aplican al instante, sin reiniciar.
         </p>
-        <FormField
-          label="Agente de red"
-          for="agent-log-level"
-          hint="El que más registra: es quien ve el tráfico del juego."
-        >
-          <select
-            id="agent-log-level"
-            class="log-settings__select"
-            data-testid="agent-log-level"
-            :disabled="!agent"
-            :value="agent?.logLevel ?? 'info'"
-            @change="setAgentLevel(($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="l in LEVELS" :key="l.value" :value="l.value">{{ l.label }}</option>
-          </select>
-        </FormField>
-        <p v-if="agentUnavailable" class="log-settings__muted">
-          El agente no responde ahora; el nivel se podrá cambiar cuando esté activo.
-        </p>
-        <FormField label="Aplicación" for="app-log-level" hint="Lo que registra esta ventana.">
+        <FormField label="Registros de Warlay" for="app-log-level" hint="Lo que registra esta aplicación.">
           <select
             id="app-log-level"
             class="log-settings__select"
             data-testid="app-log-level"
             :value="settings.fileLogLevel"
-            @change="setAppLevel(($event.target as HTMLSelectElement).value)"
+            @change="setLevel(($event.target as HTMLSelectElement).value)"
           >
             <option v-for="l in LEVELS" :key="l.value" :value="l.value">{{ l.label }}</option>
           </select>
@@ -188,9 +148,8 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .log-settings {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: var(--s-5);
+  // The cards join the grid of the page that holds this section.
+  display: contents;
 
   &__card {
     @include card(var(--s-5));

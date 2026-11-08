@@ -2,7 +2,7 @@
 //! socket sees every IP datagram this machine sends, on every interface,
 //! including its own outgoing broadcasts (`PACKET_OUTGOING`) -- which is
 //! exactly what Warcraft III's "Red de Área Local" announcements are. Same
-//! API as the Windows module, so the daemon doesn't care which it runs on.
+//! API as the Windows module, so the client doesn't care which it runs on.
 //!
 //! Needs `CAP_NET_RAW` (root, or the capability granted to the binary),
 //! the same way the Windows capture needs Administrator.
@@ -33,7 +33,7 @@ const PACKET_OUTGOING: u8 = 4;
 
 #[derive(Debug, Error)]
 pub enum LanCaptureError {
-    #[error("could not open a packet capture socket (does the daemon have CAP_NET_RAW?): {0}")]
+    #[error("could not open a packet capture socket (does the client have CAP_NET_RAW?): {0}")]
     Socket(#[source] std::io::Error),
 }
 
