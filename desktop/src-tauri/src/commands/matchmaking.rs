@@ -296,3 +296,7 @@ pub fn get_room_members(state: State<'_, AppState>) -> Vec<warlay::protocol::Roo
         .map(|(_, members)| members.clone())
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+#[path = "matchmaking_tests.rs"]
+mod tests;
