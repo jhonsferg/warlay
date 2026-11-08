@@ -112,9 +112,8 @@ fn create_kill_on_close_job(_child: &Child) -> Option<GameJob> {
 /// Every process ID currently alive inside `job` -- i.e. the launch's real,
 /// current process tree, regardless of how many stub hand-offs it went
 /// through or what any of those processes are named. An empty result means
-/// the whole launch has exited. Used both for the running/stopped status
-/// (non-empty vs. empty) and, by the overlay (`overlay::update_overlay_position`),
-/// to find the actual game window without a name-matching guess.
+/// the whole launch has exited. Used for the running/stopped status
+/// (non-empty vs. empty).
 #[cfg(windows)]
 pub fn job_process_ids(job: GameJob) -> Vec<u32> {
     // `JOBOBJECT_BASIC_PROCESS_ID_LIST` is a variable-length struct -- its
