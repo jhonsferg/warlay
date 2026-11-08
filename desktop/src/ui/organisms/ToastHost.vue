@@ -40,7 +40,7 @@ async function perform(toast: Toast, action: ToastAction) {
               v-for="a in t.actions"
               :key="a.label"
               size="sm"
-              :variant="a.variant === 'ghost' ? 'ghost' : 'primary'"
+              :variant="a.variant ?? 'primary'"
               @click.stop="perform(t, a)"
               >{{ a.label }}</WButton
             >
