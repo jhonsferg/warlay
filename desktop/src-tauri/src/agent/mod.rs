@@ -31,6 +31,7 @@ pub mod session;
 pub mod shutdown;
 pub mod state;
 pub mod storage;
+pub mod voice;
 
 /// Exit code used when the agent refuses to run without elevation.
 pub const EXIT_NOT_ELEVATED: i32 = 2;
