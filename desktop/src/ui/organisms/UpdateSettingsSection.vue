@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { CircleCheck, Download, ExternalLink, RefreshCw, Rocket, TriangleAlert } from "@lucide/vue";
-import { computed, onMounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { isDesktop, native } from "../../services/native";
-import { formatBytes, percent, releaseHighlights } from "../../services/updates";
+import { formatBytes, formatLastCheck, percent, releaseHighlights } from "../../services/updates";
 import { useUpdates } from "../../stores/updates";
 import WButton from "../atoms/WButton.vue";
 
@@ -19,9 +19,18 @@ const publishedOn = computed(() => {
   return at ? new Date(at).toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" }) : "";
 });
 
+// "Hace 5 min" must keep up while the page stays open.
+const now = ref(Date.now());
+const lastCheck = computed(() => formatLastCheck(updates.lastCheckedAt, now.value));
+let clock: ReturnType<typeof setInterval> | null = null;
+
 onMounted(() => {
+  clock = setInterval(() => (now.value = Date.now()), 15_000);
   // Look once when the section opens, like Discord does on start.
   if (isDesktop && phase.value === "idle") void updates.check();
+});
+onUnmounted(() => {
+  if (clock) clearInterval(clock);
 });
 </script>
 
@@ -31,7 +40,8 @@ onMounted(() => {
       Las actualizaciones se gestionan desde la aplicación de escritorio.
     </p>
 
-    <section v-else class="updates__card" :data-phase="phase">
+    <section v-else class="updates__card" :data-phase="phase" aria-label="Actualización">
+      <p class="updates__eyebrow">Actualización</p>
       <header class="updates__head">
         <span class="updates__icon" :class="`updates__icon--${phase}`">
           <RefreshCw v-if="phase === 'checking' || phase === 'idle'" :class="{ spin: phase === 'checking' }" />
@@ -40,7 +50,9 @@ onMounted(() => {
           <TriangleAlert v-else />
         </span>
         <div class="updates__title">
-          <h3 v-if="phase === 'checking' || phase === 'idle'">Buscando actualizaciones...</h3>
+          <h3 v-if="phase === 'checking' || phase === 'idle'" data-testid="update-title">
+            Buscando actualizaciones...
+          </h3>
           <h3 v-else-if="phase === 'uptodate'" data-testid="update-title">Warlay está al día</h3>
           <h3 v-else-if="phase === 'downloading'" data-testid="update-title">
             Descargando la versión {{ status?.latest }}
@@ -129,14 +141,14 @@ onMounted(() => {
           <template #icon><RefreshCw /></template>Buscar actualizaciones
         </WButton>
       </div>
+
+      <p class="updates__muted" data-testid="last-check">Última comprobación: {{ lastCheck }}</p>
     </section>
   </div>
 </template>
 
 <style scoped lang="scss">
 .updates {
-  max-width: 640px;
-
   &__card {
     @include card(var(--s-6));
     display: flex;
@@ -152,6 +164,10 @@ onMounted(() => {
     &[data-phase="error"] {
       border-color: rgba(239, 68, 68, 0.4);
     }
+  }
+  &__eyebrow {
+    @include eyebrow;
+    margin: 0;
   }
   &__head {
     display: flex;
