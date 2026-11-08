@@ -30,6 +30,7 @@ pub mod paths;
 pub mod session;
 pub mod shutdown;
 pub mod state;
+pub mod status;
 pub mod storage;
 pub mod voice;
 
