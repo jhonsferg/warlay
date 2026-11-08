@@ -8,7 +8,7 @@ use crate::agent::handlers::handle_request;
 use crate::agent::state::AgentState;
 use crate::core::error::AppError;
 use crate::state::AppState;
-use warlay::protocol::ipc::{AgentSettings, NetworkStatus, AgentRequest, AgentResponse};
+use warlay::protocol::ipc::{AgentRequest, AgentResponse, AgentSettings, NetworkStatus};
 
 fn success_or_err(resp: AgentResponse) -> Result<(), AppError> {
     match resp {
