@@ -163,7 +163,12 @@ a whole.
 
 ## Development
 
-Requirements: Windows, Rust stable, Node.js 20+.
+Requirements: Windows, Rust stable, Node.js 20+ (24 to run the unit tests).
+
+The server address is injected at build time (`VITE_WARLAY_MAIN_URL`, from the
+environment or `desktop/.env`; see `.env.example`) and is not in the source.
+`npm run tauri dev` falls back to `http://127.0.0.1:8080`; production builds
+fail without it.
 
 ```sh
 npm ci
@@ -179,6 +184,10 @@ elevation (UAC prompt on every launch), so run it from an elevated shell when
 developing features that need the LAN capture.
 
 ## Building
+
+Set the server address first (`VITE_WARLAY_MAIN_URL`, see above). In GitHub
+Actions it comes from the `WARLAY_MAIN_URL` repository secret; a fork creates
+its own secret pointing at its own server.
 
 ```sh
 npx tauri build                 # frontend + warlay.exe + NSIS installer
