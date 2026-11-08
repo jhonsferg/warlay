@@ -221,6 +221,26 @@ cd warlay
 One build produces one executable: `warlay.exe` is the whole desktop client,
 network code included.
 
+**Server address** - the client needs to know where your Warlay server is,
+and that address is **not in the source code**: it is injected when the
+frontend is built, through the `VITE_WARLAY_MAIN_URL` variable. Either export
+it in your shell or put it in `desktop/.env` (git-ignored; start from
+`desktop/.env.example`):
+
+```powershell
+cd desktop
+copy .env.example .env          # then edit it: VITE_WARLAY_MAIN_URL=https://your-server
+```
+
+A production build (`npm run build`, `npx tauri build`) **fails** if it is
+missing or malformed; `npm run tauri dev` falls back to
+`http://127.0.0.1:8080`. In GitHub Actions the release workflow reads it from
+a repository secret named `WARLAY_MAIN_URL`: if you fork the project, create
+that secret (`Settings > Secrets and variables > Actions`) with the address of
+your own server and your releases will talk to it. The address does end up
+inside the compiled client (it has to connect somewhere); it is just not
+published in the repository.
+
 **Development mode** - hot-reloading frontend on top of a debug build:
 
 ```powershell
