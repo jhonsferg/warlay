@@ -98,7 +98,7 @@ pub enum ClientMessage {
     },
     SetRoomInProgress,
     /// Reverts a room back to `Available` — host-only, same enforcement as
-    /// `SetRoomInProgress`. The daemon sends this automatically when it
+    /// `SetRoomInProgress`. The client sends this automatically when it
     /// observes the host's WC3 re-announcing a game on the LAN (W3GS has no
     /// "match ended" packet, so a re-announced game is the practical proxy
     /// for "the previous session is over" — see `contains_create_game` in
