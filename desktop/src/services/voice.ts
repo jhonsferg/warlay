@@ -1,3 +1,5 @@
+import { chooseCaptureTrack, type CaptureChoice } from "./captureChain";
+import { createRnnoiseFilter } from "./noiseSuppression";
 import { audioConstraints, type MicPrefs } from "./voicePrefs";
 import { PlaybackClock } from "./voiceJitter";
 
@@ -34,6 +36,9 @@ export class VoiceEngine {
   private encoder: any = null;
   private reader: any = null;
   private ctx: AudioContext | null = null;
+  private capture: CaptureChoice<MediaStreamTrack> | null = null;
+  /** Why the strong noise filter is not active, when it was asked for. */
+  noiseFallbackReason: string | undefined;
   private readonly peers = new Map<string, { decoder: any; clock: PlaybackClock; ts: number }>();
   private muted = true;
   private running = false;
@@ -70,7 +75,21 @@ export class VoiceEngine {
       opus: { frameDuration: 20000, application: "voip", signal: "voice" },
     });
 
-    const [track] = this.stream.getAudioTracks();
+    const [rawTrack] = this.stream.getAudioTracks();
+    const stream = this.stream;
+    const ctx = this.ctx;
+    this.capture = await chooseCaptureTrack(prefs.noise, rawTrack, () => createRnnoiseFilter(ctx, stream));
+    this.noiseFallbackReason = this.capture.fallbackReason;
+    if (prefs.noise === "strong" && !this.capture.filtered) {
+      // The strong filter could not start. The capture was opened with the
+      // browser's suppressor OFF (RNNoise was meant to replace it), so
+      // reopen it with the standard one instead of sending the raw noise.
+      console.warn("noise filter unavailable, using the standard suppressor:", this.capture.fallbackReason);
+      this.stream.getTracks().forEach((t) => t.stop());
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints({ ...prefs, noise: "standard" }) });
+      this.capture = { track: this.stream.getAudioTracks()[0], filtered: false, dispose() {} };
+    }
+    const track = this.capture.track;
     const Processor = g.MediaStreamTrackProcessor as AnyCtor;
     this.reader = new Processor({ track }).readable.getReader();
     this.running = true;
@@ -162,6 +181,8 @@ export class VoiceEngine {
       /* already closed */
     }
     this.encoder = null;
+    this.capture?.dispose();
+    this.capture = null;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     for (const id of [...this.peers.keys()]) this.forget(id);
