@@ -1,4 +1,4 @@
-use crate::core::dto::{AppSettings, ServerDto};
+use crate::core::dto::AppSettings;
 use rusqlite::{params, Connection};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -6,12 +6,6 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct ClientStore {
     conn: Arc<Mutex<Connection>>,
-}
-
-pub struct ServerRecord {
-    pub psk: Option<[u8; 32]>,
-    pub server_id: Option<Uuid>,
-    pub address: String,
 }
 
 impl ClientStore {
@@ -26,18 +20,6 @@ impl ClientStore {
             let _ = std::fs::create_dir_all(parent);
         }
         let conn = Connection::open(path)?;
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS servers (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                address TEXT,
-                server_id TEXT,
-                psk BLOB,
-                last_connected_at INTEGER
-            )",
-            [],
-        )?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS settings (
@@ -64,87 +46,6 @@ impl ClientStore {
         })
     }
 
-    pub fn list_servers(&self) -> Result<Vec<ServerDto>, rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, name, address, server_id, psk, last_connected_at FROM servers")?;
-
-        let servers = stmt
-            .query_map([], |row| {
-                let server_id_str: Option<String> = row.get(3)?;
-                let psk: Option<Vec<u8>> = row.get(4)?;
-
-                Ok(ServerDto {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    address: row.get(2)?,
-                    server_id: server_id_str,
-                    has_credentials: psk.is_some(),
-                    last_connected_at: row.get(5)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(servers)
-    }
-
-    pub fn get_server(&self, id: Uuid) -> Result<Option<ServerRecord>, rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT psk, server_id, address FROM servers WHERE id = ?1")?;
-
-        let mut rows = stmt.query(params![id.to_string()])?;
-        if let Some(row) = rows.next()? {
-            let psk_vec: Option<Vec<u8>> = row.get(0)?;
-            let server_id_str: Option<String> = row.get(1)?;
-            let address: String = row.get(2)?;
-
-            let psk = psk_vec.and_then(|v| {
-                if v.len() == 32 {
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&v);
-                    Some(arr)
-                } else {
-                    None
-                }
-            });
-
-            let server_id = server_id_str.and_then(|s| Uuid::parse_str(&s).ok());
-
-            Ok(Some(ServerRecord {
-                psk,
-                server_id,
-                address,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn add_server(&self, address: &str) -> Result<ServerDto, rusqlite::Error> {
-        let id = Uuid::new_v4().to_string();
-        let name = format!("Server ({})", address);
-
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO servers (id, name, address) VALUES (?1, ?2, ?3)",
-            params![id, name, address],
-        )?;
-
-        Ok(ServerDto {
-            id,
-            name,
-            address: address.to_string(),
-            server_id: None,
-            has_credentials: false,
-            last_connected_at: None,
-        })
-    }
-
-    pub fn remove_server(&self, server_id: Uuid) -> Result<(), rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM servers WHERE id = ?1", params![server_id.to_string()])?;
-        Ok(())
-    }
-
     pub fn client_id(&self) -> Uuid {
         let conn = self.conn.lock().unwrap();
         let id_str: String = conn
@@ -153,6 +54,35 @@ impl ClientStore {
             })
             .unwrap_or_else(|_| Uuid::new_v4().to_string());
         Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4())
+    }
+
+    /// Remembers when this version of the app was first run, which is when it
+    /// was installed or last updated: the stored moment is kept while the
+    /// version is the same and restarted when it changes. Returns that moment
+    /// (Unix seconds).
+    pub fn note_running_version(&self, version: &str, now_unix: i64) -> Result<i64, rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        let read = |key: &str| -> Option<String> {
+            conn.query_row("SELECT value FROM settings WHERE key = ?1", params![key], |row| {
+                row.get(0)
+            })
+            .ok()
+        };
+        if read("running_version").as_deref() == Some(version) {
+            if let Some(at) = read("running_version_since").and_then(|v| v.parse().ok()) {
+                return Ok(at);
+            }
+        }
+        for (key, value) in [
+            ("running_version", version.to_string()),
+            ("running_version_since", now_unix.to_string()),
+        ] {
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                params![key, value],
+            )?;
+        }
+        Ok(now_unix)
     }
 
     pub fn get_settings(&self) -> Result<AppSettings, rusqlite::Error> {
@@ -225,42 +155,6 @@ impl ClientStore {
         let mut settings = self.get_settings()?;
         settings.log_retention_days = days;
         self.save_settings(&settings)
-    }
-
-    pub fn record_handshake_success(
-        &self,
-        local_id: Uuid,
-        server_id: Uuid,
-        server_name: &str,
-        new_psk: Option<&[u8; 32]>,
-    ) -> Result<(), rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-
-        if let Some(psk) = new_psk {
-            conn.execute(
-                "UPDATE servers SET server_id = ?1, name = ?2, psk = ?3, last_connected_at = ?4 WHERE id = ?5",
-                params![server_id.to_string(), server_name, psk, now, local_id.to_string()],
-            )?;
-        } else {
-            conn.execute(
-                "UPDATE servers SET server_id = ?1, name = ?2, last_connected_at = ?3 WHERE id = ?4",
-                params![server_id.to_string(), server_name, now, local_id.to_string()],
-            )?;
-        }
-        Ok(())
-    }
-
-    pub fn clear_server_psk(&self, local_id: Uuid) -> Result<(), rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "UPDATE servers SET psk = NULL WHERE id = ?1",
-            params![local_id.to_string()],
-        )?;
-        Ok(())
     }
 }
 
