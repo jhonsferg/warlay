@@ -409,7 +409,7 @@ pub async fn start_joining_mesh(
 /// directly or carried by another member — to this WC3. Any member may host
 /// a game the others join; the registration is read live by the dispatchers,
 /// so no task of its own is needed and the returned handle is only the
-/// token the daemon keeps (and aborts) alongside the rest of the tunnel.
+/// token the client keeps (and aborts) alongside the rest of the tunnel.
 pub fn start_hosting_mesh(
     local_game_port: u16,
     mesh: Arc<p2p_mesh::PeerMeshHandle>,
@@ -466,7 +466,7 @@ async fn spawn_joiner_listener(
 
 /// The room's per-peer joiner listeners: how this member joins a game any
 /// *other* member hosts. Each peer gets one dedicated local port, bound on
-/// demand by `ensure_listener`; the daemon rewrites that peer's `GAMEINFO`
+/// demand by `ensure_listener`; the client rewrites that peer's `GAMEINFO`
 /// to advertise the port, so when our WC3 connects there the destination
 /// itself says which member the session must be carried to — host or not.
 /// (A single shared port couldn't do this: the connection alone wouldn't
@@ -484,7 +484,7 @@ struct GatewayListener {
 
 impl GameGatewayHandle {
     /// Binds `peer`'s local listener if it doesn't exist yet and returns
-    /// the port the daemon must advertise in that peer's rewritten
+    /// the port the client must advertise in that peer's rewritten
     /// `GAMEINFO`.
     pub async fn ensure_listener(&self, peer: Uuid) -> std::io::Result<u16> {
         if let Some(port) = self.listeners.lock().unwrap().get(&peer).map(|l| l.port) {
@@ -537,7 +537,7 @@ impl GameGatewayHandle {
 }
 
 /// Starts this member's join gateway for a room: no listeners yet — each
-/// peer's is bound when the daemon first rewrites that peer's `GAMEINFO`.
+/// peer's is bound when the client first rewrites that peer's `GAMEINFO`.
 pub fn start_game_gateway(room_token: Uuid, mesh: Arc<p2p_mesh::PeerMeshHandle>) -> GameGatewayHandle {
     GameGatewayHandle {
         room_token,
@@ -1026,7 +1026,7 @@ mod tests {
         let _creator_side = start_hosting_mesh(creator_port, creator_mesh.clone(), || {});
         let gateway = start_game_gateway(room_token, joiner_mesh.clone());
 
-        // What the daemon does when the creator's rewritten GAMEINFO is
+        // What the client does when the creator's rewritten GAMEINFO is
         // replayed locally: bind that creator's dedicated listener.
         let creator_listener_port = timeout(Duration::from_secs(10), gateway.ensure_listener(creator_id))
             .await
