@@ -17,13 +17,21 @@ const WEBVIEW_EXE: &str = "msedgewebview2.exe";
 /// The first direct child of `parent` whose executable is `exe_name`
 /// (case-insensitive), if any.
 pub fn child_process_named(parent: u32, exe_name: &str) -> Option<u32> {
+    children_named(parent, exe_name).into_iter().next()
+}
+
+/// Every direct child of `parent` whose executable is `exe_name`
+/// (case-insensitive).
+pub fn children_named(parent: u32, exe_name: &str) -> Vec<u32> {
     unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return Vec::new();
+        };
         let mut entry = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
             ..Default::default()
         };
-        let mut found = None;
+        let mut found = Vec::new();
         let mut more = Process32FirstW(snapshot, &mut entry).is_ok();
         while more {
             if entry.th32ParentProcessID == parent {
@@ -34,8 +42,7 @@ pub fn child_process_named(parent: u32, exe_name: &str) -> Option<u32> {
                     .unwrap_or(entry.szExeFile.len());
                 let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
                 if name.eq_ignore_ascii_case(exe_name) {
-                    found = Some(entry.th32ProcessID);
-                    break;
+                    found.push(entry.th32ProcessID);
                 }
             }
             more = Process32NextW(snapshot, &mut entry).is_ok();
