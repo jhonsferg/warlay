@@ -6,7 +6,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use warlay::engine::NetworkError;
-use warlay::protocol::ipc::{ConnectFailure, AgentRequest, AgentResponse};
+use warlay::protocol::ipc::{AgentRequest, AgentResponse, ConnectFailure};
 
 use super::events::{emit_agent_event, err};
 use super::lan::spawn_lan_mesh;
