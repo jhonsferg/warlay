@@ -3,6 +3,7 @@ import { native } from "../services/native";
 import { notifyOs } from "../services/osNotify";
 import { realtime } from "../services/realtime";
 import { useChat } from "./chat";
+import { acceptInviteAndOpen } from "./inviteFlow";
 import { useE2e } from "./e2e";
 import { useCommunities } from "./communities";
 import { useNotifications } from "./notifications";
@@ -50,6 +51,13 @@ async function start() {
         social.applyRequest(event.request, session.me?.id ?? "");
         if (!("removed" in event.request) && event.request.to.id === session.me?.id) {
           void notifyOs("Nueva solicitud de amistad", event.request.from.displayName);
+          const request = event.request;
+          // Like Facebook: answer right from the toast. The X only closes it --
+          // the request stays under the bell until it is answered.
+          toasts.action("Nueva solicitud de amistad", `${request.from.displayName} quiere ser tu amigo`, [
+            { label: "Aceptar", run: () => social.accept(request.id) },
+            { label: "Rechazar", variant: "ghost", run: () => social.decline(request.id) },
+          ]);
         }
         break;
       case "friendAdded":
@@ -60,15 +68,21 @@ async function start() {
         break;
       case "notification":
         notifications.applyNotification(event.notification);
-        if (event.notification.kind === "friend_request") toasts.info("Nueva solicitud de amistad");
         if (event.notification.kind === "friend_accepted") toasts.success("Solicitud de amistad aceptada");
         break;
       case "invite":
         notifications.applyInvite(event.invite);
-        toasts.info(
-          event.invite.kind === "room" ? "Te invitaron a una sala" : "Te invitaron a una comunidad",
-          `${event.invite.inviter.displayName} · ${event.invite.targetName}`,
-        );
+        {
+          const invite = event.invite;
+          toasts.action(
+            invite.kind === "room" ? "Te invitaron a una sala" : "Te invitaron a una comunidad",
+            `${invite.inviter.displayName} · ${invite.targetName}`,
+            [
+              { label: "Aceptar", run: () => acceptInviteAndOpen(invite) },
+              { label: "Rechazar", variant: "ghost", run: () => notifications.declineInvite(invite.id) },
+            ],
+          );
+        }
         break;
       case "message":
         chat.receive(event.message);
