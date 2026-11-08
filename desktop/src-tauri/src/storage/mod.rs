@@ -186,6 +186,9 @@ impl ClientStore {
             graphics_api: String::new(),
             audio_output_device_id: String::new(),
             log_retention_days: 7,
+            mic_consent: false,
+            mic_device_id: String::new(),
+            noise_suppression: "standard".to_string(),
         })
     }
 
@@ -208,6 +211,12 @@ impl ClientStore {
     pub fn set_file_log_level(&self, level: &str) -> Result<(), rusqlite::Error> {
         let mut settings = self.get_settings()?;
         settings.file_log_level = level.to_string();
+        self.save_settings(&settings)
+    }
+
+    pub fn set_mic_consent(&self, granted: bool) -> Result<(), rusqlite::Error> {
+        let mut settings = self.get_settings()?;
+        settings.mic_consent = granted;
         self.save_settings(&settings)
     }
 
