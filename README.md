@@ -71,7 +71,7 @@ screen, then carries the real game session either directly between players
 flowchart LR
     subgraph host["Player A (host)"]
         hostGame["Warcraft III"]
-        hostClient["Desktop client<br/>warlay.exe<br/>(UI + network agent)"]
+        hostClient["Desktop client<br/>warlay.exe"]
     end
 
     subgraph hub["Warlay server (VPS)"]
@@ -83,7 +83,7 @@ flowchart LR
 
     subgraph joiner["Player B (joiner)"]
         joinerGame["Warcraft III"]
-        joinerClient["Desktop client<br/>warlay.exe<br/>(UI + network agent)"]
+        joinerClient["Desktop client<br/>warlay.exe"]
     end
 
     hostGame <-->|LAN broadcast and game TCP| hostClient
@@ -99,16 +99,15 @@ flowchart LR
     tunnel <-->|TCP relay, fallback| joinerClient
 ```
 
-| Component                       | Runs on                             | Role                                                  |
-| ------------------------------- | ----------------------------------- | ----------------------------------------------------- |
-| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.  |
-| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: UI (Tauri 2 + Vue 3) and network agent. |
+| Component                       | Runs on                             | Role                                                 |
+| ------------------------------- | ----------------------------------- | ---------------------------------------------------- |
+| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous. |
+| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: the whole client (Tauri 2 + Vue 3).    |
 
-There is no separate daemon or service: the desktop client is the only
-program on the player's PC. Its Rust backend runs the network agent (hub
-connections, LAN capture and replay, game tunnel, P2P mesh, voice relay) in
-the same process, and the Vue frontend talks to it through Tauri commands and
-events.
+The desktop client is the only program on the player's PC. Its Rust backend
+runs the network runtime (LAN capture and replay, game tunnel, P2P mesh,
+voice relay) in the same process, and the Vue frontend talks to it through
+Tauri commands and events.
 
 ### Network ports (server)
 
@@ -138,8 +137,8 @@ Every release on the [Releases page](https://github.com/jhonsferg/warlay/release
 
 | Artifact                                         | Platform                                                                      |
 | ------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `warlay-desktop-vX.Y.Z-windows-x64-setup.exe`    | Windows installer (client + agent, one executable)                            |
-| `warlay-desktop-vX.Y.Z-windows-x64-portable.zip` | Portable client + agent                                                       |
+| `warlay-desktop-vX.Y.Z-windows-x64-setup.exe`    | Windows installer (one executable)                                            |
+| `warlay-desktop-vX.Y.Z-windows-x64-portable.zip` | Portable client                                                               |
 | `warlay-server-vX.Y.Z-<target>.tar.gz` / `.zip`  | Server for Linux (static x64/ARM64), macOS (Intel/Apple Silicon), Windows x64 |
 | `ghcr.io/jhonsferg/warlay-server:X.Y.Z`          | Server Docker image                                                           |
 | `SHA256SUMS.txt`                                 | Checksums for every file                                                      |
@@ -174,7 +173,7 @@ flowchart LR
     root["warlay/"]
 
     root --> crates["crates/<br/>shared Rust libraries"]
-    crates --> protocol["protocol<br/>wire formats: control plane,<br/>tunnel handshake, agent requests"]
+    crates --> protocol["protocol<br/>wire formats: control plane,<br/>tunnel handshake, runtime requests"]
     crates --> crypto["crypto<br/>X25519 handshake, ChaCha20-Poly1305<br/>framing, PSK proofs"]
     crates --> transport["transport<br/>async UDP socket wrapper"]
     crates --> matchmaking["matchmaking<br/>rooms, client sessions,<br/>matchmaking hub"]
@@ -185,16 +184,15 @@ flowchart LR
     crates --> facade["warlay<br/>facade re-exporting the crates<br/>as warlay::*, feature-gated"]
 
     root --> server["server/<br/>hub binary warlay-server,<br/>Dockerfile, sample configs"]
-    root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend, which also<br/>runs the network agent in-process"]
+    root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend, which also<br/>runs the network runtime in-process"]
     root --> github[".github/<br/>CI, release pipeline,<br/>issue and PR templates"]
 ```
 
 The binaries (`server`, `desktop/src-tauri`) stay thin: protocol, crypto and
 networking logic live in `crates/` and are consumed through the `warlay`
 facade with only the features each binary needs. The server never links the
-Windows-only `engine` crate. The network agent lives in the desktop
-backend (`desktop/src-tauri/src/agent`) and runs inside `warlay.exe`; it
-is not a separate binary or process.
+Windows-only `engine` crate. The network runtime lives in the desktop
+backend (`desktop/src-tauri/src/runtime`) and runs inside `warlay.exe`.
 
 ## Building from source
 
@@ -220,9 +218,8 @@ cd warlay
 
 ### Desktop client (Windows)
 
-One build produces one executable: `warlay.exe` is both the desktop client
-and the network agent, which runs inside the same process. There is no
-daemon, sidecar or second binary to build or start.
+One build produces one executable: `warlay.exe` is the whole desktop client,
+network code included.
 
 **Development mode** - hot-reloading frontend on top of a debug build:
 
@@ -245,10 +242,10 @@ npx tauri build
 before compiling the client. The results are in `target/release/` at the
 repository root:
 
-| Path                                                    | Content                             |
-| ------------------------------------------------------- | ----------------------------------- |
-| `target/release/bundle/nsis/Warlay_X.Y.Z_x64-setup.exe` | Installer (client + uninstaller)    |
-| `target/release/warlay.exe`                             | Client and agent, in one executable |
+| Path                                                    | Content                          |
+| ------------------------------------------------------- | -------------------------------- |
+| `target/release/bundle/nsis/Warlay_X.Y.Z_x64-setup.exe` | Installer (client + uninstaller) |
+| `target/release/warlay.exe`                             | The client, in one executable    |
 
 **Portable build** - a zip with `warlay.exe` and usage notes, for players
 who do not want to install anything:
