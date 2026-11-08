@@ -40,6 +40,8 @@ export class VoiceEngine {
   /** Why the strong noise filter is not active, when it was asked for. */
   noiseFallbackReason: string | undefined;
   private readonly peers = new Map<string, { decoder: any; clock: PlaybackClock; ts: number }>();
+  /** Shared desktop audio of each member: stereo, independent of their voice. */
+  private readonly desktopPeers = new Map<string, { decoder: any; clock: PlaybackClock; ts: number }>();
   private muted = true;
   private running = false;
 
@@ -141,6 +143,51 @@ export class VoiceEngine {
     peer.ts += 20000;
   }
 
+  /** An encoded frame of another member's shared desktop audio (stereo Opus). */
+  pushDesktop(from: string, frame: Uint8Array) {
+    if (!this.ctx) return; // not in voice: ignore
+    let peer = this.desktopPeers.get(from);
+    if (!peer) {
+      const Decoder = g.AudioDecoder as AnyCtor;
+      const decoder = new Decoder({
+        output: (data: any) => this.playDesktop(from, data),
+        error: (e: unknown) => console.error("desktop audio decoder error", e),
+      });
+      decoder.configure({ codec: "opus", sampleRate: SAMPLE_RATE, numberOfChannels: 2 });
+      peer = { decoder, clock: new PlaybackClock(), ts: 0 };
+      this.desktopPeers.set(from, peer);
+    }
+    if (peer.decoder.state !== "configured") return;
+    const Chunk = g.EncodedAudioChunk as AnyCtor;
+    peer.decoder.decode(new Chunk({ type: "key", timestamp: peer.ts, data: frame }));
+    peer.ts += 20000;
+  }
+
+  private playDesktop(from: string, data: any) {
+    const ctx = this.ctx;
+    const peer = this.desktopPeers.get(from);
+    if (!ctx || !peer) {
+      data.close();
+      return;
+    }
+    const frames: number = data.numberOfFrames;
+    const left = new Float32Array(frames);
+    const right = new Float32Array(frames);
+    data.copyTo(left, { planeIndex: 0, format: "f32-planar" });
+    data.copyTo(right, { planeIndex: Math.min(1, data.numberOfChannels - 1), format: "f32-planar" });
+    const duration = frames / data.sampleRate;
+    data.close();
+    const start = peer.clock.schedule(ctx.currentTime, duration);
+    if (start === null) return;
+    const buffer = ctx.createBuffer(2, frames, SAMPLE_RATE);
+    buffer.copyToChannel(left, 0);
+    buffer.copyToChannel(right, 1);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    src.start(start);
+  }
+
   private play(from: string, data: any) {
     const ctx = this.ctx;
     const peer = this.peers.get(from);
@@ -186,6 +233,8 @@ export class VoiceEngine {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     for (const id of [...this.peers.keys()]) this.forget(id);
+    for (const peer of this.desktopPeers.values()) peer.decoder.close();
+    this.desktopPeers.clear();
     await this.ctx?.close().catch(() => {});
     this.ctx = null;
     this.muted = true;
