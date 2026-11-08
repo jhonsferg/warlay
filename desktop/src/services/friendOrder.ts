@@ -10,11 +10,7 @@ interface FriendLike {
 }
 
 /** Lower-case and accent-free, so "angel" finds "Ángel". */
-const fold = (text: string) =>
-  text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+const fold = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 const seenAt = (f: FriendLike) => {
   const t = f.presence.lastSeenAt ? Date.parse(f.presence.lastSeenAt) : NaN;
