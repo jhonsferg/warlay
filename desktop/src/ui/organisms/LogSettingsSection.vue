@@ -148,11 +148,16 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .log-settings {
-  // The cards join the grid of the page that holds this section.
-  display: contents;
+  // The two cards are stacked in one column, so the update card sits beside
+  // them without leaving an empty gap under the shorter cards.
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
 
   &__card {
     @include card(var(--s-5));
+    // Cards share the column height so it lines up with the update card.
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     gap: var(--s-4);
