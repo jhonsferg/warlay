@@ -1,13 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  createStatusFeed,
-  idleStatus,
-  pingLabel,
-  pingTone,
-  uptimeMinutes,
-  type NetworkStatus,
-} from "./networkStatus.ts";
+import { createStatusFeed, idleStatus, pingLabel, pingTone, type NetworkStatus } from "./networkStatus.ts";
 
 test("ping tone goes from good to playable to bad at 80 and 150 ms", () => {
   assert.equal(pingTone(20), "success");
@@ -29,6 +22,17 @@ test("ping label rounds, never shows 0 ms and hides what is not a ping", () => {
 
 function status(over: Partial<NetworkStatus> = {}): NetworkStatus {
   return { ...idleStatus(), ...over };
+}
+
+/** `n` established links, to tell one status from another. */
+function peers(n: number): NetworkStatus["meshPeers"] {
+  return Array.from({ length: n }, (_, i) => ({
+    clientId: `peer-${i}`,
+    isHost: false,
+    p2pAddr: null,
+    state: "connected" as const,
+    rttMs: 30,
+  }));
 }
 
 /** A fake backend: records subscriptions and lets the test push statuses. */
@@ -59,35 +63,26 @@ function fakeBackend(current: NetworkStatus | Error = status()) {
   return backend;
 }
 
-test("idle status is empty and has LAN discovery on", () => {
+test("idle status is empty", () => {
   const s = idleStatus();
   assert.equal(s.meshPeers.length, 0);
   assert.equal(s.tunnelActive, false);
-  assert.equal(s.hubConnections, 0);
-  assert.equal(s.lanDiscoveryEnabled, true);
   assert.notEqual(idleStatus().meshPeers, s.meshPeers, "each call returns a fresh array");
 });
 
-test("uptime adds the time since the status was read", () => {
-  const s = status({ uptimeSecs: 120 });
-  assert.equal(uptimeMinutes(s, 1_000, 1_000), 2);
-  assert.equal(uptimeMinutes(s, 1_000, 61_000), 3);
-  assert.equal(uptimeMinutes(s, 5_000, 1_000), 2, "a clock step back never subtracts");
-});
-
 test("starting reads the status once and then follows pushes", async () => {
-  const backend = fakeBackend(status({ hubConnections: 1 }));
+  const backend = fakeBackend(status({ meshPeers: peers(1) }));
   const seen: NetworkStatus[] = [];
   const feed = createStatusFeed(backend.deps, (s) => seen.push(s));
 
   await feed.start();
   assert.equal(backend.fetches, 1);
   assert.deepEqual(
-    seen.map((s) => s.hubConnections),
+    seen.map((s) => s.meshPeers.length),
     [1],
   );
 
-  backend.push(status({ hubConnections: 2, tunnelActive: true }));
+  backend.push(status({ meshPeers: peers(2), tunnelActive: true }));
   assert.equal(seen.length, 2);
   assert.equal(seen[1]?.tunnelActive, true);
   assert.equal(backend.fetches, 1, "no polling: a push does not trigger another read");
@@ -134,20 +129,20 @@ test("a read that finishes after a push does not overwrite the newer status", as
         return () => {};
       },
     },
-    (s) => seen.push(s.hubConnections),
+    (s) => seen.push(s.meshPeers.length),
   );
 
   const started = feed.start();
   await new Promise((r) => setImmediate(r)); // subscribed, read still pending
-  handlers[0]?.(status({ hubConnections: 5 })); // newer, pushed while the read is pending
-  release(status({ hubConnections: 1 })); // older
+  handlers[0]?.(status({ meshPeers: peers(5) })); // newer, pushed while the read is pending
+  release(status({ meshPeers: peers(1) })); // older
   await started;
 
   assert.deepEqual(seen, [5]);
 });
 
 test("a failed read is tolerated and pushes still arrive", async () => {
-  const backend = fakeBackend(new Error("agent not ready"));
+  const backend = fakeBackend(new Error("network not ready"));
   const seen: NetworkStatus[] = [];
   const feed = createStatusFeed(backend.deps, (s) => seen.push(s));
 
