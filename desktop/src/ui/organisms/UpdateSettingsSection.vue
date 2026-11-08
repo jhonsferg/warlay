@@ -2,7 +2,8 @@
 import { CircleCheck, Download, ExternalLink, RefreshCw, Rocket, TriangleAlert } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { isDesktop, native } from "../../services/native";
-import { formatBytes, formatLastCheck, percent, releaseHighlights } from "../../services/updates";
+import { renderMarkdown } from "../../services/markdown";
+import { formatBytes, formatLastCheck, percent } from "../../services/updates";
 import { useUpdates } from "../../stores/updates";
 import WButton from "../atoms/WButton.vue";
 
@@ -11,7 +12,7 @@ const view = computed(() => updates.state);
 const status = computed(() => view.value.status);
 const phase = computed(() => view.value.phase);
 const pct = computed(() => percent(view.value.progress));
-const highlights = computed(() => releaseHighlights(status.value?.notes ?? ""));
+const notesHtml = computed(() => renderMarkdown(status.value?.notes ?? ""));
 const busy = computed(() => ["checking", "downloading", "installing"].includes(phase.value));
 
 const publishedOn = computed(() => {
@@ -100,9 +101,8 @@ onUnmounted(() => {
 
       <template v-if="phase === 'available' && status">
         <p class="updates__muted">Publicada el {{ publishedOn }} · {{ formatBytes(status.sizeBytes) }}</p>
-        <ul v-if="highlights.length" class="updates__notes" data-testid="update-notes">
-          <li v-for="line in highlights" :key="line">{{ line }}</li>
-        </ul>
+        <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapes all raw HTML -->
+        <div v-if="notesHtml" class="updates__notes" data-testid="update-notes" v-html="notesHtml" />
         <p v-if="!status.canSelfUpdate" class="updates__hint" data-testid="update-manual">
           Esta copia no se instaló con el instalador (es portátil), así que no puede actualizarse sola. Descarga la
           nueva versión desde GitHub.
@@ -218,13 +218,69 @@ onUnmounted(() => {
     font-size: var(--fs-sm);
   }
   &__notes {
-    margin: 0;
-    padding-left: var(--s-5);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: var(--s-2);
     color: var(--text-2);
     font-size: var(--fs-sm);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+
+    // The notes come from `v-html`, so their elements carry no scope id.
+    :deep(h3),
+    :deep(h4),
+    :deep(h5),
+    :deep(h6) {
+      margin: var(--s-3) 0 var(--s-1);
+      color: var(--text-1);
+      font-size: var(--fs-md);
+    }
+    :deep(p),
+    :deep(blockquote),
+    :deep(pre) {
+      margin: 0 0 var(--s-2);
+    }
+    :deep(ul),
+    :deep(ol) {
+      margin: 0 0 var(--s-2);
+      padding-left: var(--s-5);
+    }
+    :deep(li) {
+      margin-bottom: 4px;
+    }
+    :deep(a) {
+      color: var(--accent);
+    }
+    :deep(code) {
+      padding: 1px 5px;
+      border-radius: var(--r-sm);
+      background: var(--bg-4);
+      font-size: 0.92em;
+    }
+    :deep(pre) {
+      padding: var(--s-3);
+      overflow-x: auto;
+      border-radius: var(--r-sm);
+      background: var(--bg-4);
+    }
+    :deep(pre code) {
+      padding: 0;
+      background: none;
+    }
+    :deep(blockquote) {
+      padding-left: var(--s-3);
+      border-left: 3px solid var(--line-2);
+    }
+    :deep(table) {
+      border-collapse: collapse;
+      margin-bottom: var(--s-2);
+    }
+    :deep(th),
+    :deep(td) {
+      padding: 4px 8px;
+      border: 1px solid var(--line-2);
+      text-align: left;
+    }
   }
   &__progress {
     display: flex;
