@@ -1611,9 +1611,27 @@ mod tests {
         let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel(4);
         let (desktop_tx, mut desktop_rx) = tokio::sync::mpsc::channel(4);
 
-        assert!(route_datagram(peer, &[DATAGRAM_LAN, 1, 2, 3], &lan_tx, &voice_tx, &desktop_tx));
-        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 9, 8], &lan_tx, &voice_tx, &desktop_tx));
-        assert!(route_datagram(peer, &[DATAGRAM_DESKTOP, 5, 6, 7], &lan_tx, &voice_tx, &desktop_tx));
+        assert!(route_datagram(
+            peer,
+            &[DATAGRAM_LAN, 1, 2, 3],
+            &lan_tx,
+            &voice_tx,
+            &desktop_tx
+        ));
+        assert!(route_datagram(
+            peer,
+            &[DATAGRAM_VOICE, 9, 8],
+            &lan_tx,
+            &voice_tx,
+            &desktop_tx
+        ));
+        assert!(route_datagram(
+            peer,
+            &[DATAGRAM_DESKTOP, 5, 6, 7],
+            &lan_tx,
+            &voice_tx,
+            &desktop_tx
+        ));
         // Unknown tags and empty datagrams are ignored, never fatal.
         assert!(route_datagram(peer, &[0x7F, 1], &lan_tx, &voice_tx, &desktop_tx));
         assert!(route_datagram(peer, &[], &lan_tx, &voice_tx, &desktop_tx));
@@ -1635,7 +1653,13 @@ mod tests {
         let (desktop_tx, _desktop_rx) = tokio::sync::mpsc::channel(2);
 
         for i in 0..5u8 {
-            assert!(route_datagram(peer, &[DATAGRAM_VOICE, i], &lan_tx, &voice_tx, &desktop_tx));
+            assert!(route_datagram(
+                peer,
+                &[DATAGRAM_VOICE, i],
+                &lan_tx,
+                &voice_tx,
+                &desktop_tx
+            ));
         }
         // Only the first two fit; the rest were dropped, not queued.
         assert_eq!(voice_rx.try_recv().unwrap().1, vec![0]);
@@ -1643,7 +1667,13 @@ mod tests {
         assert!(voice_rx.try_recv().is_err());
 
         drop(voice_rx);
-        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 7], &lan_tx, &voice_tx, &desktop_tx));
+        assert!(route_datagram(
+            peer,
+            &[DATAGRAM_VOICE, 7],
+            &lan_tx,
+            &voice_tx,
+            &desktop_tx
+        ));
     }
 
     #[test]
@@ -1652,7 +1682,13 @@ mod tests {
         let (voice_tx, _voice_rx) = tokio::sync::mpsc::channel(1);
         let (desktop_tx, _desktop_rx) = tokio::sync::mpsc::channel(1);
         drop(lan_rx);
-        assert!(!route_datagram(Uuid::new_v4(), &[DATAGRAM_LAN, 1], &lan_tx, &voice_tx, &desktop_tx));
+        assert!(!route_datagram(
+            Uuid::new_v4(),
+            &[DATAGRAM_LAN, 1],
+            &lan_tx,
+            &voice_tx,
+            &desktop_tx
+        ));
     }
 
     #[test]
@@ -1833,7 +1869,10 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         assert_eq!(desktop_at_host, vec![(joiner_id, b"desktop-from-joiner".to_vec())]);
-        assert!(host.poll_voice_frames().is_empty(), "desktop audio must not leak into voice");
+        assert!(
+            host.poll_voice_frames().is_empty(),
+            "desktop audio must not leak into voice"
+        );
 
         // Without a valid ticket nobody gets in.
         let intruder = PeerMesh::spawn_with(MeshConfig {
@@ -1911,5 +1950,3 @@ mod tests {
         j2_mesh.abort();
     }
 }
-
-
