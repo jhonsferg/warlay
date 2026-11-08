@@ -45,7 +45,9 @@ const since = computed(() => (profile.value ? shortDate(new Date(profile.value.m
   <aside class="profile" aria-label="Perfil" data-testid="friend-profile">
     <header class="profile__head">
       <span>Perfil</span>
-      <WIconButton label="Cerrar perfil" size="sm" data-testid="profile-close" @click="emit('close')"><X /></WIconButton>
+      <WIconButton label="Cerrar perfil" size="sm" data-testid="profile-close" @click="emit('close')"
+        ><X
+      /></WIconButton>
     </header>
 
     <div class="profile__card">
