@@ -38,9 +38,6 @@ fn clear_peer_mesh(s: &mut DaemonState) {
     if let Some(mesh) = s.peer_mesh.take() {
         mesh.abort();
     }
-    if let Some(task) = s.voice_poll_task.take() {
-        task.abort();
-    }
 }
 
 pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>, app: AppHandle) -> DaemonResponse {
@@ -137,18 +134,6 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                                     let mesh_handle = Arc::new(mesh);
                                     s.peer_mesh = Some(mesh_handle.clone());
 
-                                    let app_for_voice = app_for_msg_inner.clone();
-                                    let voice_task = tokio::spawn(async move {
-                                        let mut interval =
-                                            tokio::time::interval(std::time::Duration::from_millis(15));
-                                        interval.set_missed_tick_behavior(
-                                            tokio::time::MissedTickBehavior::Skip,
-                                        );
-                                        loop {
-                                            interval.tick().await;
-                                        }
-                                    });
-                                    s.voice_poll_task = Some(voice_task);
                                 } else {
                                     warn!(%rv_str, "no se pudo resolver direcciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n de rendezvous para PeerMesh");
                                 }
