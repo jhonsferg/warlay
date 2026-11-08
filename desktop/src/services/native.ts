@@ -4,6 +4,7 @@
 // the whole UI can be exercised and screenshotted without Windows.
 import type { NetworkStatus } from "./networkStatus";
 import type { HelperInfo, RoomSession } from "./types";
+import type { UpdateProgress, UpdateStatus } from "./updates";
 
 export type { NetworkStatus, PeerLinkStatus } from "./networkStatus";
 
@@ -77,6 +78,14 @@ async function listen<T>(event: string, handler: (payload: T) => void): Promise<
 export const native = {
   /** Developer tools: F12 / Ctrl+Shift+I, enabled in release builds too. */
   openDevtools: () => invoke<void>("open_devtools"),
+
+  /** Client updates from GitHub Releases (desktop only). */
+  checkForUpdate: () => invoke<UpdateStatus>("check_for_update"),
+  /** Downloads, verifies, installs and restarts into the new version. */
+  installUpdate: () => invoke<void>("install_update"),
+  openReleasePage: (url: string) => invoke<void>("open_release_page", { url }),
+  onUpdateProgress: (handler: (progress: UpdateProgress) => void) =>
+    listen<UpdateProgress>("update://progress", handler),
 
   /** Logs: levels change while running; old files are swept by age. */
   agentSettings: () => invoke<AgentSettings | undefined>("get_agent_settings"),
