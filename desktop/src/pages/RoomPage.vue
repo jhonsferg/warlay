@@ -32,6 +32,7 @@ import EmptyState from "../ui/molecules/EmptyState.vue";
 import ChatPanel from "../ui/organisms/ChatPanel.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import InviteFriendsDialog from "../ui/organisms/InviteFriendsDialog.vue";
+import MicPermissionDialog from "../ui/organisms/MicPermissionDialog.vue";
 import AppShell from "../ui/templates/AppShell.vue";
 
 const route = useRoute();
@@ -244,6 +245,14 @@ async function kick(member: UserSummary) {
       </aside>
     </div>
 
+    <MicPermissionDialog
+      v-if="voice.dialog"
+      :mode="voice.dialog"
+      @allow="voice.answerConsent(true)"
+      @deny="voice.answerConsent(false)"
+      @close="voice.dismissDialog()"
+    />
+
     <InviteFriendsDialog
       v-if="inviting && room"
       title="Invitar a la sala"
@@ -325,8 +334,10 @@ async function kick(member: UserSummary) {
 
     @container (max-width: 680px) {
       flex-direction: row;
+      // Three actions (voice, play, leave) no longer fit on one row.
+      flex-wrap: wrap;
       > * {
-        flex: 1;
+        flex: 1 1 auto;
       }
     }
   }
