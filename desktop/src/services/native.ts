@@ -135,7 +135,8 @@ export const native = {
   },
 
   /** One encoded Opus frame of our microphone, sent to the room over the mesh. */
-  sendVoiceFrame: (frame: Uint8Array) => invoke<number>("send_voice_frame", frame as unknown as Record<string, unknown>),
+  sendVoiceFrame: (frame: Uint8Array) =>
+    invoke<number>("send_voice_frame", frame as unknown as Record<string, unknown>),
   onVoiceFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
     listen<{ from: string; data: string }[]>("voice://frames", handler),
   setMicConsent: (granted: boolean) => invoke<void>("set_mic_consent", { granted }),
