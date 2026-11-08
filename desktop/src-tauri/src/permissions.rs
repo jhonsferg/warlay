@@ -22,6 +22,58 @@ pub fn decide(kind: PermissionKind, mic_consent: bool) -> PermissionResponse {
     }
 }
 
+/// Installs, on the main WebView2, the handler that answers the microphone
+/// request from Warlay's own consent AND forbids WebView2 from remembering the
+/// answer. WebView2 saves whatever it is told in its profile and, from then on,
+/// never asks again: a stored "block" (e.g. from the old default prompt) would
+/// leave voice dead for good, and a stored "allow" would survive the user
+/// withdrawing their consent. With `SavesInProfile = false` the decision is
+/// taken afresh from the settings every time.
+#[cfg(windows)]
+pub fn install_native_policy(window: &tauri::WebviewWindow, app: tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::Manager;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+        COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DENY,
+    };
+    use webview2_com::PermissionRequestedEventHandler;
+    use windows_core::Interface;
+
+    window.with_webview(move |platform| unsafe {
+        let Ok(core) = platform.controller().CoreWebView2() else {
+            tracing::warn!("no se pudo obtener CoreWebView2 para la politica de permisos");
+            return;
+        };
+        let handler = PermissionRequestedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+            args.PermissionKind(&mut kind)?;
+            if kind != COREWEBVIEW2_PERMISSION_KIND_MICROPHONE {
+                return Ok(());
+            }
+            let consent = app
+                .try_state::<crate::state::AppState>()
+                .and_then(|state| state.store.get_settings().ok())
+                .is_some_and(|settings| settings.mic_consent);
+            let response = decide(PermissionKind::Microphone, consent);
+            tracing::info!(consent, ?response, "microfono solicitado (politica nativa, sin guardar en el perfil)");
+            match response {
+                PermissionResponse::Allow => args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?,
+                PermissionResponse::Deny => args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?,
+                _ => {}
+            }
+            if let Ok(extended) = args.cast::<ICoreWebView2PermissionRequestedEventArgs3>() {
+                extended.SetSavesInProfile(false)?;
+            }
+            Ok(())
+        }));
+        let mut token = Default::default();
+        if let Err(error) = core.add_PermissionRequested(&handler, &mut token) {
+            tracing::warn!(%error, "no se pudo instalar la politica nativa de permisos");
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
