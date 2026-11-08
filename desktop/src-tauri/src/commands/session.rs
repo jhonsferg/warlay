@@ -1,18 +1,17 @@
 //! Room sessions of the new architecture: the frontend gets the room's
 //! session (helper + ticket) from the main server and hands it to the
-//! agent, which links the players directly.
+//! runtime, which links the players directly.
 
-use crate::agent::handlers::handle_request;
 use crate::core::error::AppError;
+use crate::runtime::handlers::handle_request;
 use crate::state::AppState;
-use tauri::{AppHandle, State};
-use warlay::protocol::ipc::AgentRequest;
+use tauri::State;
+use warlay::protocol::ipc::RuntimeRequest;
 
-use super::matchmaking::{require_agent_state, success_or_err};
+use super::runtime::{require_runtime_state, success_or_err};
 
 #[tauri::command]
 pub async fn start_room_session(
-    app: AppHandle,
     state: State<'_, AppState>,
     room_id: String,
     user_id: String,
@@ -21,10 +20,10 @@ pub async fn start_room_session(
     relay_addr: String,
     ticket: String,
 ) -> Result<(), AppError> {
-    let agent_state = require_agent_state(&state)?;
+    let runtime_state = require_runtime_state(&state)?;
     success_or_err(
         handle_request(
-            AgentRequest::StartRoomSession {
+            RuntimeRequest::StartRoomSession {
                 room_id,
                 user_id,
                 is_host,
@@ -32,41 +31,38 @@ pub async fn start_room_session(
                 relay_addr,
                 ticket,
             },
-            agent_state,
-            app,
+            runtime_state,
         )
         .await,
     )
 }
 
 #[tauri::command]
-pub async fn stop_room_session(app: AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
-    let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(AgentRequest::StopRoomSession, agent_state, app).await)
+pub async fn stop_room_session(state: State<'_, AppState>) -> Result<(), AppError> {
+    let runtime_state = require_runtime_state(&state)?;
+    success_or_err(handle_request(RuntimeRequest::StopRoomSession, runtime_state).await)
 }
 
 #[tauri::command]
-pub async fn start_game_tunnel(app: AppHandle, state: State<'_, AppState>, game_port: u16) -> Result<(), AppError> {
-    let agent_state = require_agent_state(&state)?;
-    success_or_err(handle_request(AgentRequest::StartGameTunnel { game_port }, agent_state, app).await)
+pub async fn start_game_tunnel(state: State<'_, AppState>, game_port: u16) -> Result<(), AppError> {
+    let runtime_state = require_runtime_state(&state)?;
+    success_or_err(handle_request(RuntimeRequest::StartGameTunnel { game_port }, runtime_state).await)
 }
 
 #[tauri::command]
 pub async fn update_room_helper(
-    app: AppHandle,
     state: State<'_, AppState>,
     rendezvous_addr: String,
     relay_addr: String,
 ) -> Result<(), AppError> {
-    let agent_state = require_agent_state(&state)?;
+    let runtime_state = require_runtime_state(&state)?;
     success_or_err(
         handle_request(
-            AgentRequest::UpdateRoomHelper {
+            RuntimeRequest::UpdateRoomHelper {
                 rendezvous_addr,
                 relay_addr,
             },
-            agent_state,
-            app,
+            runtime_state,
         )
         .await,
     )
