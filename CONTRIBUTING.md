@@ -32,6 +32,10 @@ npm ci
 npm run tauri dev
 ```
 
+The server address is not in the source: production builds read it from the
+`VITE_WARLAY_MAIN_URL` variable (environment or `desktop/.env`, see
+`desktop/.env.example`). `npm run tauri dev` defaults to a local server.
+
 See the [README](README.md#building-from-source) for full build instructions.
 
 ## Workflow
@@ -105,5 +109,7 @@ To enforce this workflow, configure branch protection for `main`:
 - Require a pull request before merging, with at least one approval.
 - Require the status checks from the **CI** workflow to pass.
 - Do not allow bypassing the rules above.
+- Create the `WARLAY_MAIN_URL` repository secret (the address of the Warlay
+  server the released client talks to). Releases fail without it.
 - Allow GitHub Actions to create releases:
   `Settings > Actions > General > Workflow permissions > Read and write`.
