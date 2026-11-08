@@ -92,7 +92,7 @@ impl From<redis::RedisError> for ApiError {
             || error.is_connection_dropped()
             || error.is_connection_refusal()
             || error.is_timeout()
-            || error.kind() == redis::ErrorKind::BusyLoadingError;
+            || error.kind() == redis::ErrorKind::Server(redis::ServerErrorKind::BusyLoading);
         if transient {
             Self::unavailable(error)
         } else {
