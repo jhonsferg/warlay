@@ -30,6 +30,8 @@ export const useVoice = defineStore("voice", () => {
   const dialog = ref<MicDialog>(null);
   /** Client ids heard in the last few hundred ms. */
   const speaking = ref<string[]>([]);
+  /** This PC's sound is being shared with the room right now. */
+  const sharingDesktop = ref(false);
 
   const lastFrameAt = new Map<string, number>();
   const engine = new VoiceEngine({
@@ -38,6 +40,7 @@ export const useVoice = defineStore("voice", () => {
     },
   });
   let unlistenFrames: (() => void) | null = null;
+  let unlistenDesktop: (() => void) | null = null;
   let unlistenToggle: (() => void) | null = null;
   let speakingTimer: ReturnType<typeof setInterval> | null = null;
   let consentResolver: ((granted: boolean) => void) | null = null;
@@ -50,6 +53,11 @@ export const useVoice = defineStore("voice", () => {
           lastFrameAt.set(from, now);
           engine.push(from, fromBase64(data));
         }
+      });
+    }
+    if (!unlistenDesktop) {
+      unlistenDesktop = await native.onDesktopFrames((batch) => {
+        for (const { from, data } of batch) engine.pushDesktop(from, fromBase64(data));
       });
     }
     if (!speakingTimer) {
@@ -78,6 +86,32 @@ export const useVoice = defineStore("voice", () => {
   function dismissDialog() {
     if (dialog.value === "ask") answerConsent(false);
     else dialog.value = null;
+  }
+
+  /**
+   * Starts or stops sharing the PC's sound to match `wanted`. Only while in
+   * voice. A failure (old Windows, no output device, no room) tells the user
+   * and switches the setting back off, so the switch never lies.
+   */
+  async function syncDesktopShare(wanted: boolean) {
+    if (wanted && active.value && !sharingDesktop.value) {
+      try {
+        await native.startDesktopAudio();
+        sharingDesktop.value = true;
+      } catch (e) {
+        toasts.error("No se pudo compartir el audio del escritorio", e instanceof Error ? e.message : String(e));
+        await settings
+          .setVoicePrefs({
+            micDeviceId: settings.micDeviceId,
+            noiseSuppression: settings.noiseSuppression,
+            shareDesktopAudio: false,
+          })
+          .catch(() => {});
+      }
+    } else if ((!wanted || !active.value) && sharingDesktop.value) {
+      await native.stopDesktopAudio().catch(() => {});
+      sharingDesktop.value = false;
+    }
   }
 
   /** Joins voice (opens the mic, unmuted) or, once joined, flips mute. */
@@ -114,6 +148,8 @@ export const useVoice = defineStore("voice", () => {
       if (settings.noiseSuppression === "strong" && engine.noiseFallbackReason) {
         toasts.info("Supresión fuerte no disponible", "Se usa la estándar del navegador.");
       }
+      // The PC's sound is independent of the microphone's mute.
+      await syncDesktopShare(settings.shareDesktopAudio);
       // Mute toggle while the game has focus; a taken key is not fatal.
       await native.registerVoiceShortcut().catch((e) => {
         error.value = e instanceof Error ? e.message : String(e);
@@ -135,6 +171,10 @@ export const useVoice = defineStore("voice", () => {
   }
 
   async function leave() {
+    if (sharingDesktop.value) {
+      await native.stopDesktopAudio().catch(() => {});
+      sharingDesktop.value = false;
+    }
     await native.unregisterVoiceShortcut().catch(() => {});
     await engine.stop();
     active.value = false;
@@ -142,7 +182,7 @@ export const useVoice = defineStore("voice", () => {
     speaking.value = [];
     lastFrameAt.clear();
     // A failing unlisten must never leave voice half torn down.
-    for (const stop of [unlistenFrames, unlistenToggle]) {
+    for (const stop of [unlistenFrames, unlistenDesktop, unlistenToggle]) {
       try {
         stop?.();
       } catch {
@@ -150,6 +190,7 @@ export const useVoice = defineStore("voice", () => {
       }
     }
     unlistenFrames = null;
+    unlistenDesktop = null;
     unlistenToggle = null;
     if (speakingTimer) clearInterval(speakingTimer);
     speakingTimer = null;
@@ -164,6 +205,8 @@ export const useVoice = defineStore("voice", () => {
     error,
     dialog,
     speaking,
+    sharingDesktop,
+    syncDesktopShare,
     toggle,
     leave,
     listenOnly,
