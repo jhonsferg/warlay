@@ -13,7 +13,7 @@ body:
       label: Component
       options:
         - Desktop client
-        - Network agent (inside warlay.exe)
+        - Network / P2P / game tunnel
         - Server (hub)
         - Release / installer
         - Other
@@ -49,7 +49,7 @@ body:
     attributes:
       label: Logs
       description: |
-        Client/agent logs live in `%APPDATA%\com.warlay.lanlauncher\logs\`;
+        Client logs live in `%APPDATA%\com.warlay.lanlauncher\logs\`;
         server logs are on stdout (`docker logs warlay-hub`). Remove anything private.
       render: text
   - type: input
