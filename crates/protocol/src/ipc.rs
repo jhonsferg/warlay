@@ -281,13 +281,6 @@ impl NetworkStatus {
     }
 }
 
-// Former names, kept until every consumer has moved to the new ones.
-pub type DaemonRequest = AgentRequest;
-pub type DaemonResponse = AgentResponse;
-pub type DaemonRequestEnvelope = AgentRequestEnvelope;
-pub type DaemonResponseEnvelope = AgentResponseEnvelope;
-pub type AgentStatusSnapshot = NetworkStatus;
-
 /// Why a `ConnectToHub` request failed, preserved structurally (rather than
 /// collapsed into a string) so the UI can show a password prompt or a
 /// rejection reason instead of a generic error.
