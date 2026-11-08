@@ -56,7 +56,8 @@ pub async fn start_desktop_audio(state: State<'_, AppState>) -> Result<(), AppEr
         Some(agent_state) => agent_state.lock().await.peer_mesh.clone(),
         None => None,
     };
-    let mesh = mesh.ok_or_else(|| AppError::InvalidInput("no hay una sala activa para compartir el audio".to_string()))?;
+    let mesh =
+        mesh.ok_or_else(|| AppError::InvalidInput("no hay una sala activa para compartir el audio".to_string()))?;
     // Opening WASAPI blocks for a moment: keep it off the async runtime.
     // The WebView2 tree plays the other players' voices and is left out; the
     // game (also our child) is not, so its sound is shared.
