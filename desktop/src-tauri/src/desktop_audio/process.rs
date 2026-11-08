@@ -27,7 +27,11 @@ pub fn child_process_named(parent: u32, exe_name: &str) -> Option<u32> {
         let mut more = Process32FirstW(snapshot, &mut entry).is_ok();
         while more {
             if entry.th32ParentProcessID == parent {
-                let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                let len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
                 let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
                 if name.eq_ignore_ascii_case(exe_name) {
                     found = Some(entry.th32ProcessID);
