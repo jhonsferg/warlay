@@ -4,8 +4,100 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Warlay</title>
+    <!-- Splash: inline CSS so it paints before any JS/CSS bundle loads. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #07090e;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #07090e;
+        color: #eef1f8;
+        font-family: Inter, system-ui, "Segoe UI", sans-serif;
+        transition: opacity 0.25s ease;
+      }
+      #splash.splash--hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash .splash__name {
+        margin-top: 6px;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+      }
+      #splash .splash__bar {
+        position: relative;
+        width: 180px;
+        height: 4px;
+        margin-top: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      #splash .splash__bar::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 40%;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #7b61ff, #4f7bff 50%, #22d3ee);
+        animation: splash-slide 1.2s ease-in-out infinite;
+      }
+      #splash .splash__version {
+        font-size: 12px;
+        color: #6c7590;
+      }
+      @keyframes splash-slide {
+        from {
+          left: -40%;
+        }
+        to {
+          left: 100%;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash .splash__bar::after {
+          animation-duration: 3s;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" role="status" aria-label="Cargando Warlay">
+      <svg width="88" height="88" viewBox="0 0 48 48" aria-hidden="true">
+        <defs>
+          <linearGradient id="splash-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#7b61ff" />
+            <stop offset="0.55" stop-color="#4f7bff" />
+            <stop offset="1" stop-color="#22d3ee" />
+          </linearGradient>
+        </defs>
+        <rect x="2" y="2" width="44" height="44" rx="14" fill="url(#splash-grad)" />
+        <path
+          d="M11 15 L17 33 L24 20 L31 33 L37 15"
+          fill="none"
+          stroke="#fff"
+          stroke-width="4.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <div class="splash__name">WARLAY</div>
+      <div class="splash__bar"></div>
+      <div class="splash__version">v%APP_VERSION%</div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
