@@ -56,6 +56,31 @@ pub async fn mark_read(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// Removes one of the caller's notifications (the bell's "clear" for a
+/// single item). Deleting somebody else's id is a harmless no-op.
+pub async fn remove(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    sqlx::query("DELETE FROM notifications WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// Clears every notification of the caller. Pending friend requests and
+/// invitations are NOT notifications: they stay until answered.
+pub async fn clear_all(State(state): State<AppState>, auth: AuthUser) -> ApiResult<Json<serde_json::Value>> {
+    sqlx::query("DELETE FROM notifications WHERE user_id = $1")
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 pub async fn mark_all_read(State(state): State<AppState>, auth: AuthUser) -> ApiResult<Json<serde_json::Value>> {
     sqlx::query("UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL")
         .bind(auth.user_id)
