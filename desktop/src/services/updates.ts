@@ -132,3 +132,35 @@ export function createUpdater(deps: UpdaterDeps, onChange: (state: UpdateState) 
 
   return { check, install, state: () => state };
 }
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
+/** When the last check happened, as the label under the check button. */
+export function formatLastCheck(at: number | null, now: number, locale = "es"): string {
+  if (at === null || !Number.isFinite(at)) return "Nunca";
+  const ago = Math.max(0, now - at);
+  if (ago < MINUTE) return "Hace unos segundos";
+  if (ago < HOUR) return `Hace ${Math.floor(ago / MINUTE)} min`;
+  if (ago < 24 * HOUR) return `Hace ${Math.floor(ago / HOUR)} h`;
+  return new Date(at).toLocaleString(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const LAST_CHECK_KEY = "warlay.updates.lastCheck";
+
+/** Remembers the last successful check across restarts. */
+export function readLastCheck(storage: Pick<Storage, "getItem">): number | null {
+  const raw = storage.getItem(LAST_CHECK_KEY);
+  const value = raw === null ? Number.NaN : Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function saveLastCheck(storage: Pick<Storage, "setItem">, at: number): void {
+  storage.setItem(LAST_CHECK_KEY, String(at));
+}
