@@ -398,7 +398,13 @@ mod tests {
     #[test]
     fn network_status_keeps_the_camel_case_shape_the_frontend_reads() {
         let json = serde_json::to_value(status(vec![peer("a", "connected")])).unwrap();
-        for key in ["uptimeSecs", "hubConnections", "tunnelActive", "lanDiscoveryEnabled", "meshPeers"] {
+        for key in [
+            "uptimeSecs",
+            "hubConnections",
+            "tunnelActive",
+            "lanDiscoveryEnabled",
+            "meshPeers",
+        ] {
             assert!(json.get(key).is_some(), "missing {key}");
         }
         let link = &json["meshPeers"][0];
