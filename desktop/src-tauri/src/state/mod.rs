@@ -74,6 +74,8 @@ pub struct AppState {
     /// a job handle to in that case, so the older filename-match fallback
     /// (`launcher::is_process_running_at`) is used instead.
     pub game_job: Mutex<Option<crate::launcher::GameJob>>,
+    /// The global mute shortcut currently registered (only while in voice).
+    pub voice_shortcut: Mutex<Option<tauri_plugin_global_shortcut::Shortcut>>,
 }
 
 impl AppState {
@@ -89,6 +91,7 @@ impl AppState {
             app_handle: Mutex::new(None),
             game_running: AtomicBool::new(false),
             game_job: Mutex::new(None),
+            voice_shortcut: Mutex::new(None),
         }
     }
 }
