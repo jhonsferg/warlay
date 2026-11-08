@@ -968,3 +968,146 @@ async fn e2e_keys_and_encrypted_direct_messages() {
         assert_eq!((status, value["error"].as_str()), (400, Some("message_too_long")));
     }
 }
+
+#[tokio::test]
+async fn offline_friends_report_when_they_were_last_seen() {
+    let Some(s) = start().await else { return };
+    let a = s.register("ls_a").await;
+    let b = s.register("ls_b").await;
+    let c = s.register("ls_c").await;
+    s.befriend(&a, &b).await;
+    s.befriend(&a, &c).await;
+
+    // B connects and leaves; C never connects at all.
+    let ws_b = s.socket(&b).await;
+    let friends = s.ok("GET", "/friends", &a, None).await;
+    let find = |friends: &Value, id: Uuid| {
+        friends
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["id"] == id.to_string())
+            .cloned()
+            .expect("friend present")
+    };
+    // Online: no "last seen" (they are here right now).
+    let online = find(&friends, b.id);
+    assert_eq!(online["presence"]["status"], "online");
+    assert!(online["presence"]["lastSeenAt"].is_null());
+
+    drop(ws_b);
+    let friends = eventually(&s, &a, "/friends", |v| {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["id"] == b.id.to_string() && f["presence"]["status"] == "offline")
+    })
+    .await;
+    let offline = find(&friends, b.id);
+    let seen = offline["presence"]["lastSeenAt"].as_str().expect("lastSeenAt for an offline friend");
+    let seen = chrono::DateTime::parse_from_rfc3339(seen).expect("RFC 3339 timestamp");
+    let age = chrono::Utc::now().signed_duration_since(seen).num_seconds();
+    assert!((0..60).contains(&age), "seen {age}s ago");
+
+    // Never connected: offline, and honestly no timestamp.
+    let never = find(&friends, c.id);
+    assert_eq!(never["presence"]["status"], "offline");
+    assert!(never["presence"]["lastSeenAt"].is_null());
+
+    // The profile carries it too.
+    let profile = s.ok("GET", &format!("/users/{}", b.id), &a, None).await;
+    assert!(profile["presence"]["lastSeenAt"].is_string());
+}
+
+#[tokio::test]
+async fn notifications_can_be_cleared_one_by_one_or_all_at_once() {
+    let Some(s) = start().await else { return };
+    let a = s.register("nt_a").await;
+    let b = s.register("nt_b").await;
+    let c = s.register("nt_c").await;
+
+    // B receives two friend requests; A keeps one of its own.
+    s.ok("POST", "/friends/requests", &a, Some(json!({ "username": b.username }))).await;
+    s.ok("POST", "/friends/requests", &c, Some(json!({ "username": b.username }))).await;
+    let requests = s.ok("GET", "/friends/requests", &b, None).await;
+    let from_a = requests["incoming"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["from"]["id"] == a.id.to_string())
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    s.ok("POST", &format!("/friends/requests/{from_a}/accept"), &b, None).await;
+
+    let before_b = s.ok("GET", "/notifications", &b, None).await;
+    assert_eq!(before_b.as_array().unwrap().len(), 2);
+    let before_a = s.ok("GET", "/notifications", &a, None).await;
+    assert_eq!(before_a.as_array().unwrap().len(), 1, "A: friend_accepted");
+
+    // One by one.
+    let first = before_b[0]["id"].as_str().unwrap().to_string();
+    s.ok("DELETE", &format!("/notifications/{first}"), &b, None).await;
+    let after_one = s.ok("GET", "/notifications", &b, None).await;
+    assert_eq!(after_one.as_array().unwrap().len(), 1);
+    assert_ne!(after_one[0]["id"], first.as_str());
+
+    // Nobody can delete somebody else's notification.
+    let others = before_a[0]["id"].as_str().unwrap().to_string();
+    s.ok("DELETE", &format!("/notifications/{others}"), &b, None).await;
+    assert_eq!(s.ok("GET", "/notifications", &a, None).await.as_array().unwrap().len(), 1);
+
+    // All at once, only mine.
+    s.ok("DELETE", "/notifications", &b, None).await;
+    assert!(s.ok("GET", "/notifications", &b, None).await.as_array().unwrap().is_empty());
+    assert_eq!(s.ok("GET", "/notifications", &a, None).await.as_array().unwrap().len(), 1);
+
+    // Clearing the bell never discards what still needs an answer: C's
+    // friend request to B is still pending.
+    let pending = s.ok("GET", "/friends/requests", &b, None).await;
+    assert_eq!(pending["incoming"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn deleting_a_community_removes_it_and_its_pending_invites_for_everyone() {
+    let Some(s) = start().await else { return };
+    let owner = s.register("dc_o").await;
+    let member = s.register("dc_m").await;
+    let invited = s.register("dc_i").await;
+    s.befriend(&owner, &member).await;
+    s.befriend(&owner, &invited).await;
+
+    let community = s
+        .ok("POST", "/communities", &owner, Some(json!({ "name": unique("Borrable"), "isPublic": false })))
+        .await;
+    let id = community["id"].as_str().unwrap().to_string();
+    s.ok("POST", &format!("/communities/{id}/invites"), &owner, Some(json!({ "userId": member.id }))).await;
+    let invite = s.ok("GET", "/invites", &member, None).await;
+    let invite_id = invite[0]["id"].as_str().unwrap().to_string();
+    s.ok("POST", &format!("/invites/{invite_id}/accept"), &member, None).await;
+    // A second invite stays unanswered.
+    s.ok("POST", &format!("/communities/{id}/invites"), &owner, Some(json!({ "userId": invited.id }))).await;
+    assert_eq!(s.ok("GET", "/invites", &invited, None).await.as_array().unwrap().len(), 1);
+
+    // Only the owner may delete it.
+    let (status, _) = s.call("DELETE", &format!("/communities/{id}"), Some(&member.token), None).await;
+    assert_eq!(status, 403);
+    assert_eq!(s.ok("GET", &format!("/communities/{id}"), &member, None).await["memberCount"], 2);
+
+    let mut ws_member = s.socket(&member).await;
+    s.ok("DELETE", &format!("/communities/{id}"), &owner, None).await;
+
+    // Members are told, and it is gone for everybody -- including the invite.
+    let event = wait_for(&mut ws_member, "communityUpdated").await;
+    assert_eq!(event["communityId"], id.as_str());
+    for user in [&owner, &member] {
+        let (status, _) = s.call("GET", &format!("/communities/{id}"), Some(&user.token), None).await;
+        assert_eq!(status, 404, "{} still sees the community", user.username);
+        assert!(s.ok("GET", "/communities", user, None).await.as_array().unwrap().is_empty());
+    }
+    assert!(
+        s.ok("GET", "/invites", &invited, None).await.as_array().unwrap().is_empty(),
+        "the pending invite to a deleted community must disappear"
+    );
+}
