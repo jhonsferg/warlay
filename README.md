@@ -99,10 +99,10 @@ flowchart LR
     tunnel <-->|TCP relay, fallback| joinerDaemon
 ```
 
-| Component                       | Runs on                             | Role                                                      |
-| ------------------------------- | ----------------------------------- | --------------------------------------------------------- |
-| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.      |
-| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: UI (Tauri 2 + Vue 3) and network agent.     |
+| Component                       | Runs on                             | Role                                                  |
+| ------------------------------- | ----------------------------------- | ----------------------------------------------------- |
+| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.  |
+| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: UI (Tauri 2 + Vue 3) and network agent. |
 
 There is no separate daemon or service: the desktop client is the only
 program on the player's PC. Its Rust backend runs the network agent (hub
@@ -1419,7 +1419,7 @@ tunnel pairing and relays.
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | The client cannot connect to `wss://hub.example.com`       | Port 443 blocked, nginx not reloaded, or the certificate does not cover the hostname. Run step 10.      |
 | Rooms work but joining a game never connects               | Port 7443/tcp (TLS tunnel) or 7779/udp (rendezvous) blocked by the firewall or the provider's firewall. |
-| The host's game does not appear in _Local Area Network_    | The client is not running elevated on the host's PC. Restart the client and accept the UAC prompt.       |
+| The host's game does not appear in _Local Area Network_    | The client is not running elevated on the host's PC. Restart the client and accept the UAC prompt.      |
 | Port 7777 or 7778 reachable from the internet behind nginx | Docker publishes ports past `ufw`. Bind them to `127.0.0.1` as in step 6.                               |
 | Every player has to register again after an update         | The container was started without the `warlay-data` volume.                                             |
 
