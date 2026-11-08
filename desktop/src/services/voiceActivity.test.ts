@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { HANGOVER_FRAMES, OPEN_LEVEL, rms, VoiceGate } from "./voiceActivity.ts";
+import { HANGOVER_FRAMES, meterLevel, OPEN_LEVEL, rms, smoothLevel, VoiceGate } from "./voiceActivity.ts";
 
 const LOUD = OPEN_LEVEL * 10;
 
@@ -42,4 +42,20 @@ test("reset drops the hangover", () => {
   gate.pass(LOUD);
   gate.reset();
   assert.equal(gate.pass(0), false);
+});
+
+test("the meter fills at 0.2 rms and never leaves 0..1", () => {
+  assert.equal(meterLevel(0), 0);
+  assert.ok(Math.abs(meterLevel(0.1) - 0.5) < 1e-9);
+  assert.equal(meterLevel(0.5), 1);
+  assert.equal(meterLevel(-1), 0);
+});
+
+test("the meter rises at once and falls gradually", () => {
+  assert.equal(smoothLevel(0.2, 0.9), 0.9);
+  const fell = smoothLevel(1, 0);
+  assert.ok(fell > 0 && fell < 1);
+  let level = 1;
+  for (let i = 0; i < 20; i++) level = smoothLevel(level, 0);
+  assert.ok(level < 0.01, "it ends at silence");
 });
