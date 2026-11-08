@@ -197,6 +197,7 @@ pub struct PeerMeshSharedState {
     pub datagram_tasks: Vec<JoinHandle<()>>,
     pub own_registration_addr: Option<SocketAddr>,
     lan_tx: tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
+    voice_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
     /// Where `STREAM_LOCAL_GAME` streams get bridged while a game tunnel is
     /// running on this machine; `None` means "no tunnel yet" and makes the
     /// dispatchers hold (bounded) instead of dropping sessions that raced us.
@@ -214,6 +215,7 @@ pub struct PeerMeshHandle {
     task: JoinHandle<()>,
     state: Arc<std::sync::RwLock<PeerMeshSharedState>>,
     lan_rx: std::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>,
+    voice_rx: std::sync::Mutex<tokio::sync::mpsc::Receiver<(Uuid, Vec<u8>)>>,
     /// Where the mesh registers (rendezvous) and relays, changeable live.
     helper_tx: tokio::sync::watch::Sender<(SocketAddr, Option<SocketAddr>)>,
 }
@@ -351,6 +353,29 @@ impl PeerMeshHandle {
         drain(&self.lan_rx)
     }
 
+    /// Sends one encoded voice frame to every connected peer. Voice is
+    /// real-time and unreliable by design (QUIC datagrams): a frame that
+    /// can't be sent is simply lost. Returns how many peers it went to.
+    pub fn broadcast_voice_frame(&self, frame: &[u8]) -> usize {
+        self.connected_peers()
+            .iter()
+            .filter(|(peer_id, _)| self.send_tagged(*peer_id, DATAGRAM_VOICE, frame))
+            .count()
+    }
+
+    /// Voice frames received from peers since the last call, tagged with the
+    /// sender. The queue is bounded: if nobody polls, the oldest unread
+    /// frames stay and newer ones are dropped rather than growing memory.
+    pub fn poll_voice_frames(&self) -> Vec<(Uuid, Vec<u8>)> {
+        let mut items = Vec::new();
+        if let Ok(mut rx) = self.voice_rx.lock() {
+            while let Ok(item) = rx.try_recv() {
+                items.push(item);
+            }
+        }
+        items
+    }
+
     /// A snapshot of every peer this mesh knows about and how far its
     /// direct-link negotiation with each has gotten — for the "Agente"
     /// diagnostic panel. Deliberately a plain tuple (not `PeerEntry`
@@ -411,6 +436,11 @@ impl PeerMeshHandle {
 
 /// First byte of every mesh datagram, saying what it carries.
 const DATAGRAM_LAN: u8 = 0x02;
+const DATAGRAM_VOICE: u8 = 0x03;
+
+/// Frames buffered for the consumer before newer ones are dropped: ~5 s of
+/// 20 ms frames from one talker, a few hundred ms from a full room.
+const VOICE_QUEUE_FRAMES: usize = 256;
 
 fn drain(rx: &std::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>) -> Vec<(Uuid, Vec<u8>)> {
     let mut items = Vec::new();
@@ -467,6 +497,7 @@ impl PeerMesh {
             _ => None,
         };
         let (lan_tx, lan_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (voice_tx, voice_rx) = tokio::sync::mpsc::channel(VOICE_QUEUE_FRAMES);
         let state = Arc::new(std::sync::RwLock::new(PeerMeshSharedState {
             own_client_id,
             is_host,
@@ -479,6 +510,7 @@ impl PeerMesh {
             datagram_tasks: Vec::new(),
             own_registration_addr: None,
             lan_tx,
+            voice_tx,
             local_game: None,
             relay,
             sync_routes: HashMap::new(),
@@ -503,6 +535,7 @@ impl PeerMesh {
             task,
             state,
             lan_rx: std::sync::Mutex::new(lan_rx),
+            voice_rx: std::sync::Mutex::new(voice_rx),
             helper_tx,
         }
     }
@@ -1230,8 +1263,9 @@ fn trigger_connection_attempts(
                     if st.datagram_peers.insert(peer_id) {
                         let handle_task = handle_arc.clone();
                         let lan_tx = st.lan_tx.clone();
+                        let voice_tx = st.voice_tx.clone();
                         let datagram_task = tokio::spawn(async move {
-                            run_datagram_listener_for_peer(peer_id, handle_task, lan_tx).await;
+                            run_datagram_listener_for_peer(peer_id, handle_task, lan_tx, voice_tx).await;
                         });
                         st.datagram_tasks.push(datagram_task);
                     }
@@ -1471,19 +1505,35 @@ async fn connect_local_game(local_game_port: u16) -> Option<TcpStream> {
     None
 }
 
+/// Delivers one received datagram to its consumer by its tag byte. Returns
+/// false only when the LAN consumer is gone (the mesh is shutting down); a
+/// full or closed voice queue just drops the frame, as real-time audio must.
+fn route_datagram(
+    peer_id: Uuid,
+    bytes: &[u8],
+    lan_tx: &tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
+    voice_tx: &tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
+) -> bool {
+    match bytes.split_first() {
+        Some((&DATAGRAM_LAN, payload)) => lan_tx.send((peer_id, payload.to_vec())).is_ok(),
+        Some((&DATAGRAM_VOICE, payload)) => {
+            let _ = voice_tx.try_send((peer_id, payload.to_vec()));
+            true
+        }
+        _ => true,
+    }
+}
+
 async fn run_datagram_listener_for_peer(
     peer_id: Uuid,
     handle_peer: Arc<P2pTunnelHandle>,
     lan_tx: tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
+    voice_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
 ) {
     loop {
         match handle_peer.connection.read_datagram().await {
             Ok(bytes) => {
-                let sent = match bytes.split_first() {
-                    Some((&DATAGRAM_LAN, payload)) => lan_tx.send((peer_id, payload.to_vec())).is_ok(),
-                    _ => true,
-                };
-                if !sent {
+                if !route_datagram(peer_id, &bytes, &lan_tx, &voice_tx) {
                     break;
                 }
             }
@@ -1519,6 +1569,50 @@ async fn wait_for_host_handle(
 mod tests {
     use super::*;
     use warlay_core::{UdpRendezvous, UdpRendezvousHandle};
+
+    #[test]
+    fn datagrams_are_routed_by_their_tag_byte() {
+        let peer = Uuid::new_v4();
+        let (lan_tx, mut lan_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel(4);
+
+        assert!(route_datagram(peer, &[DATAGRAM_LAN, 1, 2, 3], &lan_tx, &voice_tx));
+        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 9, 8], &lan_tx, &voice_tx));
+        // Unknown tags and empty datagrams are ignored, never fatal.
+        assert!(route_datagram(peer, &[0x7F, 1], &lan_tx, &voice_tx));
+        assert!(route_datagram(peer, &[], &lan_tx, &voice_tx));
+
+        assert_eq!(lan_rx.try_recv().unwrap(), (peer, vec![1, 2, 3]));
+        assert!(lan_rx.try_recv().is_err());
+        assert_eq!(voice_rx.try_recv().unwrap(), (peer, vec![9, 8]));
+        assert!(voice_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_full_or_closed_voice_queue_drops_frames_without_stopping_the_listener() {
+        let peer = Uuid::new_v4();
+        let (lan_tx, _lan_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel(2);
+
+        for i in 0..5u8 {
+            assert!(route_datagram(peer, &[DATAGRAM_VOICE, i], &lan_tx, &voice_tx));
+        }
+        // Only the first two fit; the rest were dropped, not queued.
+        assert_eq!(voice_rx.try_recv().unwrap().1, vec![0]);
+        assert_eq!(voice_rx.try_recv().unwrap().1, vec![1]);
+        assert!(voice_rx.try_recv().is_err());
+
+        drop(voice_rx);
+        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 7], &lan_tx, &voice_tx));
+    }
+
+    #[test]
+    fn the_listener_stops_only_when_the_lan_consumer_is_gone() {
+        let (lan_tx, lan_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (voice_tx, _voice_rx) = tokio::sync::mpsc::channel(1);
+        drop(lan_rx);
+        assert!(!route_datagram(Uuid::new_v4(), &[DATAGRAM_LAN, 1], &lan_tx, &voice_tx));
+    }
 
     #[test]
     fn link_offer_serialization_and_magic_prefix() {
@@ -1671,6 +1765,22 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         assert_eq!(lan, vec![(host_id, b"W3GS GAMEINFO".to_vec())]);
+
+        // Voice frames travel both ways on their own tag, never mixed into
+        // the LAN stream.
+        assert_eq!(joiner.broadcast_voice_frame(b"opus-from-joiner"), 1);
+        assert_eq!(host.broadcast_voice_frame(b"opus-from-host"), 1);
+        let start = tokio::time::Instant::now();
+        let (mut at_host, mut at_joiner) = (Vec::new(), Vec::new());
+        while at_host.is_empty() || at_joiner.is_empty() {
+            assert!(start.elapsed() < Duration::from_secs(5), "voice frames never arrived");
+            at_host.extend(host.poll_voice_frames());
+            at_joiner.extend(joiner.poll_voice_frames());
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(at_host, vec![(joiner_id, b"opus-from-joiner".to_vec())]);
+        assert_eq!(at_joiner, vec![(host_id, b"opus-from-host".to_vec())]);
+        assert!(host.poll_lan_packets().is_empty() && joiner.poll_lan_packets().is_empty());
 
         // Without a valid ticket nobody gets in.
         let intruder = PeerMesh::spawn_with(MeshConfig {
