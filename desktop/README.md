@@ -32,6 +32,12 @@ executable does everything.
   shortcut.
 - **LAN tab** - the legacy lan-mesh flow: scan local subnets, find relay
   bridges, list observed games, and turn this PC into a mesh peer.
+- **Self-update** - Settings > Actualizaciones looks for a newer release on
+  GitHub and, with one click, downloads the installer, checks it against the
+  release's `SHA256SUMS.txt`, runs it silently and restarts into the new
+  version, like Discord. Only files published by this repository's releases
+  are downloaded. A portable copy cannot replace itself, so it is sent to the
+  release page instead.
 - **Agent settings and console** - agent status and settings, live logs,
   log level control.
 
