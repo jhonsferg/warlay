@@ -139,6 +139,8 @@ export interface AppSettings {
   micDeviceId: string;
   /** "off" | "standard" | "strong" — see `services/voicePrefs.ts`. */
   noiseSuppression: "off" | "standard" | "strong";
+  /** Share the PC's sound with the room while in voice (Warlay's own is excluded). */
+  shareDesktopAudio: boolean;
 }
 
 /** Read-only hardware snapshot from `get_system_info` — informational only,
