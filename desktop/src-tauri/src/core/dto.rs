@@ -134,6 +134,10 @@ pub struct AppSettings {
     // browser's own suppression) or "strong" (RNNoise on top).
     #[serde(default = "default_noise_suppression")]
     pub noise_suppression: String,
+    // Share the PC's sound (game, music) with the room while in voice. Off by
+    // default; Warlay's own audio is always excluded from what is shared.
+    #[serde(default)]
+    pub share_desktop_audio: bool,
 }
 
 #[cfg(test)]
