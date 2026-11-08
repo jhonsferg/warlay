@@ -6,11 +6,11 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use warlay::engine::NetworkError;
-use warlay::protocol::ipc::{ConnectFailure, DaemonRequest, DaemonResponse};
+use warlay::protocol::ipc::{ConnectFailure, AgentRequest, AgentResponse};
 
 use super::events::{emit_agent_event, err};
 use super::lan::spawn_lan_mesh;
-use super::state::{teardown_tunnel_and_lan, DaemonState};
+use super::state::{teardown_tunnel_and_lan, AgentState};
 
 const HUB_TCP_TUNNEL_PORT: u16 = 7778;
 
@@ -34,18 +34,18 @@ async fn hub_tunnel_endpoint(
     }
 }
 
-fn clear_peer_mesh(s: &mut DaemonState) {
+fn clear_peer_mesh(s: &mut AgentState) {
     if let Some(mesh) = s.peer_mesh.take() {
         mesh.abort();
     }
 }
 
-pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>, app: AppHandle) -> DaemonResponse {
+pub async fn handle_request(req: AgentRequest, _state: Arc<Mutex<AgentState>>, app: AppHandle) -> AgentResponse {
     let app = app.clone();
     match req {
-        DaemonRequest::Ping => DaemonResponse::Pong,
+        AgentRequest::Ping => AgentResponse::Pong,
 
-        DaemonRequest::ConnectToHub {
+        AgentRequest::ConnectToHub {
             server_id,
             address,
             psk,
@@ -67,7 +67,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 Ok(parsed) => parsed,
                 Err(e) => {
                     warn!(%server_id, %address, "ConnectToHub rechazado: direcciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n invÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡lida");
-                    return DaemonResponse::ConnectFailed {
+                    return AgentResponse::ConnectFailed {
                         server_id,
                         failure: ConnectFailure::Other { message: e.to_string() },
                     };
@@ -162,7 +162,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                         }
                         emit_agent_event(
                             &app_for_msg_inner,
-                            &DaemonResponse::HubMessage {
+                            &AgentResponse::HubMessage {
                                 server_id: server_id_msg_clone,
                                 message,
                             },
@@ -176,7 +176,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                     tokio::spawn(async move {
                         emit_agent_event(
                             &app_for_ping_inner,
-                            &DaemonResponse::HubPing {
+                            &AgentResponse::HubPing {
                                 server_id: server_id_ping_clone,
                                 latency_ms: latency as u32,
                             },
@@ -207,7 +207,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                         warn!(server_id = %server_id_disc_clone, "conexiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n con el hub perdida");
                         emit_agent_event(
                             &app_for_disc_inner,
-                            &DaemonResponse::HubConnectionState {
+                            &AgentResponse::HubConnectionState {
                                 server_id: server_id_disc_clone,
                                 connected: false,
                             },
@@ -228,12 +228,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                     drop(s);
                     emit_agent_event(
                         &app,
-                        &DaemonResponse::HubConnectionState {
+                        &AgentResponse::HubConnectionState {
                             server_id: server_id.clone(),
                             connected: true,
                         },
                     );
-                    DaemonResponse::Connected {
+                    AgentResponse::Connected {
                         server_id,
                         remote_server_id: outcome.server_id.to_string(),
                         server_name: outcome.server_name,
@@ -253,12 +253,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                         },
                     };
                     warn!(%server_id, ?failure, "fallo al conectar al hub");
-                    DaemonResponse::ConnectFailed { server_id, failure }
+                    AgentResponse::ConnectFailed { server_id, failure }
                 }
             }
         }
 
-        DaemonRequest::DisconnectFromHub { server_id } => {
+        AgentRequest::DisconnectFromHub { server_id } => {
             info!(%server_id, "disconnecting from hub");
             let mut s = _state.lock().await;
             s.connections.remove(&server_id);
@@ -268,12 +268,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 clear_peer_mesh(&mut s);
                 teardown_tunnel_and_lan(&mut s);
             }
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "DisconnectFromHub".to_string(),
             }
         }
 
-        DaemonRequest::DisconnectAll => {
+        AgentRequest::DisconnectAll => {
             let mut s = _state.lock().await;
             let server_ids: Vec<String> = s.connections.keys().cloned().collect();
             info!(
@@ -290,12 +290,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             s.active_room_id = None;
             clear_peer_mesh(&mut s);
             teardown_tunnel_and_lan(&mut s);
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "DisconnectAll".to_string(),
             }
         }
 
-        DaemonRequest::Shutdown => {
+        AgentRequest::Shutdown => {
             info!("apagado solicitado por la app: cerrando conexiones, sala, tÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºnel y captura");
             {
                 let mut s = _state.lock().await;
@@ -308,12 +308,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
             // The reply goes out first; then the accept loop is told to stop.
             super::shutdown::request_soon();
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "Shutdown".to_string(),
             }
         }
 
-        DaemonRequest::JoinRoom {
+        AgentRequest::JoinRoom {
             server_id,
             room_id,
             password,
@@ -335,7 +335,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                         room_id: room_uuid,
                         password,
                     });
-                    DaemonResponse::Success {
+                    AgentResponse::Success {
                         request_type: "JoinRoom".to_string(),
                     }
                 }
@@ -349,7 +349,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
         }
 
-        DaemonRequest::LeaveRoom { server_id } => {
+        AgentRequest::LeaveRoom { server_id } => {
             let mut s = _state.lock().await;
             let Some(conn) = s.connections.get(&server_id) else {
                 warn!(%server_id, "LeaveRoom sin conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n activa con ese servidor");
@@ -366,12 +366,12 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 clear_peer_mesh(&mut s);
                 teardown_tunnel_and_lan(&mut s);
             }
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "LeaveRoom".to_string(),
             }
         }
 
-        DaemonRequest::CreateRoom {
+        AgentRequest::CreateRoom {
             server_id,
             name,
             game_port,
@@ -386,7 +386,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                         game_port,
                         password,
                     });
-                    DaemonResponse::Success {
+                    AgentResponse::Success {
                         request_type: "CreateRoom".to_string(),
                     }
                 }
@@ -400,7 +400,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
         }
 
-        DaemonRequest::DeleteRoom { server_id, room_id } => {
+        AgentRequest::DeleteRoom { server_id, room_id } => {
             let room_uuid = match uuid::Uuid::parse_str(&room_id) {
                 Ok(id) => id,
                 Err(_) => {
@@ -426,18 +426,18 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 clear_peer_mesh(&mut s);
                 teardown_tunnel_and_lan(&mut s);
             }
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "DeleteRoom".to_string(),
             }
         }
 
-        DaemonRequest::SetRoomInProgress { server_id } => {
+        AgentRequest::SetRoomInProgress { server_id } => {
             let s = _state.lock().await;
             match s.connections.get(&server_id) {
                 Some(conn) => {
                     info!(%server_id, "marcando sala en partida");
                     conn.send(warlay::protocol::ClientMessage::SetRoomInProgress);
-                    DaemonResponse::Success {
+                    AgentResponse::Success {
                         request_type: "SetRoomInProgress".to_string(),
                     }
                 }
@@ -451,13 +451,13 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
         }
 
-        DaemonRequest::SetRoomAvailable { server_id } => {
+        AgentRequest::SetRoomAvailable { server_id } => {
             let s = _state.lock().await;
             match s.connections.get(&server_id) {
                 Some(conn) => {
                     info!(%server_id, "marcando sala disponible");
                     conn.send(warlay::protocol::ClientMessage::SetRoomAvailable);
-                    DaemonResponse::Success {
+                    AgentResponse::Success {
                         request_type: "SetRoomAvailable".to_string(),
                     }
                 }
@@ -471,14 +471,14 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
         }
 
-        DaemonRequest::SendChatMessage { server_id, text } => {
+        AgentRequest::SendChatMessage { server_id, text } => {
             let s = _state.lock().await;
             match s.connections.get(&server_id) {
                 Some(conn) => {
                     // Nunca se registra el contenido del mensaje, solo que se enviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ uno.
                     debug!(%server_id, "enviando mensaje de chat");
                     conn.send(warlay::protocol::ClientMessage::ChatMessage { text });
-                    DaemonResponse::Success {
+                    AgentResponse::Success {
                         request_type: "SendChatMessage".to_string(),
                     }
                 }
@@ -492,7 +492,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
         }
 
-        DaemonRequest::SendPrivateMessage {
+        AgentRequest::SendPrivateMessage {
             server_id,
             to_client_id,
             text,
@@ -515,7 +515,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                         to_client_id: to_uuid,
                         text,
                     });
-                    DaemonResponse::Success {
+                    AgentResponse::Success {
                         request_type: "SendPrivateMessage".to_string(),
                     }
                 }
@@ -529,7 +529,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
         }
 
-        DaemonRequest::StartHostingTunnel {
+        AgentRequest::StartHostingTunnel {
             hub_host,
             hub_tcp_port,
             room_token,
@@ -593,13 +593,13 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
 
             info!(%hub_tcp_addr, %room_token, game_port, "hosting tunnel started");
-            emit_agent_event(&app, &DaemonResponse::TunnelStatusChanged { running: true });
-            DaemonResponse::Success {
+            emit_agent_event(&app, &AgentResponse::TunnelStatusChanged { running: true });
+            AgentResponse::Success {
                 request_type: "StartHostingTunnel".to_string(),
             }
         }
 
-        DaemonRequest::StartJoiningTunnel {
+        AgentRequest::StartJoiningTunnel {
             hub_host,
             hub_tcp_port,
             room_token,
@@ -647,24 +647,24 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
 
             info!(%hub_tcp_addr, %room_token, game_port, actual_port, "joining tunnel started");
-            emit_agent_event(&app, &DaemonResponse::TunnelStatusChanged { running: true });
-            DaemonResponse::Success {
+            emit_agent_event(&app, &AgentResponse::TunnelStatusChanged { running: true });
+            AgentResponse::Success {
                 request_type: "StartJoiningTunnel".to_string(),
             }
         }
 
-        DaemonRequest::StopHubTunnel => {
+        AgentRequest::StopHubTunnel => {
             info!("stopping hub tunnel");
             let mut s = _state.lock().await;
             teardown_tunnel_and_lan(&mut s);
             drop(s);
-            emit_agent_event(&app, &DaemonResponse::TunnelStatusChanged { running: false });
-            DaemonResponse::Success {
+            emit_agent_event(&app, &AgentResponse::TunnelStatusChanged { running: false });
+            AgentResponse::Success {
                 request_type: "StopHubTunnel".to_string(),
             }
         }
 
-        DaemonRequest::LaunchGame { path, args } => {
+        AgentRequest::LaunchGame { path, args } => {
             let exe_path = std::path::Path::new(&path);
             #[cfg(windows)]
             {
@@ -708,17 +708,17 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 error!(error = %e, %path, "failed to launch game");
                 return err("LaunchGame", format!("no se pudo iniciar el juego: {e}"));
             }
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "LaunchGame".to_string(),
             }
         }
 
-        DaemonRequest::GetAgentSettings => {
+        AgentRequest::GetAgentSettings => {
             let settings = _state.lock().await.agent_store.get_settings();
-            DaemonResponse::AgentSettings { settings }
+            AgentResponse::AgentSettings { settings }
         }
 
-        DaemonRequest::SetAgentSettings { settings } => {
+        AgentRequest::SetAgentSettings { settings } => {
             if let Err(e) = super::log_control::set_level(&settings.log_level) {
                 return err(
                     "SetAgentSettings",
@@ -737,49 +737,25 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 );
             }
             info!(log_level = %settings.log_level, lan_discovery_enabled = settings.lan_discovery_enabled, "configuraciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n del agente actualizada");
-            DaemonResponse::Success {
+            AgentResponse::Success {
                 request_type: "SetAgentSettings".to_string(),
             }
         }
 
-        DaemonRequest::GetAgentStatus => {
+        AgentRequest::GetAgentStatus => {
             let s = _state.lock().await;
-            let mesh_peers = s
-                .peer_mesh
-                .as_ref()
-                .map(|mesh| {
-                    mesh.peer_statuses()
-                        .into_iter()
-                        .map(
-                            |(client_id, is_host, p2p_addr, state)| warlay::protocol::ipc::PeerLinkStatus {
-                                client_id: client_id.to_string(),
-                                is_host,
-                                p2p_addr: p2p_addr.map(|a| a.to_string()),
-                                state: state.to_string(),
-                            },
-                        )
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            DaemonResponse::AgentStatus {
-                status: warlay::protocol::ipc::AgentStatusSnapshot {
-                    uptime_secs: s.started_at.elapsed().as_secs(),
-                    hub_connections: s.connections.len(),
-                    tunnel_active: s.game_tunnel.is_some(),
-                    lan_discovery_enabled: s.lan_discovery_enabled.load(std::sync::atomic::Ordering::Relaxed),
-                    mesh_peers,
-                },
+            AgentResponse::AgentStatus {
+                status: super::status::snapshot(&s),
             }
         }
 
-        DaemonRequest::RetryPeerMesh => {
+        AgentRequest::RetryPeerMesh => {
             let peer_mesh = _state.lock().await.peer_mesh.clone();
             match peer_mesh {
                 Some(mesh) => {
                     info!("reintentando conexiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n P2P por pedido manual desde el panel Agente");
                     mesh.retry_failed_peers();
-                    DaemonResponse::Success {
+                    AgentResponse::Success {
                         request_type: "RetryPeerMesh".to_string(),
                     }
                 }
@@ -790,7 +766,7 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
             }
         }
 
-        DaemonRequest::StartRoomSession {
+        AgentRequest::StartRoomSession {
             room_id,
             user_id,
             is_host,
@@ -802,11 +778,11 @@ pub async fn handle_request(req: DaemonRequest, _state: Arc<Mutex<DaemonState>>,
                 .await
         }
 
-        DaemonRequest::StopRoomSession => super::session::stop_room_session(_state).await,
+        AgentRequest::StopRoomSession => super::session::stop_room_session(_state).await,
 
-        DaemonRequest::StartGameTunnel { game_port } => super::session::start_game_tunnel(_state, game_port).await,
+        AgentRequest::StartGameTunnel { game_port } => super::session::start_game_tunnel(_state, game_port).await,
 
-        DaemonRequest::UpdateRoomHelper {
+        AgentRequest::UpdateRoomHelper {
             rendezvous_addr,
             relay_addr,
         } => super::session::update_room_helper(_state, rendezvous_addr, relay_addr).await,
