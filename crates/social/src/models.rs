@@ -30,6 +30,9 @@ pub enum PresenceStatus {
 pub struct Presence {
     pub status: PresenceStatus,
     pub room_id: Option<Uuid>,
+    /// When the user was last connected. Only set while they are offline
+    /// (and have ever connected): an online user is here right now.
+    pub last_seen_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
