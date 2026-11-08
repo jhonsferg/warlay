@@ -112,9 +112,8 @@ fn create_kill_on_close_job(_child: &Child) -> Option<GameJob> {
 /// Every process ID currently alive inside `job` -- i.e. the launch's real,
 /// current process tree, regardless of how many stub hand-offs it went
 /// through or what any of those processes are named. An empty result means
-/// the whole launch has exited. Used both for the running/stopped status
-/// (non-empty vs. empty) and, by the overlay (`overlay::update_overlay_position`),
-/// to find the actual game window without a name-matching guess.
+/// the whole launch has exited. Used for the running/stopped status
+/// (non-empty vs. empty).
 #[cfg(windows)]
 pub fn job_process_ids(job: GameJob) -> Vec<u32> {
     // `JOBOBJECT_BASIC_PROCESS_ID_LIST` is a variable-length struct -- its
@@ -227,7 +226,7 @@ pub fn launch(
 /// Originally this also opened each name-matching process
 /// (`OpenProcess`/`QueryFullProcessImageNameW`) and required its full image
 /// path to equal `executable_path` exactly, mirroring the identity check the
-/// daemon does for its pipe clients (`daemon/src/security.rs`'s
+/// agent does for its pipe clients (`crates/agent/src/security.rs`'s
 /// `verify_client_process`) -- appropriate there since that's a real
 /// security boundary, but wrong here: it went permanently blind for exactly
 /// the case `launch_game`'s own `MIN_REAL_SESSION` comment already

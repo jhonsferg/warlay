@@ -5,7 +5,7 @@ import { ApiError } from "../services/http";
 import { native, type PeerLinkStatus } from "../services/native";
 import type { HelperInfo, RoomSession, RoomView } from "../services/types";
 import { useSession } from "./session";
-import { useSettings } from "./settings";
+import { useVoice } from "./voice";
 
 /** Lobby rooms, plus the room this player is in and its P2P session. */
 export const useRooms = defineStore("rooms", () => {
@@ -31,23 +31,11 @@ export const useRooms = defineStore("rooms", () => {
     session.value = next;
     try {
       await native.startRoomSession(next);
-      syncOverlay(next.room);
-      const settings = useSettings();
-      if (!settings.loaded) await settings.load().catch(() => {});
-      if (settings.voiceEnabled) await native.startVoiceChat(next.room.id).catch(() => {});
+      // The mute shortcut works from the moment we are in a room.
+      void useVoice().listenOnly();
     } finally {
       startPolling();
     }
-  }
-
-  /** The in-game overlay shows the roster (and who's talking). */
-  function syncOverlay(room: RoomView | null) {
-    void native
-      .setOverlayRoster(
-        room?.id ?? null,
-        (room?.members ?? []).map((m) => ({ clientId: m.id, displayName: m.displayName })),
-      )
-      .catch(() => {});
   }
 
   function startPolling() {
@@ -58,7 +46,7 @@ export const useRooms = defineStore("rooms", () => {
         links.value = status?.meshPeers ?? [];
         tunnelActive.value = status?.tunnelActive ?? false;
       } catch {
-        /* daemon not reachable right now */
+        /* agent not reachable right now */
       }
     };
     void poll();
@@ -75,8 +63,7 @@ export const useRooms = defineStore("rooms", () => {
   async function endLocal() {
     session.value = null;
     stopPolling();
-    syncOverlay(null);
-    await native.stopVoiceChat().catch(() => {});
+    await useVoice().leave();
     try {
       await native.stopRoomSession();
     } catch {
@@ -180,7 +167,6 @@ export const useRooms = defineStore("rooms", () => {
         return "kicked" as const;
       }
       session.value = { ...session.value, room };
-      syncOverlay(room);
     }
     return null;
   }

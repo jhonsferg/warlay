@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { native } from "../services/native";
+import { normalizeNoiseLevel, type NoiseLevel } from "../services/voicePrefs";
 
 /** Local (per machine) settings kept by the desktop shell. Only the game
  * fields are edited here; everything else is preserved as loaded. */
@@ -8,20 +9,27 @@ export const useSettings = defineStore("settings-v2", () => {
   const raw = ref<Record<string, unknown>>({});
   const gameExecutablePath = ref("");
   const gameArgs = ref("");
-  const voiceEnabled = ref(false);
   /** The app's own file log level and how long log files are kept. */
   const fileLogLevel = ref("info");
   const logRetentionDays = ref(7);
   const loaded = ref(false);
+  /** Microphone: Warlay's own consent, chosen input and noise level. */
+  const micConsent = ref(false);
+  const micDeviceId = ref("");
+  const noiseSuppression = ref<NoiseLevel>("standard");
+  const shareDesktopAudio = ref(false);
 
   async function load() {
     const loadedSettings = (await native.loadSettings()) ?? { gameExecutablePath: "", gameArgs: "" };
     raw.value = loadedSettings;
     gameExecutablePath.value = String(loadedSettings.gameExecutablePath ?? "");
     gameArgs.value = String(loadedSettings.gameArgs ?? "");
-    voiceEnabled.value = Boolean(loadedSettings.voiceEnabled);
     fileLogLevel.value = String(loadedSettings.fileLogLevel ?? "info");
     logRetentionDays.value = Number(loadedSettings.logRetentionDays ?? 7);
+    micConsent.value = loadedSettings.micConsent === true;
+    micDeviceId.value = String(loadedSettings.micDeviceId ?? "");
+    noiseSuppression.value = normalizeNoiseLevel(loadedSettings.noiseSuppression);
+    shareDesktopAudio.value = loadedSettings.shareDesktopAudio === true;
     loaded.value = true;
   }
 
@@ -30,7 +38,6 @@ export const useSettings = defineStore("settings-v2", () => {
       ...raw.value,
       gameExecutablePath: gameExecutablePath.value,
       gameArgs: gameArgs.value,
-      voiceEnabled: voiceEnabled.value,
     };
     await native.saveSettings(next);
     raw.value = next;
@@ -45,6 +52,26 @@ export const useSettings = defineStore("settings-v2", () => {
     raw.value = { ...raw.value, fileLogLevel: level };
   }
 
+  /** Applies and persists on its own, like the log levels. */
+  async function setMicConsent(granted: boolean) {
+    await native.setMicConsent(granted);
+    micConsent.value = granted;
+    raw.value = { ...raw.value, micConsent: granted };
+  }
+
+  async function setVoicePrefs(prefs: {
+    micDeviceId: string;
+    noiseSuppression: NoiseLevel;
+    shareDesktopAudio?: boolean;
+  }) {
+    const next = { ...raw.value, ...prefs };
+    await native.saveSettings(next);
+    raw.value = next;
+    micDeviceId.value = prefs.micDeviceId;
+    noiseSuppression.value = prefs.noiseSuppression;
+    if (prefs.shareDesktopAudio !== undefined) shareDesktopAudio.value = prefs.shareDesktopAudio;
+  }
+
   async function setLogRetentionDays(days: number) {
     await native.setLogRetentionDays(days);
     logRetentionDays.value = days;
@@ -54,10 +81,15 @@ export const useSettings = defineStore("settings-v2", () => {
   return {
     gameExecutablePath,
     gameArgs,
-    voiceEnabled,
     fileLogLevel,
     logRetentionDays,
     loaded,
+    micConsent,
+    micDeviceId,
+    noiseSuppression,
+    shareDesktopAudio,
+    setMicConsent,
+    setVoicePrefs,
     load,
     save,
     setFileLogLevel,

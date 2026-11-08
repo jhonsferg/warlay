@@ -45,3 +45,7 @@ pub fn remove_server(state: State<'_, AppState>, server_id: String) -> Result<()
 pub fn get_client_id(state: State<'_, AppState>) -> String {
     state.store.client_id().to_string()
 }
+
+#[cfg(test)]
+#[path = "servers_tests.rs"]
+mod tests;

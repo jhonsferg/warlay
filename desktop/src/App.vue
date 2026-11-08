@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { TriangleAlert } from "@lucide/vue";
-import { onMounted, ref, watch } from "vue";
+import { onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { isDesktop, native } from "./services/native";
+import { isDesktop } from "./services/native";
 import { installAppLifecycle } from "./stores/app";
 import { useSession } from "./stores/session";
+import ConfirmDialog from "./ui/organisms/ConfirmDialog.vue";
 import ToastHost from "./ui/organisms/ToastHost.vue";
 
 const session = useSession();
 const router = useRouter();
-const agentError = ref<string | null>(null);
 
 installAppLifecycle();
 
@@ -21,24 +20,16 @@ watch(
   },
 );
 
-onMounted(async () => {
+onMounted(() => {
   if (!isDesktop) return;
-  // The agent (daemon) does the networking for games; the social side of
-  // the app works without it, so a failure here is a banner, not a wall.
-  try {
-    await native.ensureDaemonRunning();
-  } catch (error) {
-    agentError.value = error instanceof Error ? error.message : String(error);
-  }
+  // The network agent now runs inside this same process, so there is no
+  // separate agent to start. The agent is ready as soon as the app opens.
 });
 </script>
 
 <template>
-  <div v-if="agentError" class="agent-banner" role="alert">
-    <TriangleAlert :size="16" />
-    El agente de red no pudo iniciar: {{ agentError }}. Podrás chatear, pero no jugar hasta reiniciar Warlay.
-  </div>
   <RouterView />
+  <ConfirmDialog />
   <ToastHost />
 </template>
 

@@ -31,3 +31,7 @@ impl Serialize for AppError {
         serializer.serialize_str(&self.to_string())
     }
 }
+
+#[cfg(test)]
+#[path = "error_tests.rs"]
+mod tests;

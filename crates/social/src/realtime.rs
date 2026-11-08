@@ -479,12 +479,34 @@ pub async fn presence_of(state: &AppState, user_ids: &[Uuid]) -> ApiResult<HashM
     .await?;
     let rooms: HashMap<Uuid, (Uuid, String)> = rooms.into_iter().map(|(u, r, s)| (u, (r, s))).collect();
 
+    // Only the offline ones need a "last seen".
+    let offline: Vec<Uuid> = user_ids
+        .iter()
+        .zip(&counts)
+        .filter(|(_, count)| **count <= 0)
+        .map(|(id, _)| *id)
+        .collect();
+    let last_seen: HashMap<Uuid, chrono::DateTime<chrono::Utc>> = if offline.is_empty() {
+        HashMap::new()
+    } else {
+        sqlx::query_as::<_, (Uuid, Option<chrono::DateTime<chrono::Utc>>)>(
+            "SELECT id, last_seen_at FROM users WHERE id = ANY($1)",
+        )
+        .bind(&offline)
+        .fetch_all(&state.db)
+        .await?
+        .into_iter()
+        .filter_map(|(id, at)| at.map(|at| (id, at)))
+        .collect()
+    };
+
     for (id, count) in user_ids.iter().zip(counts) {
         let online = count > 0;
         let presence = match (online, rooms.get(id)) {
             (false, _) => Presence {
                 status: PresenceStatus::Offline,
                 room_id: None,
+                last_seen_at: last_seen.get(id).copied(),
             },
             (true, Some((room_id, status))) => Presence {
                 status: if status == "in_game" {
@@ -493,10 +515,12 @@ pub async fn presence_of(state: &AppState, user_ids: &[Uuid]) -> ApiResult<HashM
                     PresenceStatus::InRoom
                 },
                 room_id: Some(*room_id),
+                last_seen_at: None,
             },
             (true, None) => Presence {
                 status: PresenceStatus::Online,
                 room_id: None,
+                last_seen_at: None,
             },
         };
         result.insert(*id, presence);
@@ -513,6 +537,7 @@ pub async fn with_presence(state: &AppState, users: Vec<UserSummary>) -> ApiResu
             let presence = presence.get(&user.id).cloned().unwrap_or(Presence {
                 status: PresenceStatus::Offline,
                 room_id: None,
+                last_seen_at: None,
             });
             UserWithPresence { user, presence }
         })

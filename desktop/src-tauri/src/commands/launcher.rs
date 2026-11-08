@@ -74,7 +74,6 @@ pub async fn launch_game(
         "estado de Warcraft III cambió: running=true (lanzado por esta app)"
     );
     let _ = app.emit("game://running-state-changed", true);
-    crate::overlay::set_overlay_visible(&app, true);
 
     let app_for_exit = app.clone();
     let watcher = tokio::spawn(async move {
@@ -97,7 +96,6 @@ pub async fn launch_game(
             "estado de Warcraft III cambió: running=false (salida real detectada)"
         );
         let _ = app_for_exit.emit("game://running-state-changed", false);
-        crate::overlay::set_overlay_visible(&app_for_exit, false);
         let _ = app_for_exit.emit("game://exited", pid);
     });
 

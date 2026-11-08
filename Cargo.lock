@@ -1188,26 +1188,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "daemon"
-version = "0.4.2"
-dependencies = [
- "anyhow",
- "base64 0.23.1",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri-winres",
- "time",
- "tokio",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "uuid",
- "warlay",
- "windows 0.59.0",
-]
-
-[[package]]
 name = "darling"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1342,6 +1322,7 @@ version = "0.4.2"
 dependencies = [
  "anyhow",
  "audiopus",
+ "base64 0.23.1",
  "cpal",
  "if-addrs",
  "rusqlite",
@@ -1352,6 +1333,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
+ "tauri-plugin-single-instance",
  "thiserror 2.0.21",
  "time",
  "tokio",
@@ -1360,7 +1342,9 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "warlay",
+ "webview2-com",
  "windows 0.62.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -5705,6 +5689,22 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "url",
+ "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "726b6da0dd5bd1344f84f4108a622c07d01923baacb5c803a605189672c5352f"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "windows-sys 0.61.2",
  "zbus",
 ]
 

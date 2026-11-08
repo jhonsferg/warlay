@@ -1,43 +1,77 @@
 <script setup lang="ts">
-import { Check, MessageCircle, UserMinus, UserPlus, Users, X } from "@lucide/vue";
+import { MessageCircle, UserPlus, UserRound, Users } from "@lucide/vue";
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { errorMessage } from "../services/http";
 import { useDialogs } from "../stores/dialogs";
+import { useRooms } from "../stores/rooms";
 import { useSocial } from "../stores/social";
 import { useToasts } from "../stores/toasts";
 import WButton from "../ui/atoms/WButton.vue";
-import WIconButton from "../ui/atoms/WIconButton.vue";
 import EmptyState from "../ui/molecules/EmptyState.vue";
-import FriendRow from "../ui/molecules/FriendRow.vue";
-import TabBar from "../ui/molecules/TabBar.vue";
 import UserChip from "../ui/molecules/UserChip.vue";
+import ChatPanel from "../ui/organisms/ChatPanel.vue";
+import FriendProfilePanel from "../ui/organisms/FriendProfilePanel.vue";
+import FriendsList from "../ui/organisms/FriendsList.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import AppShell from "../ui/templates/AppShell.vue";
 
+/**
+ * Friends, Messenger-desktop style: every friend on the left (connected or
+ * not), the conversation on the right as soon as you click one, and a profile
+ * panel on demand. The selected friend lives in the URL (`/friends/:id`).
+ */
+const route = useRoute();
+const router = useRouter();
 const social = useSocial();
+const rooms = useRooms();
 const dialogs = useDialogs();
 const toasts = useToasts();
-const router = useRouter();
 
-type Tab = "online" | "all" | "pending";
-const tab = ref<Tab>("online");
+const selectedId = computed(() => (route.params.id as string | undefined) || undefined);
+const friend = computed(() => (selectedId.value ? social.friend(selectedId.value) : undefined));
+const profileOpen = ref(false);
 
-const shown = computed(() =>
-  tab.value === "online" ? social.sortedFriends.filter((f) => f.presence.status !== "offline") : social.sortedFriends,
-);
+const open = (id: string) => router.push(`/friends/${id}`);
 
-async function act(fn: () => Promise<unknown>, failure: string) {
+async function invite() {
+  if (!friend.value) return;
   try {
-    await fn();
+    await rooms.invite(friend.value.id);
+    toasts.success("Invitación enviada", friend.value.displayName);
   } catch (e) {
-    toasts.error(failure, errorMessage(e));
+    toasts.error("No se pudo invitar", e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Confirm, remove, and leave the conversation of someone who is no longer a friend. */
+async function removeFriend() {
+  const target = friend.value;
+  if (!target) return;
+  const accepted = await dialogs.confirm({
+    title: `Eliminar a ${target.displayName} de tus amigos`,
+    message: `${target.displayName} dejará de aparecer en tu lista de amigos.`,
+    bullets: [
+      "Ya no podrán escribirse en privado ni ver cuándo está conectado.",
+      "Para volver a ser amigos tendrán que enviarse una nueva solicitud.",
+    ],
+    confirmLabel: "Eliminar amigo",
+    tone: "danger",
+  });
+  if (!accepted) return;
+  try {
+    await social.remove(target.id);
+    profileOpen.value = false;
+    void router.replace("/friends");
+    toasts.success("Amigo eliminado", target.displayName);
+  } catch (e) {
+    toasts.error("No se pudo eliminar", errorMessage(e));
   }
 }
 </script>
 
 <template>
-  <AppShell title="Amigos" :subtitle="`${social.onlineCount} en línea`">
+  <AppShell title="Amigos" :subtitle="`${social.onlineCount} en línea`" flush>
     <template #sidebar><HomeSidebar /></template>
     <template #title-icon><Users :size="20" /></template>
     <template #actions>
@@ -46,104 +80,87 @@ async function act(fn: () => Promise<unknown>, failure: string) {
       >
     </template>
 
-    <TabBar
-      v-model="tab"
-      class="friends__tabs"
-      :tabs="[
-        { id: 'online', label: 'En línea' },
-        { id: 'all', label: 'Todos' },
-        { id: 'pending', label: 'Pendientes', count: social.incoming.length },
-      ]"
-    />
+    <div class="friends">
+      <div class="friends__list"><FriendsList :selected-id="selectedId" @select="open" /></div>
 
-    <template v-if="tab === 'pending'">
-      <EmptyState
-        v-if="!social.incoming.length && !social.outgoing.length"
-        title="Sin solicitudes pendientes"
-        text="Cuando alguien te agregue aparecerá aquí."
-      >
-        <template #icon><UserPlus /></template>
-      </EmptyState>
-      <section v-if="social.incoming.length" class="friends__section">
-        <p class="friends__eyebrow">Recibidas — {{ social.incoming.length }}</p>
-        <div v-for="r in social.incoming" :key="r.id" class="friends__request" :data-request="r.from.username">
-          <UserChip :user="r.from" :subtitle="`@${r.from.username} quiere ser tu amigo`" />
-          <WButton size="sm" variant="success" @click="act(() => social.accept(r.id), 'No se pudo aceptar')"
-            ><template #icon><Check /></template>Aceptar</WButton
-          >
-          <WIconButton label="Rechazar" tone="danger" @click="act(() => social.decline(r.id), 'No se pudo rechazar')"
-            ><X
-          /></WIconButton>
-        </div>
-      </section>
-      <section v-if="social.outgoing.length" class="friends__section">
-        <p class="friends__eyebrow">Enviadas — {{ social.outgoing.length }}</p>
-        <div v-for="r in social.outgoing" :key="r.id" class="friends__request">
-          <UserChip :user="r.to" :subtitle="`@${r.to.username} · esperando respuesta`" />
-          <WButton size="sm" variant="ghost" @click="act(() => social.decline(r.id), 'No se pudo cancelar')"
-            >Cancelar</WButton
-          >
-        </div>
-      </section>
-    </template>
-
-    <template v-else>
-      <EmptyState
-        v-if="shown.length === 0"
-        :title="tab === 'online' ? 'Nadie en línea ahora' : 'Aún no tienes amigos'"
-        text="Busca a tus compañeros por su nombre de usuario."
-      >
-        <template #icon><Users /></template>
-        <WButton @click="dialogs.addFriend = true"
-          ><template #icon><UserPlus /></template>Agregar amigo</WButton
+      <section class="friends__main" aria-label="Conversación">
+        <template v-if="friend">
+          <header class="friends__bar" data-testid="chat-header">
+            <UserChip :user="friend" :presence="friend.presence" />
+            <WButton
+              v-if="rooms.current && !rooms.current.members.some((m) => m.id === friend!.id)"
+              size="sm"
+              variant="secondary"
+              @click="invite"
+              ><template #icon><UserPlus /></template>Invitar a mi sala</WButton
+            >
+            <WButton
+              size="sm"
+              :variant="profileOpen ? 'primary' : 'secondary'"
+              data-testid="profile-toggle"
+              @click="profileOpen = !profileOpen"
+              ><template #icon><UserRound /></template>Ver perfil</WButton
+            >
+          </header>
+          <ChatPanel
+            :key="friend.id"
+            kind="dm"
+            :target-id="friend.id"
+            :placeholder="`Mensaje para @${friend.username}`"
+            :empty-title="`Esto es el comienzo de tu chat con ${friend.displayName}`"
+          />
+        </template>
+        <EmptyState
+          v-else-if="selectedId && social.loaded"
+          title="Este chat no está disponible"
+          text="Solo puedes escribir en privado a tus amigos."
         >
-      </EmptyState>
-      <div class="friends__list">
-        <FriendRow v-for="f in shown" :key="f.id" :friend="f">
-          <template #actions>
-            <WIconButton label="Enviar mensaje" @click="router.push(`/dm/${f.id}`)"><MessageCircle /></WIconButton>
-            <WIconButton
-              label="Eliminar amigo"
-              tone="danger"
-              @click="act(() => social.remove(f.id), 'No se pudo eliminar')"
-              ><UserMinus
-            /></WIconButton>
-          </template>
-        </FriendRow>
-      </div>
-    </template>
+          <template #icon><MessageCircle /></template>
+        </EmptyState>
+        <EmptyState
+          v-else
+          title="Elige un amigo para chatear"
+          text="Haz clic en cualquiera de tus amigos, esté conectado o no, para abrir la conversación."
+          data-testid="friends-pick"
+        >
+          <template #icon><MessageCircle /></template>
+        </EmptyState>
+      </section>
+
+      <FriendProfilePanel
+        v-if="friend && profileOpen"
+        :friend="friend"
+        @close="profileOpen = false"
+        @remove="removeFriend"
+      />
+    </div>
   </AppShell>
 </template>
 
 <style scoped lang="scss">
 .friends {
-  &__tabs {
-    margin-bottom: var(--s-6);
-  }
+  display: flex;
+  height: 100%;
+  min-height: 0;
+
   &__list {
+    width: 340px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    background: var(--bg-2);
+  }
+  &__main {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-width: 820px;
-    --dot-ring: var(--bg-1);
   }
-  &__section {
-    max-width: 820px;
-    margin-bottom: var(--s-6);
-  }
-  &__eyebrow {
-    @include eyebrow;
-    margin: 0 0 var(--s-2);
-  }
-  &__request {
+  &__bar {
     display: flex;
     align-items: center;
     gap: var(--s-2);
-    padding: var(--s-3);
-    border-radius: var(--r-md);
-    border: 1px solid var(--line);
-    background: var(--bg-3);
-    margin-bottom: var(--s-2);
+    padding: var(--s-2) var(--s-4);
+    border-bottom: 1px solid var(--line);
     :deep(.user-chip) {
       flex: 1;
     }

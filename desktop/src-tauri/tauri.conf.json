@@ -5,7 +5,7 @@
   "identifier": "com.warlay.app",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build && npm run prepare-daemon-sidecar",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
@@ -25,14 +25,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https: wss: http: ws:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data:"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost https: wss: http: ws:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data:"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
-    "externalBin": ["binaries/wnetd"],
     "windows": {
       "nsis": {
         "installerHooks": "./windows/hooks.nsh"

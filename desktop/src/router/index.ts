@@ -8,8 +8,9 @@ export const router = createRouter({
     { path: "/login", component: () => import("../pages/LoginPage.vue"), meta: { guest: true } },
     { path: "/register", component: () => import("../pages/RegisterPage.vue"), meta: { guest: true } },
     { path: "/", component: () => import("../pages/LobbyPage.vue") },
-    { path: "/friends", component: () => import("../pages/FriendsPage.vue") },
-    { path: "/dm/:id", component: () => import("../pages/DirectMessagePage.vue") },
+    { path: "/friends/:id?", component: () => import("../pages/FriendsPage.vue") },
+    // Old direct-message links open the same conversation inside Friends.
+    { path: "/dm/:id", redirect: (to) => `/friends/${String(to.params.id)}` },
     { path: "/discover", component: () => import("../pages/DiscoverPage.vue") },
     { path: "/c/:id", component: () => import("../pages/CommunityPage.vue") },
     { path: "/room/:id", component: () => import("../pages/RoomPage.vue") },

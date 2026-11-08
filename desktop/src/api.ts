@@ -11,7 +11,6 @@ import type {
   LogLevel,
   RelayInfo,
   RelayStatus,
-  RoomMember,
   ServerInfo,
   ServerMessageEvent,
   ServerPingEvent,
@@ -83,14 +82,6 @@ export function onRelayStatusChanged(handler: (status: RelayStatus) => void): Pr
 
 // --- Daemon lifecycle (the startup loading screen calls these before
 // showing the rest of the UI) ---
-
-export function checkDaemonReady(): Promise<boolean> {
-  return invoke("check_daemon_ready");
-}
-
-export function ensureDaemonRunning(): Promise<void> {
-  return invoke("ensure_daemon_running");
-}
 
 // --- Hub mode (VPS matchmaking, multi-server) commands ---
 
@@ -174,13 +165,6 @@ export function stopHubTunnel(): Promise<void> {
   return invoke("stop_hub_tunnel");
 }
 
-/** Current truth for the active room's roster — see `OverlayApp.vue`'s use
- * of this on mount, and `commands::matchmaking::get_room_members`'s doc
- * comment for why it needs to exist at all. */
-export function getRoomMembers(): Promise<RoomMember[]> {
-  return invoke("get_room_members");
-}
-
 export function loadSettings(): Promise<AppSettings> {
   return invoke("load_settings");
 }
@@ -205,9 +189,9 @@ export function getAgentSettings(): Promise<AgentSettings> {
   return invoke("get_agent_settings");
 }
 
-/** Applies immediately on the daemon (log level reload, LAN discovery
- * toggle) and persists — see `daemon/src/log_control.rs` and
- * `daemon/src/storage.rs`. */
+/** Applies immediately on the agent (log level reload, LAN discovery
+ * toggle) and persists — see `crates/agent/src/log_control.rs` and
+ * `crates/agent/src/storage.rs`. */
 export function saveAgentSettings(settings: AgentSettings): Promise<void> {
   return invoke("save_agent_settings", { settings });
 }
@@ -217,7 +201,7 @@ export function getAgentStatus(): Promise<AgentStatusSnapshot> {
 }
 
 /** Resets any P2P mesh peer stuck in "failed" back to "not_attempted" so
- * the daemon's own retry loop picks it up again, without leaving/rejoining
+ * the agent's own retry loop picks it up again, without leaving/rejoining
  * the room. */
 export function retryPeerMesh(): Promise<void> {
   return invoke("retry_peer_mesh");
@@ -227,6 +211,10 @@ export function retryPeerMesh(): Promise<void> {
  * immediately (see `log_cleanup` on the backend) — no restart needed. */
 export function setLogRetentionDays(days: number): Promise<void> {
   return invoke("set_log_retention_days", { days });
+}
+
+export function setMicToggleKey(key: string): Promise<void> {
+  return invoke("set_mic_toggle_key", { key });
 }
 
 // --- Hub mode events ---
@@ -261,56 +249,4 @@ export function onGameRunningStateChanged(handler: (running: boolean) => void): 
  * src-tauri/src/log_bridge.rs. Powers the "Consola" tab. */
 export function onLogLine(handler: (line: string) => void): Promise<UnlistenFn> {
   return listen<string>("log://line", (event) => handler(event.payload));
-}
-
-// --- Voice chat commands & events ---
-
-export function onVoiceFrameIn(
-  handler: (event: { fromClientId: string; opusBytes: number[] }) => void,
-): Promise<UnlistenFn> {
-  return listen<{ fromClientId: string; opusBytes: number[] }>("voice://frame-in", (event) => handler(event.payload));
-}
-
-export function pushVoiceFrame(fromClientId: string, opusBytes: number[]): Promise<void> {
-  return invoke("push_voice_frame", { fromClientId, opusBytes });
-}
-
-export function startVoiceChat(
-  roomToken: string,
-  inputDeviceId: string | null,
-  outputDeviceId: string | null,
-): Promise<void> {
-  return invoke("start_voice_chat", { roomToken, inputDeviceId, outputDeviceId });
-}
-
-export function stopVoiceChat(): Promise<void> {
-  return invoke("stop_voice_chat");
-}
-
-export function setOverlayInteractive(interactive: boolean): Promise<void> {
-  return invoke("set_overlay_interactive", { interactive });
-}
-
-export function toggleMutePeer(clientId: string): Promise<void> {
-  return invoke("toggle_mute_peer", { clientId });
-}
-
-export function getMutedPeers(): Promise<string[]> {
-  return invoke("get_muted_peers");
-}
-
-export function onMuteChanged(handler: (mutedClientIds: string[]) => void): Promise<UnlistenFn> {
-  return listen<string[]>("voice://mute-changed", (event) => handler(event.payload));
-}
-
-export function toggleSelfMicMute(): Promise<boolean> {
-  return invoke("toggle_self_mic_mute");
-}
-
-export function isSelfMicMuted(): Promise<boolean> {
-  return invoke("is_self_mic_muted");
-}
-
-export function onSelfMuteChanged(handler: (muted: boolean) => void): Promise<UnlistenFn> {
-  return listen<boolean>("voice://self-mute-changed", (event) => handler(event.payload));
 }

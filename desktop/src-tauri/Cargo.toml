@@ -14,9 +14,16 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # The crate/package stays "desktop" (so `cargo build -p desktop` and the
 # workspace member path keep working unchanged) -- only the produced binary
 # is renamed, to "warlay.exe".
+#
+# `test = false`: main.rs holds no unit tests (the agent's live in
+# `crates/agent`), so the harness cargo would build for this binary has
+# nothing to run. It would also inherit the `requireAdministrator` manifest
+# build.rs embeds, and running it unelevated would fail with os error 740
+# before a single test executes.
 [[bin]]
 name = "warlay"
 path = "src/main.rs"
+test = false
 
 [features]
 # Without this, tauri::generate_context!() has no feature to check and
@@ -33,7 +40,8 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-warlay = { workspace = true, features = ["transport", "core", "protocol", "crypto"] }
+warlay = { workspace = true, features = ["transport", "core", "protocol", "crypto", "engine"] }
+base64 = { workspace = true }
 anyhow = { workspace = true }
 if-addrs = { workspace = true }
 rusqlite = { workspace = true }
@@ -55,10 +63,20 @@ tauri = { version = "2", features = ["tray-icon", "devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
 
 # Voice chat
 audiopus = "0.2"
 cpal = "0.15"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_Networking_WinSock", "Win32_System_IO", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_System_Registry", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_SystemInformation", "Win32_System_Diagnostics_ToolHelp", "Win32_Graphics_Gdi", "Win32_System_JobObjects", "Win32_Security", "Win32_System_Threading"] }
+# `#[implement]` (the WASAPI completion handler) expands to `windows_core::...`.
+windows-core = "0.62"
+# Same version tauri/wry already link: the native permission handler needs `SetSavesInProfile`.
+webview2-com = "0.39"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Cryptography", "Win32_System_Threading", "Win32_System_Pipes", "Win32_System_IO", "Win32_System_SystemInformation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Media_Audio", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant"] }
+
+[dev-dependencies]
+# Mock runtime (`tauri::test`) so commands can be exercised against a real
+# `AppState` without opening a window.
+tauri = { version = "2", features = ["test"] }

@@ -14,7 +14,7 @@ Report vulnerabilities privately through GitHub's
 [private vulnerability reporting](https://github.com/jhonsferg/warlay/security/advisories/new).
 Include:
 
-- the affected component (`server`, `daemon`, `desktop`, or a crate under `crates/`)
+- the affected component (`server`, `desktop`, or a crate under `crates/`)
   and version,
 - a description of the issue and its impact,
 - steps to reproduce or a proof of concept, if available.
@@ -38,7 +38,7 @@ Knowing what Warlay does and does not protect against helps triage reports:
   active man-in-the-middle.
 - **Peer-to-peer tunnel**: direct QUIC connections between players are
   encrypted but peers are not authenticated (there is no PKI for players).
-- **Daemon**: runs elevated because Windows requires it for raw LAN capture
-  (`SIO_RCVALL`). Its named pipe is restricted by ACL to interactive users,
-  `SYSTEM` and Administrators (no remote or anonymous access), and the daemon
-  checks the executable of every connecting client process.
+- **Agent**: runs elevated because Windows requires it for raw LAN capture
+  (`SIO_RCVALL`). Its pipe is restricted by ACL to interactive users, `SYSTEM`
+  and Administrators (no remote or anonymous access), and the agent checks
+  the executable of every connecting client process.

@@ -94,3 +94,7 @@ GEMINI.md
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Python virtual environments (uv)
+.venv/
+venv/

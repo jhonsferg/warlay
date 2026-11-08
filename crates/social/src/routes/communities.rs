@@ -348,6 +348,12 @@ pub async fn delete(
     }
     crate::chat::invalidate(&state, &format!("community:{id}")).await;
     let members = member_ids(&state, id).await?;
+    // `invites.target_id` is polymorphic (no foreign key), so the invitations
+    // to this community would otherwise outlive it and dangle forever.
+    sqlx::query("DELETE FROM invites WHERE kind = 'community' AND target_id = $1")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
     sqlx::query("DELETE FROM communities WHERE id = $1")
         .bind(id)
         .execute(&state.db)

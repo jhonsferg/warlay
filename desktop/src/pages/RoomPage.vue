@@ -3,6 +3,8 @@ import {
   Crown,
   DoorOpen,
   Gamepad2,
+  Mic,
+  MicOff,
   Play,
   Radio,
   Repeat2,
@@ -21,6 +23,7 @@ import { useSession } from "../stores/session";
 import { useSettings } from "../stores/settings";
 import { useSocial } from "../stores/social";
 import { useToasts } from "../stores/toasts";
+import { useVoice } from "../stores/voice";
 import WAvatar from "../ui/atoms/WAvatar.vue";
 import WBadge from "../ui/atoms/WBadge.vue";
 import WButton from "../ui/atoms/WButton.vue";
@@ -29,6 +32,7 @@ import EmptyState from "../ui/molecules/EmptyState.vue";
 import ChatPanel from "../ui/organisms/ChatPanel.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import InviteFriendsDialog from "../ui/organisms/InviteFriendsDialog.vue";
+import MicPermissionDialog from "../ui/organisms/MicPermissionDialog.vue";
 import AppShell from "../ui/templates/AppShell.vue";
 
 const route = useRoute();
@@ -38,6 +42,11 @@ const session = useSession();
 const settings = useSettings();
 const social = useSocial();
 const toasts = useToasts();
+const voice = useVoice();
+const micOn = computed(() => voice.active && !voice.muted);
+const micLabel = computed(() =>
+  !voice.active ? "Unirse a la voz" : voice.muted ? "Micrófono apagado" : "Micrófono activo",
+);
 const inviting = ref(false);
 const launching = ref(false);
 
@@ -163,6 +172,16 @@ async function kick(member: UserSummary) {
             </p>
           </div>
           <div class="room__cta">
+            <WButton
+              size="lg"
+              :variant="micOn ? 'success' : 'secondary'"
+              :loading="voice.busy"
+              data-testid="mic-toggle"
+              :title="voice.error || micLabel"
+              @click="voice.toggle()"
+            >
+              <template #icon><component :is="micOn ? Mic : MicOff" /></template>{{ micLabel }}
+            </WButton>
             <WButton size="lg" variant="success" :loading="launching" data-testid="play" @click="play">
               <template #icon><Play /></template>{{ rooms.tunnelActive ? "Abrir el juego" : "Jugar" }}
             </WButton>
@@ -173,7 +192,13 @@ async function kick(member: UserSummary) {
         </section>
 
         <section class="room__roster" aria-label="Jugadores">
-          <article v-for="m in room.members" :key="m.id" class="slot" :data-member="m.username">
+          <article
+            v-for="m in room.members"
+            :key="m.id"
+            class="slot"
+            :class="{ 'slot--speaking': voice.speaking.includes(m.id) }"
+            :data-member="m.username"
+          >
             <WAvatar :name="m.displayName" :color="m.avatarColor" size="lg" />
             <div class="slot__info">
               <strong>
@@ -219,6 +244,14 @@ async function kick(member: UserSummary) {
         />
       </aside>
     </div>
+
+    <MicPermissionDialog
+      v-if="voice.dialog"
+      :mode="voice.dialog"
+      @allow="voice.answerConsent(true)"
+      @deny="voice.answerConsent(false)"
+      @close="voice.dismissDialog()"
+    />
 
     <InviteFriendsDialog
       v-if="inviting && room"
@@ -301,8 +334,10 @@ async function kick(member: UserSummary) {
 
     @container (max-width: 680px) {
       flex-direction: row;
+      // Three actions (voice, play, leave) no longer fit on one row.
+      flex-wrap: wrap;
       > * {
-        flex: 1;
+        flex: 1 1 auto;
       }
     }
   }
@@ -333,6 +368,11 @@ async function kick(member: UserSummary) {
   display: flex;
   align-items: center;
   gap: var(--s-3);
+  transition: box-shadow 0.12s;
+
+  &--speaking {
+    box-shadow: 0 0 0 2px var(--success, #3ecf8e);
+  }
 
   &__info {
     flex: 1;

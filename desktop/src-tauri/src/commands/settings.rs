@@ -3,7 +3,7 @@ use crate::core::AppError;
 use crate::log_cleanup;
 use crate::log_control::{self, LogTarget};
 use crate::state::AppState;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError> {
@@ -11,15 +11,8 @@ pub fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError
 }
 
 #[tauri::command]
-pub fn save_settings(app: tauri::AppHandle, state: State<'_, AppState>, settings: AppSettings) -> Result<(), AppError> {
-    let previous = state.store.get_settings().ok();
-    let old_mic_toggle_key = previous.map(|s| s.mic_toggle_key);
+pub fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> Result<(), AppError> {
     state.store.save_settings(&settings)?;
-    *state
-        .mic_toggle_shortcut
-        .lock()
-        .expect("mic toggle shortcut lock poisoned") =
-        crate::voice::register_shortcut(&app, old_mic_toggle_key.as_deref(), &settings.mic_toggle_key);
     Ok(())
 }
 
@@ -36,7 +29,7 @@ pub fn set_log_level(state: State<'_, AppState>, target: LogTarget, level: Strin
     Ok(())
 }
 
-/// How much the log folder (the app's and the daemon's) holds right now.
+/// How much the log folder (the app's and the agent's) holds right now.
 #[tauri::command]
 pub fn get_log_usage() -> log_cleanup::LogUsage {
     log_cleanup::usage(&log_cleanup::log_dir())

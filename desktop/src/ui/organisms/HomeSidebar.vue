@@ -55,8 +55,8 @@ const nav = computed(() => [
         :key="f.id"
         type="button"
         class="home-sidebar__dm"
-        :class="{ 'home-sidebar__link--active': route.path === `/dm/${f.id}` }"
-        @click="router.push(`/dm/${f.id}`)"
+        :class="{ 'home-sidebar__link--active': route.path === `/friends/${f.id}` }"
+        @click="router.push(`/friends/${f.id}`)"
       >
         <WAvatar :name="f.displayName" :color="f.avatarColor" size="sm" :status="f.presence.status" />
         <span class="home-sidebar__dm-name">{{ f.displayName }}</span>

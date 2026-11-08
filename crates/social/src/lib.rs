@@ -145,8 +145,12 @@ pub fn router(state: AppState) -> Router {
             get(chat_routes::peer_receipt).post(chat_routes::mark_receipt),
         )
         .route("/chat/unread", get(chat_routes::unread))
-        .route("/notifications", get(notifications::list))
+        .route(
+            "/notifications",
+            get(notifications::list).delete(notifications::clear_all),
+        )
         .route("/notifications/read-all", post(notifications::mark_all_read))
+        .route("/notifications/{id}", delete(notifications::remove))
         .route("/notifications/{id}/read", post(notifications::mark_read))
         .route("/ws", get(realtime::ws_handler))
         .route("/edges", get(helpers::edges_handler));

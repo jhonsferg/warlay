@@ -72,7 +72,7 @@ flowchart LR
     subgraph host["Player A (host)"]
         hostGame["Warcraft III"]
         hostUi["Desktop client<br/>warlay.exe"]
-        hostDaemon["Daemon<br/>wnetd.exe"]
+        hostDaemon["Agent<br/>warlay.exe --daemon"]
     end
 
     subgraph hub["Warlay server (VPS)"]
@@ -85,7 +85,7 @@ flowchart LR
     subgraph joiner["Player B (joiner)"]
         joinerGame["Warcraft III"]
         joinerUi["Desktop client<br/>warlay.exe"]
-        joinerDaemon["Daemon<br/>wnetd.exe"]
+        joinerDaemon["Agent<br/>warlay.exe --daemon"]
     end
 
     hostUi <-->|named pipe| hostDaemon
@@ -103,11 +103,11 @@ flowchart LR
     tunnel <-->|TCP relay, fallback| joinerDaemon
 ```
 
-| Component                       | Runs on                             | Role                                                    |
-| ------------------------------- | ----------------------------------- | ------------------------------------------------------- |
-| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.    |
-| [`daemon/`](daemon/README.md)   | Player's PC (Windows, elevated)     | `wnetd.exe`: LAN capture/replay, game tunnel, P2P mesh. |
-| [`desktop/`](desktop/README.md) | Player's PC (Windows)               | `warlay.exe`: the user interface (Tauri 2 + Vue 3).     |
+| Component                       | Runs on                             | Role                                                      |
+| ------------------------------- | ----------------------------------- | --------------------------------------------------------- |
+| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous.      |
+| [`daemon/`](daemon/README.md)   | Player's PC (Windows, elevated)     | Network agent: LAN capture/replay, game tunnel, P2P mesh. |
+| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: the user interface (Tauri 2 + Vue 3).       |
 
 ### Network ports (server)
 
@@ -137,9 +137,8 @@ Every release on the [Releases page](https://github.com/jhonsferg/warlay/release
 
 | Artifact                                         | Platform                                                                      |
 | ------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `warlay-desktop-vX.Y.Z-windows-x64-setup.exe`    | Windows installer (client + daemon)                                           |
-| `warlay-desktop-vX.Y.Z-windows-x64-portable.zip` | Portable client + daemon                                                      |
-| `warlay-daemon-vX.Y.Z-windows-x64.zip`           | Daemon only                                                                   |
+| `warlay-desktop-vX.Y.Z-windows-x64-setup.exe`    | Windows installer (client + agent, one executable)                            |
+| `warlay-desktop-vX.Y.Z-windows-x64-portable.zip` | Portable client + agent                                                       |
 | `warlay-server-vX.Y.Z-<target>.tar.gz` / `.zip`  | Server for Linux (static x64/ARM64), macOS (Intel/Apple Silicon), Windows x64 |
 | `ghcr.io/jhonsferg/warlay-server:X.Y.Z`          | Server Docker image                                                           |
 | `SHA256SUMS.txt`                                 | Checksums for every file                                                      |
@@ -159,8 +158,9 @@ domain, TLS and nginx, follow [Deploying the server on a VPS](#deploying-the-ser
 ### Play
 
 1. Install `warlay-desktop-...-setup.exe` (or unzip the portable build and
-   run `warlay.exe`). Accept the UAC prompt: the daemon needs administrator
-   rights to capture LAN traffic.
+   run `warlay.exe`). Windows asks for administrator permission on every
+   launch: the same binary is also the agent, and the agent needs
+   administrator rights to capture LAN traffic.
 2. Register the server (`wss://your-domain` or `host:7777`).
 3. Create a room, or join one, and start Warcraft III from the room panel.
 4. The host creates the game in _Local Area Network_; it appears for every
@@ -181,31 +181,32 @@ flowchart LR
     crates --> storage["storage<br/>SQLite: server identity,<br/>issued client keys"]
     crates --> config["config<br/>TOML settings"]
     crates --> engine["engine<br/>client networking: hub connection,<br/>tunnels, P2P mesh, LAN capture"]
+    crates --> agent["agent<br/>the network agent: pipe server,<br/>session, handlers, autostart"]
     crates --> facade["warlay<br/>facade re-exporting the crates<br/>as warlay::*, feature-gated"]
 
     root --> server["server/<br/>hub binary warlay-server,<br/>Dockerfile, sample configs"]
-    root --> daemon["daemon/<br/>Windows background agent wnetd.exe"]
-    root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend"]
+    root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend, also runs<br/>the agent (--daemon)"]
     root --> github[".github/<br/>CI, release pipeline,<br/>issue and PR templates"]
 ```
 
-The binaries (`server`, `daemon`, `desktop/src-tauri`) stay thin: protocol,
-crypto and networking logic live in `crates/` and are consumed through the
-`warlay` facade with only the features each binary needs. The server never
-links the Windows-only `engine` crate.
+The binaries (`server`, `desktop/src-tauri`) stay thin: protocol, crypto and
+networking logic live in `crates/` and are consumed through the `warlay`
+facade with only the features each binary needs. The server never links the
+Windows-only `engine` crate. The agent itself is a library (`crates/agent`)
+that runs inside `warlay.exe` when started with `--daemon`.
 
 ## Building from source
 
 ### Prerequisites
 
-| Tool                                                                                    | Needed for                       | Notes                                                                      |
-| --------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------- |
-| [Rust](https://rustup.rs) stable                                                        | everything                       | On Windows use the default `x86_64-pc-windows-msvc` toolchain.             |
-| [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | daemon, desktop client (Windows) | Workload **Desktop development with C++** (MSVC compiler and Windows SDK). |
-| [Node.js](https://nodejs.org) 20 LTS or newer                                           | desktop client                   | Ships with `npm`.                                                          |
-| [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)            | running the desktop client       | Preinstalled on Windows 10 and 11.                                         |
-| C toolchain (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS)     | server on Linux/macOS            | Compiles the bundled SQLite and the `ring` crypto library.                 |
-| [Docker](https://docs.docker.com/engine/install/)                                       | container image                  | Optional.                                                                  |
+| Tool                                                                                    | Needed for                 | Notes                                                                      |
+| --------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
+| [Rust](https://rustup.rs) stable                                                        | everything                 | On Windows use the default `x86_64-pc-windows-msvc` toolchain.             |
+| [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | desktop client (Windows)   | Workload **Desktop development with C++** (MSVC compiler and Windows SDK). |
+| [Node.js](https://nodejs.org) 20 LTS or newer                                           | desktop client             | Ships with `npm`.                                                          |
+| [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)            | running the desktop client | Preinstalled on Windows 10 and 11.                                         |
+| C toolchain (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS)     | server on Linux/macOS      | Compiles the bundled SQLite and the `ring` crypto library.                 |
+| [Docker](https://docs.docker.com/engine/install/)                                       | container image            | Optional.                                                                  |
 
 Nothing else is required: NSIS (the installer builder) is downloaded by the
 Tauri CLI on first use, SQLite is compiled in, and the Opus voice codec is
@@ -216,22 +217,22 @@ git clone https://github.com/jhonsferg/warlay.git
 cd warlay
 ```
 
-### Desktop client and daemon (Windows)
+### Desktop client (Windows)
 
-The client (`warlay.exe`) bundles the daemon (`wnetd.exe`) as a Tauri
-sidecar, so a single build produces both.
+One build produces one executable: `warlay.exe` is both the desktop client
+and the network agent (it starts itself in agent mode with `--daemon`).
+No sidecar has to be built separately.
 
 **Development mode** - hot-reloading frontend on top of a debug build:
 
 ```powershell
 cd desktop
 npm ci
-npm run prepare-daemon-sidecar   # builds wnetd.exe into src-tauri/binaries/
 npm run tauri dev
 ```
 
-**Installer** - a release build of the frontend, the daemon and the client,
-packaged as an NSIS installer:
+**Installer** - a release build of the frontend and the client, packaged as
+an NSIS installer:
 
 ```powershell
 cd desktop
@@ -239,30 +240,32 @@ npm ci
 npx tauri build
 ```
 
-`tauri build` runs `npm run build` (type-check and bundle the frontend) and
-`npm run prepare-daemon-sidecar` (release build of the daemon) before
-compiling the client. The results are in `target/release/` at the repository
-root:
+`tauri build` runs `npm run build` (type-check and bundle the frontend)
+before compiling the client. The results are in `target/release/` at the
+repository root:
 
-| Path                                                    | Content                                   |
-| ------------------------------------------------------- | ----------------------------------------- |
-| `target/release/bundle/nsis/Warlay_X.Y.Z_x64-setup.exe` | Installer (client + daemon + uninstaller) |
-| `target/release/warlay.exe`                             | Desktop client                            |
-| `target/release/wnetd.exe`                              | Daemon                                    |
+| Path                                                    | Content                             |
+| ------------------------------------------------------- | ----------------------------------- |
+| `target/release/bundle/nsis/Warlay_X.Y.Z_x64-setup.exe` | Installer (client + uninstaller)    |
+| `target/release/warlay.exe`                             | Client and agent, in one executable |
 
-**Portable build** - a zip with `warlay.exe`, `wnetd.exe` and usage notes,
-for players who do not want to install anything:
+**Portable build** - a zip with `warlay.exe` and usage notes, for players
+who do not want to install anything:
 
 ```powershell
 npm run build-portable-zip   # after npx tauri build
 # -> target/release/bundle/nsis/Warlay_X.Y.Z_x64-portable.zip
 ```
 
-**Daemon only:**
+**Standalone agent (optional)** - the agent can also be built as its own
+executable for development or for running outside the client:
 
 ```powershell
-cargo build --release -p daemon   # -> target/release/wnetd.exe
+cargo build --release -p daemon   # dev-only standalone build of the agent
 ```
+
+This standalone build is kept for development convenience; the distributed
+desktop build runs the agent inside `warlay.exe` itself.
 
 Binaries link the MSVC runtime statically, so they run on a clean Windows
 installation. The version comes from `desktop/src-tauri/tauri.conf.json`
@@ -322,18 +325,19 @@ Every release also publishes the image as
    [latest release](https://github.com/jhonsferg/warlay/releases/latest) and
    run it (or unzip the portable build anywhere and run `warlay.exe`).
 2. On first launch Windows asks for administrator permission for
-   `wnetd.exe`. Accept it: the daemon needs elevation to capture LAN game
-   broadcasts. The client starts the daemon every time it opens.
+   `warlay.exe`. Accept it: the same binary runs the agent, which needs
+   elevation to capture LAN game broadcasts. Windows will keep asking on
+   every launch of the client.
 3. Register a server with the **+** button in the server rail, using the
    address its operator gave you, for example `wss://hub.example.com`.
 4. Set the Warcraft III executable in **Settings**, then create or join a
    room.
 
-Optional: to start the daemon at logon without opening the client, run
-`wnetd.exe --install` from an elevated terminal in the installation folder
-(`wnetd.exe --uninstall` removes it). Settings and logs are stored in
+Optional: to start the agent at logon without opening the client, run
+`warlay.exe --install` from an elevated terminal in the installation folder
+(`warlay.exe --uninstall` removes it). Settings and logs are stored in
 `%APPDATA%\com.warlay.lanlauncher\`. Uninstall from **Settings > Apps**; the
-uninstaller stops the daemon first.
+uninstaller stops the agent first.
 
 ## Deploying the server on a VPS
 
@@ -344,7 +348,7 @@ throughout.
 
 ```mermaid
 flowchart LR
-    players["Players<br/>desktop client + daemon"]
+    players["Players<br/>desktop client and agent"]
 
     subgraph vps["VPS"]
         subgraph nginx["nginx (TLS termination)"]
@@ -1427,7 +1431,7 @@ tunnel pairing and relays.
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | The client cannot connect to `wss://hub.example.com`       | Port 443 blocked, nginx not reloaded, or the certificate does not cover the hostname. Run step 10.      |
 | Rooms work but joining a game never connects               | Port 7443/tcp (TLS tunnel) or 7779/udp (rendezvous) blocked by the firewall or the provider's firewall. |
-| The host's game does not appear in _Local Area Network_    | The daemon is not running elevated on the host's PC. Restart the client and accept the UAC prompt.      |
+| The host's game does not appear in _Local Area Network_    | The agent is not running elevated on the host's PC. Restart the client and accept the UAC prompt.       |
 | Port 7777 or 7778 reachable from the internet behind nginx | Docker publishes ports past `ufw`. Bind them to `127.0.0.1` as in step 6.                               |
 | Every player has to register again after an update         | The container was started without the `warlay-data` volume.                                             |
 
@@ -1440,7 +1444,8 @@ same ports there.
 # Server and shared crates (any OS)
 cargo test -p server -p protocol -p crypto -p matchmaking -p core -p storage -p config -p transport
 
-# Whole workspace (Windows; the daemon's test binary requires an elevated shell)
+# Whole workspace (Windows; the binaries that carry the elevation manifest
+# declare `test = false`, so no elevated shell is needed)
 cargo test --workspace
 
 # Frontend type-check and bundle
@@ -1459,7 +1464,7 @@ which:
 1. computes the next [SemVer](https://semver.org) version from the
    [Conventional Commits](https://www.conventionalcommits.org) since the last
    tag (`feat` -> minor, `fix` and others -> patch, breaking -> major),
-2. builds the server for five targets and the Windows client, daemon and
+2. builds the server for five targets and the Windows client and
    installer with that version stamped in,
 3. pushes the server image to GHCR,
 4. tags the commit and publishes a GitHub Release with notes and checksums.

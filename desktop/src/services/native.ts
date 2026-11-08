@@ -1,4 +1,4 @@
-// Bridge to the desktop shell (Tauri) and, through it, the daemon that does
+// Bridge to the desktop shell (Tauri) and, through it, the agent that does
 // the actual networking. In a plain browser (vite dev, Playwright) there is
 // no shell: every call is recorded and answered by a harmless stand-in, so
 // the whole UI can be exercised and screenshotted without Windows.
@@ -106,8 +106,6 @@ export const native = {
     invoke<{ plaintext: string; requestId: string }>("e2e_decrypt", { me, peerId, peerPublicKey, senderId, envelope }),
   e2eSafetyNumber: (me: string, peerPublicKey: string) => invoke<string>("e2e_safety_number", { me, peerPublicKey }),
 
-  ensureDaemonRunning: () => invoke<void>("ensure_daemon_running"),
-
   startRoomSession: (session: RoomSession) =>
     invoke<void>("start_room_session", {
       roomId: session.room.id,
@@ -120,11 +118,6 @@ export const native = {
   stopRoomSession: () => invoke<void>("stop_room_session"),
   updateRoomHelper: (helper: HelperInfo) =>
     invoke<void>("update_room_helper", { rendezvousAddr: helper.rendezvousAddr, relayAddr: helper.relayAddr }),
-  setOverlayRoster: (roomId: string | null, members: { clientId: string; displayName: string }[]) =>
-    invoke<void>("set_overlay_roster", { roomId, members }),
-  startVoiceChat: (roomToken: string) =>
-    invoke<void>("start_voice_chat", { roomToken, inputDeviceId: null, outputDeviceId: null }),
-  stopVoiceChat: () => invoke<void>("stop_voice_chat"),
   startGameTunnel: (gamePort: number) => invoke<void>("start_game_tunnel", { gamePort }),
 
   launchGame: (path: string, args: string[]) =>
@@ -140,6 +133,24 @@ export const native = {
     const picked = await open({ multiple: false, filters: [{ name: "Warcraft III", extensions: ["exe"] }] });
     return typeof picked === "string" ? picked : null;
   },
+
+  /** One encoded Opus frame of our microphone, sent to the room over the mesh. */
+  sendVoiceFrame: (frame: Uint8Array) =>
+    invoke<number>("send_voice_frame", frame as unknown as Record<string, unknown>),
+  onVoiceFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
+    listen<{ from: string; data: string }[]>("voice://frames", handler),
+  setMicConsent: (granted: boolean) => invoke<void>("set_mic_consent", { granted }),
+  openMicPrivacySettings: () => invoke<void>("open_mic_privacy_settings"),
+  /** Starts sharing this PC's sound with the room (Warlay's own audio excluded). */
+  startDesktopAudio: () => invoke<void>("start_desktop_audio"),
+  stopDesktopAudio: () => invoke<void>("stop_desktop_audio"),
+  /** Other members' shared desktop audio (stereo), separate from their voice. */
+  onDesktopFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
+    listen<{ from: string; data: string }[]>("voice://desktop-frames", handler),
+  registerVoiceShortcut: (accelerator?: string) => invoke<string>("register_voice_shortcut", { accelerator }),
+  unregisterVoiceShortcut: () => invoke<void>("unregister_voice_shortcut"),
+  /** The global mute shortcut was pressed (works while the game has focus). */
+  onVoiceToggle: (handler: () => void) => listen<void>("voice://toggle-mute", handler),
 
   onGameStarted: (handler: () => void) => listen<void>("session://game-started", handler),
   onGameEnded: (handler: () => void) => listen<void>("session://game-ended", handler),

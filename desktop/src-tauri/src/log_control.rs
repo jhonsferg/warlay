@@ -85,3 +85,7 @@ pub fn set_level(target: LogTarget, level: &str) -> Result<(), String> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "log_control_tests.rs"]
+mod tests;

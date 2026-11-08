@@ -132,23 +132,24 @@ export interface AppSettings {
   /** Log files older than this many days are deleted once at every launch,
    * and again immediately when this changes — see `LogLevelSection.vue`. */
   logRetentionDays: number;
-  voiceEnabled: boolean;
-  microphoneDeviceId: string;
-  /** Toggles the microphone on/off on press — the only voice control key.
-   * The mic always starts off; this turns it on, pressing it again mutes
-   * back. See `AudioSettingsSection.vue`. */
-  micToggleKey: string;
-  voiceInputVolume: number;
-  voiceOutputVolume: number;
+  /** True once the user accepted Warlay's own microphone dialog — the native
+   * permission policy only allows the mic while this is set. */
+  micConsent: boolean;
+  /** Input device (`MediaDeviceInfo.deviceId`); "" is the OS default. */
+  micDeviceId: string;
+  /** "off" | "standard" | "strong" — see `services/voicePrefs.ts`. */
+  noiseSuppression: "off" | "standard" | "strong";
+  /** Share the PC's sound with the room while in voice (Warlay's own is excluded). */
+  shareDesktopAudio: boolean;
 }
 
 /** Read-only hardware snapshot from `get_system_info` — informational only,
  * shown next to the "Motor gráfico" selector so the user has something to
  * go on. Windows-only for now; on other platforms every numeric field comes
  * back 0 and the GPU fields come back null. */
-/** The daemon's (wnetd.exe) own persisted configuration — separate from
+/** The agent's own persisted configuration — separate from
  * `AppSettings`, which is the desktop client's own settings. See
- * `daemon/src/storage.rs`. */
+ * `crates/agent/src/storage.rs`. */
 export interface AgentSettings {
   logLevel: LogLevel;
   lanDiscoveryEnabled: boolean;
@@ -163,7 +164,7 @@ export interface PeerLinkStatus {
   state: "not_attempted" | "connecting" | "connected" | "failed";
 }
 
-/** Snapshot of what the daemon is doing right now — reply to
+/** Snapshot of what the agent is doing right now — reply to
  * `getAgentStatus`, polled while the "Agente" panel is open. */
 export interface AgentStatusSnapshot {
   uptimeSecs: number;
@@ -226,7 +227,7 @@ export interface ParsedServerAddress {
   secure: boolean;
 }
 
-/** Mirrors the daemon's `HubAddress`: a bare "host:port" (legacy, plain
+/** Mirrors the agent's `HubAddress`: a bare "host:port" (legacy, plain
  * ws) or a `ws://` / `wss://` URL. `null` when it's neither. */
 export function parseServerAddress(address: string): ParsedServerAddress | null {
   const trimmed = address.trim();

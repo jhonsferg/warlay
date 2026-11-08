@@ -2,12 +2,13 @@ mod discovery_service;
 mod hub_address;
 // LAN capture is per platform (raw SIO_RCVALL socket on Windows, AF_PACKET
 // on Linux) behind one API; everything else builds anywhere.
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+mod lan_bridge;
 #[cfg(windows)]
 mod lan_capture;
 #[cfg(target_os = "linux")]
 #[path = "lan_capture_linux.rs"]
 mod lan_capture;
-#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 mod lan_filter;
 mod lan_rebroadcast;
 mod matchmaking_client;
@@ -21,6 +22,7 @@ mod w3gs_sniff;
 
 pub use discovery_service::{query_games, spawn_discovery, RelayInfo};
 pub use hub_address::HubAddress;
+pub use lan_bridge::{JoinPorts, LanBridge, OwnCapture};
 #[cfg(any(windows, target_os = "linux"))]
 pub use lan_capture::{spawn as spawn_lan_capture, LanCaptureHandle};
 pub use lan_filter::CapturePorts;
