@@ -19,7 +19,6 @@ const presence = computed(() => ({
     : ("online" as const),
   roomId: rooms.current?.id ?? null,
 }));
-
 </script>
 
 <template>
