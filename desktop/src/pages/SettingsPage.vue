@@ -18,6 +18,7 @@ import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import LogSettingsSection from "../ui/organisms/LogSettingsSection.vue";
+import VoiceSettingsSection from "../ui/organisms/VoiceSettingsSection.vue";
 import AppShell from "../ui/templates/AppShell.vue";
 
 const session = useSession();
@@ -212,6 +213,8 @@ onUnmounted(() => agentTimer && clearInterval(agentTimer));
           <WButton @click="saveGame">Guardar</WButton>
         </div>
       </section>
+
+      <VoiceSettingsSection />
     </div>
 
     <div v-else class="settings__grid">
