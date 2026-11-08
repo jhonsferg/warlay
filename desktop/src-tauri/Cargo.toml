@@ -42,6 +42,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 warlay = { workspace = true, features = ["transport", "core", "protocol", "crypto", "engine"] }
 base64 = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
 anyhow = { workspace = true }
 if-addrs = { workspace = true }
 rusqlite = { workspace = true }
