@@ -1,6 +1,6 @@
 //! The agent's network status, read in-process and pushed to the UI.
 //!
-//! The UI used to poll `get_agent_status` every few seconds. Now a single
+//! The UI used to poll `get_network_status` every few seconds. Now a single
 //! watcher task looks at the agent's state once a second and emits the
 //! [`STATUS_EVENT`] Tauri event only when something other than uptime
 //! changed (hub connections, tunnel, LAN discovery, P2P links). Nothing is
