@@ -86,6 +86,8 @@ function pingOf(member: UserSummary) {
   return pingLabel(rooms.linkOf(member.id)?.rttMs);
 }
 
+const isSpeaking = (m: UserSummary) => voice.speaking.includes(m.id);
+
 const directCount = computed(() => rooms.links.filter((l) => l.state === "connected").length);
 const relayCount = computed(() => rooms.links.filter((l) => l.state === "relayed").length);
 
@@ -199,7 +201,13 @@ async function kick(member: UserSummary) {
         </section>
 
         <section class="room__roster" aria-label="Jugadores">
-          <article v-for="m in room.members" :key="m.id" class="slot" :data-member="m.username">
+          <article
+            v-for="m in room.members"
+            :key="m.id"
+            class="slot"
+            :class="{ 'slot--speaking': isSpeaking(m) }"
+            :data-member="m.username"
+          >
             <span
               class="slot__avatar"
               :class="{ 'slot__avatar--speaking': voice.speaking.includes(m.id) }"
@@ -207,11 +215,33 @@ async function kick(member: UserSummary) {
               :data-speaking="voice.speaking.includes(m.id)"
             >
               <WAvatar :name="m.displayName" :color="m.avatarColor" size="lg" />
+              <span
+                v-if="voice.members[m.id] === 'muted'"
+                class="slot__mic slot__mic--muted"
+                data-testid="mic-muted"
+                title="Micrófono silenciado"
+                ><MicOff :size="12"
+              /></span>
+              <span
+                v-else-if="voice.members[m.id] === 'live'"
+                class="slot__mic slot__mic--live"
+                data-testid="mic-live"
+                title="En la llamada de voz"
+                ><Mic :size="12"
+              /></span>
             </span>
             <div class="slot__info">
               <strong>
                 {{ m.displayName }}
                 <Crown v-if="m.id === room.host.id" class="slot__crown" :size="14" />
+                <span
+                  v-if="isSpeaking(m)"
+                  class="slot__wave"
+                  data-testid="speaking-wave"
+                  aria-label="Hablando"
+                  :style="{ '--level': voice.levels[m.id] ?? 0 }"
+                  ><i /><i /><i
+                /></span>
               </strong>
               <span v-if="m.id === session.me?.id" class="slot__you">Tú</span>
               <div v-else-if="linkOf(m)" class="slot__badges">
@@ -383,7 +413,12 @@ async function kick(member: UserSummary) {
   // The ring only exists while the member is speaking and grows with their
   // volume (--level 0..1), like Meet and Teams. It lights up at once and
   // fades out gently.
+  &--speaking {
+    border-color: rgba(62, 207, 142, 0.5);
+  }
+
   &__avatar {
+    position: relative;
     flex-shrink: 0;
     display: inline-flex;
     border-radius: 50%;
@@ -413,6 +448,51 @@ async function kick(member: UserSummary) {
       max-width: 100%;
     }
   }
+  // Mic state on the corner of the avatar, like Meet and Teams.
+  &__mic {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 2px solid var(--bg-2);
+    color: #fff;
+
+    &--muted {
+      background: var(--danger, #ef4444);
+    }
+    &--live {
+      background: var(--success, #3ecf8e);
+      color: #06281a;
+    }
+  }
+
+  // Three bars that move with the member's volume, like Teams.
+  &__wave {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 14px;
+    color: var(--success, #3ecf8e);
+
+    i {
+      width: 3px;
+      height: calc(4px + var(--level, 0) * 10px);
+      border-radius: 2px;
+      background: currentColor;
+      transition: height 0.06s linear;
+    }
+    i:nth-child(1) {
+      height: calc(3px + var(--level, 0) * 6px);
+    }
+    i:nth-child(3) {
+      height: calc(3px + var(--level, 0) * 8px);
+    }
+  }
+
   &__badges {
     display: flex;
     flex-wrap: wrap;
