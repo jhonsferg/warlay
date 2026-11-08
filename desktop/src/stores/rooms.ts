@@ -5,6 +5,7 @@ import { ApiError } from "../services/http";
 import { native, type PeerLinkStatus } from "../services/native";
 import type { HelperInfo, RoomSession, RoomView } from "../services/types";
 import { useSession } from "./session";
+import { useVoice } from "./voice";
 
 /** Lobby rooms, plus the room this player is in and its P2P session. */
 export const useRooms = defineStore("rooms", () => {
@@ -31,6 +32,8 @@ export const useRooms = defineStore("rooms", () => {
     try {
       await native.startRoomSession(next);
       syncOverlay(next.room);
+      // The mute shortcut works from the moment we are in a room.
+      void useVoice().listenOnly();
     } finally {
       startPolling();
     }
@@ -72,6 +75,7 @@ export const useRooms = defineStore("rooms", () => {
     session.value = null;
     stopPolling();
     syncOverlay(null);
+    await useVoice().leave();
     try {
       await native.stopRoomSession();
     } catch {
