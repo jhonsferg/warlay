@@ -86,17 +86,17 @@ flowchart LR
         joinerClient["Desktop client<br/>warlay.exe<br/>(UI + network agent)"]
     end
 
-    hostGame <-->|LAN broadcast and game TCP| hostDaemon
-    joinerGame <-->|LAN broadcast and game TCP| joinerDaemon
+    hostGame <-->|LAN broadcast and game TCP| hostClient
+    joinerGame <-->|LAN broadcast and game TCP| joinerClient
 
-    hostDaemon <-->|ws / wss| matchmaking
-    joinerDaemon <-->|ws / wss| matchmaking
-    hostDaemon -.->|signaling| rendezvous
-    joinerDaemon -.->|signaling| rendezvous
+    hostClient <-->|ws / wss| matchmaking
+    joinerClient <-->|ws / wss| matchmaking
+    hostClient -.->|signaling| rendezvous
+    joinerClient -.->|signaling| rendezvous
 
-    hostDaemon <==>|P2P QUIC, preferred| joinerDaemon
-    hostDaemon <-->|TCP relay, fallback| tunnel
-    tunnel <-->|TCP relay, fallback| joinerDaemon
+    hostClient <==>|P2P QUIC, preferred| joinerClient
+    hostClient <-->|TCP relay, fallback| tunnel
+    tunnel <-->|TCP relay, fallback| joinerClient
 ```
 
 | Component                       | Runs on                             | Role                                                  |
@@ -336,7 +336,7 @@ throughout.
 
 ```mermaid
 flowchart LR
-    players["Players<br/>desktop client and agent"]
+    players["Players<br/>desktop client (warlay.exe)"]
 
     subgraph vps["VPS"]
         subgraph nginx["nginx (TLS termination)"]
@@ -1434,10 +1434,10 @@ cargo test -p server -p protocol -p crypto -p matchmaking -p core -p storage -p 
 
 # Whole workspace (Windows; the binaries that carry the elevation manifest
 # declare `test = false`, so no elevated shell is needed)
-cargo test --workspace
+WARLAY_TEST_MANIFEST=1 cargo test --workspace
 
-# Frontend type-check and bundle
-cd desktop && npm run build
+# Frontend: type-check and bundle, then unit tests (src/services/*.test.ts)
+cd desktop && npm run build && npm run test:unit
 
 # Live tests against a deployed hub (opt-in)
 cargo test -p engine -- --ignored

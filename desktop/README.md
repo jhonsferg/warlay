@@ -48,8 +48,7 @@ flowchart LR
     root["desktop/"]
 
     root --> frontend["src/<br/>Vue 3 frontend"]
-    frontend --> api["api.ts and services/<br/>typed wrappers over Tauri invoke<br/>and listen, HTTP and realtime clients"]
-    frontend --> types["types.ts<br/>DTO mirrors and<br/>address parsing"]
+    frontend --> services["services/<br/>native.ts (Tauri invoke and listen),<br/>HTTP, realtime, networkStatus, voice,<br/>DTO types and their unit tests"]
     frontend --> store["stores/<br/>Pinia stores: session, rooms,<br/>chat, social, voice, settings"]
     frontend --> pages["pages/ and router/<br/>login, lobby, room, friends,<br/>discover, community, settings"]
     frontend --> ui["ui/<br/>atoms, molecules, organisms:<br/>the design-system components"]
@@ -57,18 +56,57 @@ flowchart LR
 
     root --> backend["src-tauri/<br/>Rust backend: crate desktop,<br/>binary warlay"]
     backend --> commands["src/commands/<br/>Tauri command handlers, the only<br/>layer touching AppHandle and State"]
-    backend --> agent["src/agent/<br/>the network agent: request handlers,<br/>room sessions, LAN, voice, state"]
+    backend --> agent["src/agent/<br/>the network agent: request handlers,<br/>room sessions, LAN, voice, state,<br/>status watcher"]
     backend --> clientStorage["src/storage/<br/>SQLite: client identity,<br/>servers and keys, settings"]
     backend --> network["src/network/<br/>lan-mesh discovery<br/>and relay client"]
     backend --> launcher["src/launcher/<br/>starts and tracks<br/>the game process"]
     backend --> audio["src/desktop_audio/<br/>WASAPI capture and Opus<br/>encoding of desktop audio"]
     backend --> tauriConf["tauri.conf.json<br/>window and NSIS bundle<br/>configuration"]
 
+    root --> splash["index.html<br/>static loading screen:<br/>logo, name, version, progress bar"]
     root --> scripts["scripts/<br/>portable zip build helper"]
 ```
 
+How the pieces talk at runtime - everything below runs inside the one
+`warlay.exe` process:
+
+```mermaid
+flowchart LR
+    subgraph webview["Webview (Vue 3)"]
+        pages["pages and stores"]
+        native["services/native.ts"]
+        feed["services/networkStatus.ts<br/>read once, then follow the event"]
+    end
+
+    subgraph backend["Rust backend (same process)"]
+        commands["commands/*<br/>Tauri commands"]
+        handlers["agent/handlers.rs<br/>handle_request(AgentRequest)"]
+        state["AgentState<br/>hub connections, room session,<br/>tunnel, P2P mesh, LAN capture"]
+        events["agent/events.rs<br/>AgentResponse -> Tauri events"]
+        watcher["agent/status.rs<br/>watcher, once a second"]
+    end
+
+    hubs["Hubs (ws / wss)"]
+    peers["Other players<br/>(P2P QUIC or relay)"]
+    game["Warcraft III<br/>(LAN broadcast, game TCP)"]
+
+    pages --> native
+    native -->|"invoke (e.g. get_network_status)"| commands
+    commands --> handlers
+    handlers --> state
+    state <--> hubs
+    state <--> peers
+    state <--> game
+    handlers --> events
+    watcher -->|reads| state
+    watcher -->|"network://status, only on change"| native
+    events -->|"matchmaking://*, session://*, voice://*"| native
+    native --> feed
+    feed --> pages
+```
+
 The frontend only talks to Tauri commands. Commands that need networking
-(`connect_to_server`, `start_hosting_tunnel`, `launch_game`, ...) build a
+(`connect_to_server`, `start_hosting_tunnel`, `launch_game`, ...) build an
 `AgentRequest` (see `crates/protocol/src/ipc.rs`) and call
 `agent::handlers::handle_request` directly, in the same process. The agent
 keeps its state in `AgentState` and pushes events back (`HubMessage`,
