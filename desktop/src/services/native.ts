@@ -1,20 +1,15 @@
-// Bridge to the desktop shell (Tauri) and, through it, the agent that does
-// the actual networking. In a plain browser (vite dev, Playwright) there is
+// Bridge to the desktop shell (Tauri) and, through it, the network runtime
+// that does the actual networking. In a plain browser (vite dev, Playwright) there is
 // no shell: every call is recorded and answered by a harmless stand-in, so
 // the whole UI can be exercised and screenshotted without Windows.
 import type { NetworkStatus } from "./networkStatus";
 import type { HelperInfo, RoomSession } from "./types";
+import type { AppInfo } from "./about";
 import type { UpdateProgress, UpdateStatus } from "./updates";
 
 export type { NetworkStatus, PeerLinkStatus } from "./networkStatus";
 
-/** The network agent's own configuration (it applies a new log level at once). */
-export interface AgentSettings {
-  logLevel: string;
-  lanDiscoveryEnabled: boolean;
-}
-
-/** What the log folder holds (the app's and the agent's logs). */
+/** What the log folder holds. */
 export interface LogUsage {
   files: number;
   bytes: number;
@@ -46,7 +41,7 @@ declare global {
 function browserStub(): { calls: NativeCall[]; status: NetworkStatus } {
   window.__warlayNative ??= {
     calls: [],
-    status: { uptimeSecs: 0, hubConnections: 0, tunnelActive: false, lanDiscoveryEnabled: true, meshPeers: [] },
+    status: { tunnelActive: false, meshPeers: [] },
   };
   return window.__warlayNative;
 }
@@ -79,6 +74,8 @@ export const native = {
   /** Developer tools: F12 / Ctrl+Shift+I, enabled in release builds too. */
   openDevtools: () => invoke<void>("open_devtools"),
 
+  /** Version, build and dates of this installation (desktop only). */
+  appInfo: () => invoke<AppInfo | undefined>("get_app_info"),
   /** Client updates from GitHub Releases (desktop only). */
   checkForUpdate: () => invoke<UpdateStatus>("check_for_update"),
   /** Downloads, verifies, installs and restarts into the new version. */
@@ -88,8 +85,6 @@ export const native = {
     listen<UpdateProgress>("update://progress", handler),
 
   /** Logs: levels change while running; old files are swept by age. */
-  agentSettings: () => invoke<AgentSettings | undefined>("get_agent_settings"),
-  saveAgentSettings: (settings: AgentSettings) => invoke<void>("save_agent_settings", { settings }),
   setLogLevel: (target: "console" | "file", level: string) => invoke<void>("set_log_level", { target, level }),
   setLogRetentionDays: (days: number) => invoke<void>("set_log_retention_days", { days }),
   logUsage: () => invoke<LogUsage | undefined>("get_log_usage"),
@@ -119,11 +114,10 @@ export const native = {
 
   launchGame: (path: string, args: string[]) =>
     invoke<unknown>("launch_game", { executablePath: path, args, workingDir: null }),
-  /** What the agent is doing right now (P2P links, tunnel, hubs): read once... */
+  /** What the network is doing right now (P2P links, tunnel, hubs): read once... */
   networkStatus: () => invoke<NetworkStatus>("get_network_status"),
   /** ...then pushed by the backend whenever it changes (no polling). */
   onNetworkStatus: (handler: (status: NetworkStatus) => void) => listen<NetworkStatus>("network://status", handler),
-  retryPeerMesh: () => invoke<void>("retry_peer_mesh"),
 
   loadSettings: () => invoke<GameSettings & Record<string, unknown>>("load_settings"),
   saveSettings: (settings: Record<string, unknown>) => invoke<void>("save_settings", { settings }),
