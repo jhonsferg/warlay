@@ -31,7 +31,7 @@ executable does everything.
   end-to-end encrypted), Opus voice chat in the room (captured and played in
   the webview, sent only while you speak) with a global microphone mute
   shortcut.
-- **Settings > Avanzado** - the read-only server address, the log detail level
+- **Settings > Avanzado** - the log detail level
   and automatic log cleanup (for this app's own logs), **Actualización** and
   **Acerca de Warlay**.
 - **Self-update** - Avanzado > Actualización looks for a newer release on
