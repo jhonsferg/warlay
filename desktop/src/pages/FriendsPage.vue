@@ -127,7 +127,12 @@ async function removeFriend() {
         </EmptyState>
       </section>
 
-      <FriendProfilePanel v-if="friend && profileOpen" :friend="friend" @close="profileOpen = false" @remove="removeFriend" />
+      <FriendProfilePanel
+        v-if="friend && profileOpen"
+        :friend="friend"
+        @close="profileOpen = false"
+        @remove="removeFriend"
+      />
     </div>
   </AppShell>
 </template>
