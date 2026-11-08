@@ -198,10 +198,10 @@ onMounted(() => {
   }
   &__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
     gap: var(--s-5);
     align-items: start;
     max-width: 1100px;
+    margin: 0 auto;
   }
   &__card {
     @include card(var(--s-6));
