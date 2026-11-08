@@ -2,7 +2,8 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { rooms as api } from "../services/api";
 import { ApiError } from "../services/http";
-import { native, type PeerLinkStatus } from "../services/native";
+import { native } from "../services/native";
+import { createStatusFeed, type PeerLinkStatus } from "../services/networkStatus";
 import type { HelperInfo, RoomSession, RoomView } from "../services/types";
 import { useSession } from "./session";
 import { useVoice } from "./voice";
@@ -13,7 +14,13 @@ export const useRooms = defineStore("rooms", () => {
   const session = ref<RoomSession | null>(null);
   const links = ref<PeerLinkStatus[]>([]);
   const tunnelActive = ref(false);
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  // The agent's link/tunnel status is read once and then pushed by the backend
+  // on every change (no polling); followed only while we are in a room.
+  const statusFeed = createStatusFeed({ fetch: native.networkStatus, listen: native.onNetworkStatus }, (status) => {
+    links.value = status.meshPeers ?? [];
+    tunnelActive.value = status.tunnelActive ?? false;
+  });
+  let following = false;
 
   const current = computed(() => session.value?.room ?? null);
   const isHost = computed(() => session.value?.isHost ?? false);
@@ -34,35 +41,28 @@ export const useRooms = defineStore("rooms", () => {
       // The mute shortcut works from the moment we are in a room.
       void useVoice().listenOnly();
     } finally {
-      startPolling();
+      followStatus();
     }
   }
 
-  function startPolling() {
-    if (pollTimer) return;
-    const poll = async () => {
-      try {
-        const status = await native.agentStatus();
-        links.value = status?.meshPeers ?? [];
-        tunnelActive.value = status?.tunnelActive ?? false;
-      } catch {
-        /* agent not reachable right now */
-      }
-    };
-    void poll();
-    pollTimer = setInterval(poll, 2000);
+  function followStatus() {
+    if (following) return;
+    following = true;
+    void statusFeed.start();
   }
 
-  function stopPolling() {
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = null;
+  function unfollowStatus() {
+    if (following) {
+      following = false;
+      statusFeed.stop();
+    }
     links.value = [];
     tunnelActive.value = false;
   }
 
   async function endLocal() {
     session.value = null;
-    stopPolling();
+    unfollowStatus();
     await useVoice().leave();
     try {
       await native.stopRoomSession();
