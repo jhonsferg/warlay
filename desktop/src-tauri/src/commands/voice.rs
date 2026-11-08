@@ -36,11 +36,11 @@ fn frame_from_body(body: &InvokeBody) -> Result<Vec<u8>, AppError> {
 #[tauri::command]
 pub async fn send_voice_frame(request: Request<'_>, state: State<'_, AppState>) -> Result<usize, AppError> {
     let frame = frame_from_body(request.body())?;
-    let agent_state = state.agent_state.lock().unwrap().clone();
-    let Some(agent_state) = agent_state else {
+    let runtime_state = state.runtime_state.lock().unwrap().clone();
+    let Some(runtime_state) = runtime_state else {
         return Ok(0);
     };
-    let mesh = agent_state.lock().await.peer_mesh.clone();
+    let mesh = runtime_state.lock().await.peer_mesh.clone();
     Ok(mesh.map(|mesh| mesh.broadcast_voice_frame(&frame)).unwrap_or(0))
 }
 
@@ -51,9 +51,9 @@ pub async fn start_desktop_audio(state: State<'_, AppState>) -> Result<(), AppEr
     if state.desktop_audio.lock().unwrap().is_some() {
         return Ok(());
     }
-    let agent_state = state.agent_state.lock().unwrap().clone();
-    let mesh = match agent_state {
-        Some(agent_state) => agent_state.lock().await.peer_mesh.clone(),
+    let runtime_state = state.runtime_state.lock().unwrap().clone();
+    let mesh = match runtime_state {
+        Some(runtime_state) => runtime_state.lock().await.peer_mesh.clone(),
         None => None,
     };
     let mesh =
