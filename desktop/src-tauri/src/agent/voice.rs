@@ -9,6 +9,8 @@ use tauri::Emitter;
 use uuid::Uuid;
 
 pub const VOICE_EVENT: &str = "voice://frames";
+/// Other members' shared desktop audio: a separate stream from their voice.
+pub const DESKTOP_EVENT: &str = "voice://desktop-frames";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VoiceFrameEvent {
@@ -37,9 +39,25 @@ pub fn emit_voice_frames(frames: Vec<(Uuid, Vec<u8>)>) {
     }
 }
 
+pub fn emit_desktop_frames(frames: Vec<(Uuid, Vec<u8>)>) {
+    if frames.is_empty() {
+        return;
+    }
+    if let Some(app) = super::events::app_handle() {
+        let _ = app.emit(DESKTOP_EVENT, to_events(frames));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn voice_and_desktop_audio_travel_on_different_events() {
+        // The webview decodes them differently (mono voice, stereo desktop).
+        assert_ne!(VOICE_EVENT, DESKTOP_EVENT);
+        assert_eq!(DESKTOP_EVENT, "voice://desktop-frames");
+    }
 
     #[test]
     fn frames_become_base64_events_keeping_sender_and_order() {
