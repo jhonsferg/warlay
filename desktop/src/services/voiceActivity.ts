@@ -44,3 +44,16 @@ export class VoiceGate {
     this.hold = 0;
   }
 }
+
+/** Speech rarely goes above RMS 0.2, so this stretches it to fill 0..1. */
+const LEVEL_GAIN = 5;
+
+/** A frame's RMS as a 0..1 meter value for the speaking ring. */
+export function meterLevel(rmsLevel: number): number {
+  return Math.min(1, Math.max(0, rmsLevel * LEVEL_GAIN));
+}
+
+/** Meter smoothing like Meet/Teams: rises at once, falls gradually. */
+export function smoothLevel(previous: number, next: number, fall = 0.7): number {
+  return next >= previous ? next : previous * fall + next * (1 - fall);
+}
