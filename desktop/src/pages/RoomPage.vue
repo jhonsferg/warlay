@@ -199,14 +199,15 @@ async function kick(member: UserSummary) {
         </section>
 
         <section class="room__roster" aria-label="Jugadores">
-          <article
-            v-for="m in room.members"
-            :key="m.id"
-            class="slot"
-            :class="{ 'slot--speaking': voice.speaking.includes(m.id) }"
-            :data-member="m.username"
-          >
-            <WAvatar :name="m.displayName" :color="m.avatarColor" size="lg" />
+          <article v-for="m in room.members" :key="m.id" class="slot" :data-member="m.username">
+            <span
+              class="slot__avatar"
+              :class="{ 'slot__avatar--speaking': voice.speaking.includes(m.id) }"
+              :style="{ '--level': voice.levels[m.id] ?? 0 }"
+              :data-speaking="voice.speaking.includes(m.id)"
+            >
+              <WAvatar :name="m.displayName" :color="m.avatarColor" size="lg" />
+            </span>
             <div class="slot__info">
               <strong>
                 {{ m.displayName }}
@@ -378,10 +379,23 @@ async function kick(member: UserSummary) {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  transition: box-shadow 0.12s;
 
-  &--speaking {
-    box-shadow: 0 0 0 2px var(--success, #3ecf8e);
+  // The ring only exists while the member is speaking and grows with their
+  // volume (--level 0..1), like Meet and Teams. It lights up at once and
+  // fades out gently.
+  &__avatar {
+    flex-shrink: 0;
+    display: inline-flex;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 transparent;
+    transition: box-shadow 0.35s ease-out;
+
+    &--speaking {
+      box-shadow:
+        0 0 0 2px var(--success, #3ecf8e),
+        0 0 calc(4px + var(--level, 0) * 12px) calc(var(--level, 0) * 4px) rgba(62, 207, 142, 0.55);
+      transition: box-shadow 0.06s linear;
+    }
   }
 
   &__info {
