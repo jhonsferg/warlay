@@ -7,6 +7,7 @@ mod log_bridge;
 mod log_cleanup;
 mod log_control;
 mod network;
+mod permissions;
 pub use warlay::protocol;
 mod state;
 mod storage;
@@ -369,6 +370,17 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        // The microphone prompt is Warlay's own dialog (see `permissions`):
+        // the webview's request is answered from the stored consent.
+        .on_permission_request(|webview, kind| {
+            use tauri::Manager;
+            let consent = webview
+                .app_handle()
+                .try_state::<AppState>()
+                .and_then(|state| state.store.get_settings().ok())
+                .is_some_and(|settings| settings.mic_consent);
+            permissions::decide(kind, consent)
+        })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -490,6 +502,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
             commands::voice::send_voice_frame,
+            commands::voice::set_mic_consent,
+            commands::voice::open_mic_privacy_settings,
             commands::voice::register_voice_shortcut,
             commands::voice::unregister_voice_shortcut,
             commands::e2e::e2e_identity,
