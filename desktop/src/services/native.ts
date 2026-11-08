@@ -7,9 +7,6 @@ import type { HelperInfo, RoomSession } from "./types";
 
 export type { NetworkStatus, PeerLinkStatus } from "./networkStatus";
 
-/** Former name of {@link NetworkStatus}, kept until every screen has moved. */
-export type AgentStatus = NetworkStatus;
-
 /** The network agent's own configuration (it applies a new log level at once). */
 export interface AgentSettings {
   logLevel: string;
@@ -60,7 +57,7 @@ async function invoke<T>(command: string, args: Record<string, unknown> = {}): P
   }
   const stub = browserStub();
   stub.calls.push({ command, args });
-  if (command === "get_network_status" || command === "get_agent_status") return stub.status as T;
+  if (command === "get_network_status") return stub.status as T;
   if (command === "load_settings") {
     const raw = localStorage.getItem("warlay.browserSettings");
     return (raw ? JSON.parse(raw) : { gameExecutablePath: "", gameArgs: "" }) as T;
@@ -113,7 +110,6 @@ export const native = {
 
   launchGame: (path: string, args: string[]) =>
     invoke<unknown>("launch_game", { executablePath: path, args, workingDir: null }),
-  agentStatus: () => invoke<NetworkStatus>("get_network_status"),
   /** What the agent is doing right now (P2P links, tunnel, hubs): read once... */
   networkStatus: () => invoke<NetworkStatus>("get_network_status"),
   /** ...then pushed by the backend whenever it changes (no polling). */
