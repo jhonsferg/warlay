@@ -58,7 +58,10 @@ pub async fn start_desktop_audio(state: State<'_, AppState>) -> Result<(), AppEr
     };
     let mesh = mesh.ok_or_else(|| AppError::InvalidInput("no hay una sala activa para compartir el audio".to_string()))?;
     // Opening WASAPI blocks for a moment: keep it off the async runtime.
-    let share = tauri::async_runtime::spawn_blocking(move || crate::desktop_audio::start(mesh))
+    // The WebView2 tree plays the other players' voices and is left out; the
+    // game (also our child) is not, so its sound is shared.
+    let exclude = crate::desktop_audio::exclusion_pid();
+    let share = tauri::async_runtime::spawn_blocking(move || crate::desktop_audio::start(mesh, exclude))
         .await
         .map_err(|e| AppError::InvalidInput(format!("la captura no pudo iniciar: {e}")))?
         .map_err(AppError::InvalidInput)?;
