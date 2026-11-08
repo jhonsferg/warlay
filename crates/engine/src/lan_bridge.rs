@@ -151,7 +151,9 @@ mod tests {
         )
     }
 
-    const SEARCH: [u8; 16] = [0xF7, 0x2F, 0x10, 0x00, 0x50, 0x58, 0x33, 0x57, 0x1A, 0, 0, 0, 0, 0, 0, 0];
+    const SEARCH: [u8; 16] = [
+        0xF7, 0x2F, 0x10, 0x00, 0x50, 0x58, 0x33, 0x57, 0x1A, 0, 0, 0, 0, 0, 0, 0,
+    ];
     const CREATE: [u8; 8] = [0xF7, 0x31, 0x08, 0x00, 0x50, 0x58, 0x33, 0x57];
     const REFRESH: [u8; 8] = [0xF7, 0x32, 0x08, 0x00, 1, 0, 0, 0];
 
@@ -191,7 +193,10 @@ mod tests {
     #[tokio::test]
     async fn remote_game_state_is_not_replayed_while_our_own_wc3_hosts_but_searches_are() {
         let b = bridge();
-        assert_eq!(b.classify_own_capture(&CREATE), OwnCapture::Forward { game_ended: false });
+        assert_eq!(
+            b.classify_own_capture(&CREATE),
+            OwnCapture::Forward { game_ended: false }
+        );
         assert!(b.own_game_hosting.load(Ordering::SeqCst));
 
         for state in [REFRESH.to_vec(), gameinfo(6112), CREATE.to_vec()] {
@@ -227,10 +232,19 @@ mod tests {
     #[test]
     fn a_reannounced_game_signals_the_previous_one_ended_exactly_once() {
         let b = bridge();
-        assert_eq!(b.classify_own_capture(&CREATE), OwnCapture::Forward { game_ended: false });
+        assert_eq!(
+            b.classify_own_capture(&CREATE),
+            OwnCapture::Forward { game_ended: false }
+        );
         b.game_started.store(true, Ordering::SeqCst);
-        assert_eq!(b.classify_own_capture(&REFRESH), OwnCapture::Forward { game_ended: true });
-        assert_eq!(b.classify_own_capture(&REFRESH), OwnCapture::Forward { game_ended: false });
+        assert_eq!(
+            b.classify_own_capture(&REFRESH),
+            OwnCapture::Forward { game_ended: true }
+        );
+        assert_eq!(
+            b.classify_own_capture(&REFRESH),
+            OwnCapture::Forward { game_ended: false }
+        );
     }
 
     #[tokio::test]
