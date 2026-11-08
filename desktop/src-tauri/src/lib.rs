@@ -14,11 +14,10 @@ mod state;
 mod storage;
 pub use warlay::transport;
 
-
 use agent::state::DaemonState;
 use state::AppState;
-use storage::ClientStore;
 use std::sync::Arc;
+use storage::ClientStore;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
