@@ -42,6 +42,9 @@ function levelOf(data: any): number {
 
 export interface VoiceTransport {
   send(frame: Uint8Array): void;
+  /** Level (RMS, 0..1) of a frame being sent (`from` null: this microphone)
+   * or just decoded from a member. Drives the speaking rings. */
+  onLevel?(from: string | null, level: number): void;
 }
 
 export class VoiceEngine {
@@ -121,8 +124,12 @@ export class VoiceEngine {
         if (done || !value) break;
         // While muted nothing is encoded or sent at all; unmuted but silent,
         // nothing is sent either, so the others only see who is really talking.
-        if (!this.muted && this.encoder?.state === "configured" && this.gate.pass(levelOf(value))) {
-          this.encoder.encode(value);
+        if (!this.muted && this.encoder?.state === "configured") {
+          const level = levelOf(value);
+          if (this.gate.pass(level)) {
+            this.transport.onLevel?.(null, level);
+            this.encoder.encode(value);
+          }
         }
         value.close();
       }
@@ -219,6 +226,7 @@ export class VoiceEngine {
     data.copyTo(samples, { planeIndex: 0, format: "f32-planar" });
     const duration = data.numberOfFrames / data.sampleRate;
     data.close();
+    this.transport.onLevel?.(from, rms(samples));
     const start = peer.clock.schedule(ctx.currentTime, duration);
     if (start === null) return;
     const buffer = ctx.createBuffer(CHANNELS, samples.length, SAMPLE_RATE);
