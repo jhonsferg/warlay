@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use super::state::DaemonState;
-use warlay::protocol::ipc::DaemonResponse;
+use super::state::AgentState;
+use warlay::protocol::ipc::AgentResponse;
 
 /// Starts this machine's LAN side of the room: the scoped capture, the
 /// rebroadcast socket, and the outbound relay to the other members.
@@ -13,7 +13,7 @@ use warlay::protocol::ipc::DaemonResponse;
 /// pass `None` — there, each peer's `GAMEINFO` is rewritten to that peer's
 /// own dedicated joiner port by `session.rs` *before* the rebroadcast.
 pub async fn spawn_lan_mesh(
-    state_ref: Arc<tokio::sync::Mutex<DaemonState>>,
+    state_ref: Arc<tokio::sync::Mutex<AgentState>>,
     game_port: u16,
     override_port: Option<u16>,
 ) -> Result<(), String> {
@@ -88,7 +88,7 @@ pub async fn spawn_lan_mesh(
                 // The UI owns the room on the main server.
                 drop(s);
                 info!("CREATEGAME detectado: partida anterior terminó");
-                super::events::emit_event(&DaemonResponse::GameEnded)
+                super::events::emit_event(&AgentResponse::GameEnded)
             } else if let Some(active_id) = &s.active_room_server {
                 if let Some(conn) = s.connections.get(active_id) {
                     info!(server_id = %active_id, "CREATEGAME detectado: partida anterior terminó, marcando sala disponible");
