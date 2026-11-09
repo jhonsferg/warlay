@@ -28,6 +28,7 @@ fn voice_options_default_to_asking_first_and_standard_noise_suppression() {
     assert!(!settings.mic_consent, "never assume consent for the microphone");
     assert_eq!(settings.mic_device_id, "");
     assert_eq!(settings.noise_suppression, "standard");
+    assert!(!settings.low_latency_voice, "10 ms packets are opt-in");
     assert!(!settings.share_desktop_audio, "sharing the desktop sound is opt-in");
 }
 
