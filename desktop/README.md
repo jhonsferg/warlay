@@ -26,20 +26,30 @@ executable does everything.
   **talking** (a ring around the avatar that follows their volume, plus
   moving bars next to the name, like Meet and Teams).
 - **Game launch** - starts Warcraft III with the configured executable and
-  arguments once the room's game tunnel is ready.
+  arguments once the room's game tunnel is ready. The arguments are switches
+  (Settings > Juego), not a free text box: only options documented for the game
+  are offered (window or fullscreen, graphics API, behavior), grouped, and
+  mutually exclusive ones cannot be on together (`services/gameArgs.ts`).
 - **Chat and voice** - room and private text chat (private chats are
   end-to-end encrypted), Opus voice chat in the room (captured and played in
   the webview, sent only while you speak) with a global microphone mute
-  shortcut.
+  shortcut. Incoming voice goes through a jitter buffer that runs on the
+  audio thread (an `AudioWorklet`, `services/voicePlayback.worklet.ts`), so
+  playback keeps its pace when the page is busy.
 - **Low-latency voice** - Settings > Juego > Voz has a switch that sends
   voice in 10 ms Opus packets instead of 20 ms: about 10 ms less delay for
   roughly twice the packets per second. Off by default; it applies the next
   time you join the voice, and clients without it still decode it.
-- **Settings > Avanzado** - the log detail level
-  and automatic log cleanup (for this app's own logs), **Actualización** and
-  **Acerca de Warlay**.
-- **Self-update** - Avanzado > Actualización looks for a newer release on
-  GitHub (and shows when it last checked) and, with one click, downloads the
+- **Settings** - three tabs: **Cuenta** (profile, avatar color, password and
+  **Cerrar sesión**), **Juego** (Warcraft III executable, launch switches and
+  voice options) and **Avanzado** (the log detail level and automatic log
+  cleanup for this app's own logs, **Actualización** and **Acerca de
+  Warlay**). A tab can be opened by link, for example from an update notice.
+- **Self-update** - after the splash screen the app checks for a newer
+  release in the background and shows a notice with the release notes
+  (rendered from Markdown by a safe, sanitizing renderer,
+  `services/markdown.ts`). Avanzado > Actualización does the same on demand
+  (and shows when it last checked) and, with one click, downloads the
   installer, checks it against the release's `SHA256SUMS.txt`, runs it
   silently and restarts into the new version, like Discord. Only files
   published by this repository's releases are downloaded. A portable copy

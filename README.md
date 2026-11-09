@@ -26,11 +26,12 @@ No third-party VPN, no port forwarding on the players' side.
 
 </div>
 
-Warlay pairs a small server you run on a VPS with a Windows desktop client.
-Players register the server, create or join rooms in real time, and Warlay
-makes the host's game show up in everyone's in-game _Local Area Network_
-screen, then carries the real game session either directly between players
-(P2P over QUIC) or through the server as a fallback.
+Warlay pairs a **main server** and one or more **helpers**, which you run on a
+VPS, with a Windows desktop client. Players create an account, find friends,
+create or join rooms in real time, and Warlay makes the host's game show up in
+everyone's in-game _Local Area Network_ screen, then carries the real game
+session either directly between players (P2P over QUIC) or through a helper's
+UDP relay as a fallback.
 
 ## Contents
 
@@ -50,20 +51,33 @@ screen, then carries the real game session either directly between players
 
 ## Features
 
+- **Accounts, friends and communities** - sign up, add friends, see who is
+  online (and when they were last seen), join communities, and get invites and
+  notifications in real time.
 - **Rooms in real time** - create, list, join and password-protect rooms;
-  every change is pushed over WebSocket, no polling.
+  every change is pushed over WebSocket, no polling. A host who drops keeps
+  the room open, and replacing a server container does not cut running games.
 - **Real LAN discovery** - the host's actual W3GS broadcast is captured off
   the wire and replayed on each player's network, so the game lists it exactly
   as if everyone shared a LAN.
 - **Game-session tunnel** - direct peer-to-peer QUIC with NAT hole punching,
-  falling back automatically to a TCP relay through the server.
-- **Secure by default** - per-session X25519 + ChaCha20-Poly1305 encryption on
-  the control plane, server-issued client keys, and optional TLS (`wss://`)
-  for both the control plane and the game tunnel.
-- **Text and voice chat** - room chat, private messages, and Opus voice chat
-  between room members.
-- **Legacy LAN-mesh mode** - bridge broadcast traffic between isolated subnets
-  (for example an Android hotspot running the server on Termux).
+  falling back automatically to a UDP relay on a helper. Each link's quality
+  is logged and a relayed link keeps trying for a direct one.
+- **Text and voice chat** - room chat, private messages (end-to-end
+  encrypted) and Opus voice chat between room members, with an optional
+  low-latency mode (10 ms packets).
+- **Game launch** - starts Warcraft III from the room, with its command-line
+  arguments set as switches in Settings.
+- **Self-update** - the client checks GitHub for new releases in the
+  background, shows the release notes and updates itself with one click after
+  verifying the installer's checksum.
+- **Secure by default** - passwords hashed with Argon2, short-lived access
+  tokens with refresh tokens, and the whole API behind TLS when you deploy
+  with a domain (see [SECURITY.md](SECURITY.md)).
+- **Legacy modes** - the previous all-in-one `hub` server and the `lan-mesh`
+  bridge between isolated subnets (for example an Android hotspot running the
+  server on Termux) are still in the server binary; the current desktop
+  client does not use `hub`.
 
 ## How it works
 
@@ -74,11 +88,10 @@ flowchart LR
         hostClient["Desktop client<br/>warlay.exe"]
     end
 
-    subgraph hub["Warlay server (VPS)"]
-        matchmaking["Matchmaking<br/>7777/tcp"]
-        tunnel["Game tunnel<br/>7778/tcp"]
-        rendezvous["P2P rendezvous<br/>7779/udp"]
-        lanRelay["LAN relay<br/>6112/udp"]
+    subgraph vps["Your servers"]
+        main["Main server<br/>8080/tcp REST + WebSocket"]
+        db[("PostgreSQL<br/>+ Redis")]
+        helper["Helper<br/>7779/udp rendezvous<br/>7780/udp relay"]
     end
 
     subgraph joiner["Player B (joiner)"]
@@ -89,47 +102,56 @@ flowchart LR
     hostGame <-->|LAN broadcast and game TCP| hostClient
     joinerGame <-->|LAN broadcast and game TCP| joinerClient
 
-    hostClient <-->|ws / wss| matchmaking
-    joinerClient <-->|ws / wss| matchmaking
-    hostClient -.->|signaling| rendezvous
-    joinerClient -.->|signaling| rendezvous
+    hostClient <-->|HTTPS / WSS| main
+    joinerClient <-->|HTTPS / WSS| main
+    main <--> db
+    main -.->|room tickets, heartbeats| helper
 
+    hostClient -.->|signaling| helper
+    joinerClient -.->|signaling| helper
     hostClient <==>|P2P QUIC, preferred| joinerClient
-    hostClient <-->|TCP relay, fallback| tunnel
-    tunnel <-->|TCP relay, fallback| joinerClient
+    hostClient <-->|UDP relay, fallback| helper
+    helper <-->|UDP relay, fallback| joinerClient
 ```
 
-| Component                       | Runs on                             | Role                                                 |
-| ------------------------------- | ----------------------------------- | ---------------------------------------------------- |
-| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | Matchmaking hub, game-session relay, P2P rendezvous. |
-| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: the whole client (Tauri 2 + Vue 3).    |
+| Component                       | Runs on                             | Role                                                                                   |
+| ------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------- |
+| [`server/`](server/README.md)   | VPS (Linux, macOS, Windows, Docker) | `main`: accounts, friends, communities, rooms, chat (needs PostgreSQL and Redis).      |
+|                                 |                                     | `helper`: P2P rendezvous and last-resort UDP relay; optionally a realtime/chat "edge". |
+| [`desktop/`](desktop/README.md) | Player's PC (Windows, elevated)     | `warlay.exe`: the whole client (Tauri 2 + Vue 3), network runtime included.            |
+
+Both server roles are modes of the same `warlay-server` binary. The main
+server never carries game traffic: it signs short-lived **room tickets** with
+a secret shared with the helpers, and a helper only serves players who hold a
+valid ticket. A single VPS can run everything, because the main server can
+host an **embedded helper** in the same process.
 
 The desktop client is the only program on the player's PC. Its Rust backend
-runs the network runtime (LAN capture and replay, game tunnel, P2P mesh,
-voice relay) in the same process, and the Vue frontend talks to it through
-Tauri commands and events.
+runs the network runtime (LAN capture and replay, P2P mesh, voice relay) in
+the same process, and the Vue frontend talks to it through Tauri commands and
+events.
 
 ### Network ports (server)
 
-| Port | Protocol | Purpose                                       |
-| ---- | -------- | --------------------------------------------- |
-| 7777 | TCP      | WebSocket matchmaking control plane (`/ws`)   |
-| 7778 | TCP      | Game-session tunnel (relay fallback)          |
-| 7779 | UDP      | P2P rendezvous (signaling only, no game data) |
-| 6112 | UDP      | LAN discovery relay                           |
+| Port | Protocol | Service                | Purpose                                         |
+| ---- | -------- | ---------------------- | ----------------------------------------------- |
+| 8080 | TCP      | main                   | REST API and realtime WebSocket (`/ws`)         |
+| 7779 | UDP      | helper                 | P2P rendezvous (signaling only, no game data)   |
+| 7780 | UDP      | helper                 | Relay used when a direct link is not possible   |
+| 8090 | TCP      | helper (optional edge) | Realtime socket and chat served from the helper |
 
-Behind a TLS reverse proxy the usual mapping is `443 -> 7777` (`wss://`) and
-`7443 -> 7778` (TLS tunnel); see [server/README.md](server/README.md#tls-with-a-reverse-proxy).
+Behind a TLS reverse proxy the usual mapping is `443 -> 8080` (`https://` and
+`wss://`); the UDP ports are published directly. The legacy `hub` mode uses
+7777/7778 (TCP) and 7779/6112 (UDP), see
+[server/README.md](server/README.md#legacy-hub-mode).
 
-### Server addresses
+### Server address
 
-The client accepts three address forms:
-
-| Address                     | Transport                                                                                                  |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `wss://hub.example.com`     | TLS for matchmaking (port 443) and for the game tunnel (port 7443), certificate verified. **Recommended.** |
-| `ws://hub.example.com:7777` | Plain WebSocket and plain game tunnel (port 7778).                                                         |
-| `hub.example.com:7777`      | Same as `ws://`, kept for compatibility.                                                                   |
+The player never types a server address: the client is built for one server.
+The address is injected when the frontend is built (`VITE_WARLAY_MAIN_URL`,
+see [Desktop client](#desktop-client-windows)), is not in the source code and
+is not shown or editable in the app. Use `https://` in production; plain
+`http://host:port` works for a private test.
 
 ## Downloads
 
@@ -140,20 +162,42 @@ Every release on the [Releases page](https://github.com/jhonsferg/warlay/release
 | `warlay-desktop-vX.Y.Z-windows-x64-setup.exe`    | Windows installer (one executable)                                            |
 | `warlay-desktop-vX.Y.Z-windows-x64-portable.zip` | Portable client                                                               |
 | `warlay-server-vX.Y.Z-<target>.tar.gz` / `.zip`  | Server for Linux (static x64/ARM64), macOS (Intel/Apple Silicon), Windows x64 |
-| `ghcr.io/jhonsferg/warlay-server:X.Y.Z`          | Server Docker image                                                           |
+| `ghcr.io/jhonsferg/warlay-server:X.Y.Z`          | Server Docker image (legacy `hub`; `main` and `helper` build from source)     |
 | `SHA256SUMS.txt`                                 | Checksums for every file                                                      |
 
 ## Quick start
 
 ### Run a server
 
+The main server needs PostgreSQL and Redis. On a machine with Docker, from a
+clone of the repository:
+
 ```sh
-docker volume create warlay-data
-docker run -d --name warlay-hub --restart unless-stopped   -p 7777:7777/tcp -p 7778:7778/tcp -p 7779:7779/udp -p 6112:6112/udp   -v warlay-data:/app/data   ghcr.io/jhonsferg/warlay-server:latest
+docker network create warlay
+docker run -d --name postgres --network warlay -e POSTGRES_USER=warlay \
+  -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=warlay postgres:18-alpine
+docker run -d --name redis --network warlay redis:8-alpine
+
+docker build --target main -t warlay-main -f server/Dockerfile .
+docker run -d --name warlay-main --network warlay -p 8080:8080 \
+  -e WARLAY_DATABASE_URL=postgres://warlay:secret@postgres:5432/warlay \
+  -e WARLAY_REDIS_URL=redis://redis:6379 \
+  -e WARLAY_HELPER_SECRET=$(openssl rand -hex 32) \
+  warlay-main
 ```
 
-Players can then register `<server-ip>:7777`. For a production setup with a
-domain, TLS and nginx, follow [Deploying the server on a VPS](#deploying-the-server-on-a-vps).
+That gives accounts, friends, rooms and chat. Direct P2P links and the relay
+fallback also need a helper: the VPS guide below sets up a complete
+single-server deployment with an embedded helper, and
+[server/README.md](server/README.md#main-server-and-helpers-as-separate-containers)
+shows how to run helpers as separate containers. Then build the client for your
+server (see [Desktop client](#desktop-client-windows)).
+
+> [!NOTE]
+> The `ghcr.io/jhonsferg/warlay-server` image published with each release is
+> built from the last stage of `server/Dockerfile`, the legacy `hub`. The
+> `main` and `helper` images are built from source with `--target main` and
+> `--target helper`.
 
 ### Play
 
@@ -161,7 +205,8 @@ domain, TLS and nginx, follow [Deploying the server on a VPS](#deploying-the-ser
    run `warlay.exe`). Windows asks for administrator permission on every
    launch: the client also captures LAN traffic itself, which needs
    administrator rights.
-2. Register the server (`wss://your-domain` or `host:7777`).
+2. Create an account (or sign in), and set the Warcraft III executable in
+   **Settings > Juego**.
 3. Create a room, or join one, and start Warcraft III from the room panel.
 4. The host creates the game in _Local Area Network_; it appears for every
    room member.
@@ -173,17 +218,18 @@ flowchart LR
     root["warlay/"]
 
     root --> crates["crates/<br/>shared Rust libraries"]
-    crates --> protocol["protocol<br/>wire formats: control plane,<br/>tunnel handshake, runtime requests"]
-    crates --> crypto["crypto<br/>X25519 handshake, ChaCha20-Poly1305<br/>framing, PSK proofs"]
+    crates --> protocol["protocol<br/>wire formats: rendezvous, relay,<br/>runtime requests, legacy hub"]
+    crates --> crypto["crypto<br/>X25519 handshake, ChaCha20-Poly1305<br/>framing, end-to-end chat encryption"]
     crates --> transport["transport<br/>async UDP socket wrapper"]
-    crates --> matchmaking["matchmaking<br/>rooms, client sessions,<br/>matchmaking hub"]
-    crates --> core["core<br/>UDP relay, TCP tunnel hub,<br/>UDP rendezvous"]
-    crates --> storage["storage<br/>SQLite: server identity,<br/>issued client keys"]
+    crates --> social["social<br/>main server: accounts, friends,<br/>communities, rooms, chat, notifications"]
+    crates --> core["core<br/>UDP relay, UDP rendezvous,<br/>legacy TCP tunnel hub"]
+    crates --> matchmaking["matchmaking<br/>legacy hub: rooms, sessions"]
+    crates --> storage["storage<br/>SQLite (legacy hub identity)"]
     crates --> config["config<br/>TOML settings"]
-    crates --> engine["engine<br/>client networking: hub connection,<br/>tunnels, P2P mesh, LAN capture"]
+    crates --> engine["engine<br/>client networking: P2P mesh,<br/>relay client, LAN capture and replay"]
     crates --> facade["warlay<br/>facade re-exporting the crates<br/>as warlay::*, feature-gated"]
 
-    root --> server["server/<br/>hub binary warlay-server,<br/>Dockerfile, sample configs"]
+    root --> server["server/<br/>binary warlay-server (main, helper,<br/>hub, lan-mesh), Dockerfile, sample configs"]
     root --> desktop["desktop/<br/>Windows client: Vue 3 frontend<br/>and Tauri 2 backend, which also<br/>runs the network runtime in-process"]
     root --> github[".github/<br/>CI, release pipeline,<br/>issue and PR templates"]
 ```
@@ -191,8 +237,8 @@ flowchart LR
 The binaries (`server`, `desktop/src-tauri`) stay thin: protocol, crypto and
 networking logic live in `crates/` and are consumed through the `warlay`
 facade with only the features each binary needs. The server never links the
-Windows-only `engine` crate. The network runtime lives in the desktop
-backend (`desktop/src-tauri/src/runtime`) and runs inside `warlay.exe`.
+Windows-only LAN capture code of `engine`. The network runtime lives in the
+desktop backend (`desktop/src-tauri/src/runtime`) and runs inside `warlay.exe`.
 
 ## Building from source
 
@@ -318,76 +364,81 @@ The image is built from the repository root, because the server depends on
 the workspace crates:
 
 ```sh
-docker build -t warlay-hub -f server/Dockerfile .
+docker build --target main -t warlay-main -f server/Dockerfile .
 ```
 
 It uses `cargo-chef` to cache dependency builds and a distroless, non-root
-runtime that contains only the stripped binary and `config/hub.toml`.
+runtime that contains only the stripped binary and the default config. The
+Dockerfile has one stage per role: `--target main`, `--target helper` and,
+as the default last stage, the legacy `hub`.
 Building needs more than 1 GiB of RAM; on a small VPS, build on your own
 machine and transfer the image:
 
 ```sh
-docker save warlay-hub | gzip | ssh user@your-vps 'gunzip | docker load'
+docker save warlay-main | gzip | ssh user@your-vps 'gunzip | docker load'
 ```
 
-Every release also publishes the image as
+Every release also publishes the legacy `hub` image as
 `ghcr.io/jhonsferg/warlay-server:<version>` and `:latest`.
 
 ## Installing the desktop client
 
 1. Download `warlay-desktop-vX.Y.Z-windows-x64-setup.exe` from the
    [latest release](https://github.com/jhonsferg/warlay/releases/latest) and
-   run it (or unzip the portable build anywhere and run `warlay.exe`).
+   run it (or unzip the portable build anywhere and run `warlay.exe`). The
+   installer asks for the language automatically (English or Spanish, from
+   your system) and finishes with options to launch Warlay and to visit the
+   project website.
 2. On first launch Windows asks for administrator permission for
    `warlay.exe`. Accept it: the client itself captures
    LAN game broadcasts, which needs elevation. Windows will keep asking on
    every launch of the client.
-3. Register a server with the **+** button in the server rail, using the
-   address its operator gave you, for example `wss://hub.example.com`.
-4. Set the Warcraft III executable in **Settings**, then create or join a
-   room.
+3. Create an account, or sign in. There is no server to register: the client
+   is built for the operator's server.
+4. Set the Warcraft III executable in **Settings > Juego** (the launch
+   arguments are switches there too), then create or join a room.
 
-Settings and logs are stored in `%APPDATA%\com.warlay.lanlauncher\`.
-Uninstall from **Settings > Apps**; the uninstaller closes the client first.
+Settings and logs are stored in `%APPDATA%\com.warlay.lanlauncher\`. New
+releases are announced when the app starts and can be installed from
+**Settings > Avanzado > Actualización**. Uninstall from **Settings > Apps**;
+the uninstaller closes the client first.
 
 ## Deploying the server on a VPS
 
-This walkthrough deploys the hub with Docker behind nginx, with a domain
-name and Let's Encrypt certificates, so players connect with
-`wss://hub.example.com`. Replace `hub.example.com` with your own domain
-throughout.
+This walkthrough deploys the main server with an embedded helper on a single
+VPS, with Docker, behind nginx, with a domain name and Let's Encrypt
+certificates, so the desktop client talks to `https://warlay.example.com`.
+Replace `warlay.example.com` with your own domain throughout. To scale out
+later, run helpers on other machines, see
+[server/README.md](server/README.md#main-server-and-helpers-as-separate-containers).
 
 ```mermaid
 flowchart LR
     players["Players<br/>desktop client (warlay.exe)"]
 
     subgraph vps["VPS"]
-        subgraph nginx["nginx (TLS termination)"]
-            https["443/tcp<br/>HTTPS, /ws upgrade"]
-            stream["7443/tcp<br/>TLS stream"]
-        end
-        subgraph container["warlay-hub container"]
-            ws["7777/tcp<br/>matchmaking"]
-            tcp["7778/tcp<br/>game tunnel"]
-            rv["7779/udp<br/>rendezvous"]
-            relay["6112/udp<br/>LAN relay"]
+        nginx["nginx<br/>443/tcp TLS termination"]
+        subgraph docker["Docker network 'warlay'"]
+            main["warlay-main<br/>8080/tcp REST + WebSocket<br/>7779/udp rendezvous<br/>7780/udp relay (embedded helper)"]
+            pg[("postgres")]
+            rd[("redis")]
         end
     end
 
-    players -->|wss://hub.example.com/ws| https
-    players -->|TLS| stream
-    players -->|UDP| rv
-    players -->|UDP| relay
-    https -->|127.0.0.1| ws
-    stream -->|127.0.0.1| tcp
+    players -->|"https / wss"| nginx
+    nginx -->|127.0.0.1:8080| main
+    players -->|UDP| main
+    main --> pg
+    main --> rd
 ```
 
 ### 1. Requirements
 
 - A VPS with a public IPv4 address running **Debian 12** or **Ubuntu 22.04+**
   (other distributions work with equivalent commands).
-- 1 vCPU and 512 MiB of RAM are enough to run the hub. Building the image
-  needs more, so build elsewhere or use the published image.
+- 1 vCPU and 1 GiB of RAM are enough for a small community. Building the image
+  needs more, so build elsewhere and transfer it (see
+  [Server container image](#server-container-image)).
 - A domain name whose DNS you control.
 - Root or `sudo` access over SSH.
 
@@ -411,19 +462,19 @@ sudo systemctl enable --now docker
 
 ### 4. Point a domain at the VPS
 
-Create DNS records for the hostname players will use:
+Create DNS records for the hostname the client is built for:
 
-| Type   | Name              | Value                           |
-| ------ | ----------------- | ------------------------------- |
-| `A`    | `hub.example.com` | the VPS IPv4 address            |
-| `AAAA` | `hub.example.com` | the VPS IPv6 address (optional) |
+| Type   | Name                 | Value                           |
+| ------ | -------------------- | ------------------------------- |
+| `A`    | `warlay.example.com` | the VPS IPv4 address            |
+| `AAAA` | `warlay.example.com` | the VPS IPv6 address (optional) |
 
 If your domain already has a wildcard record (`*.example.com`) pointing at
 this VPS, any subdomain works without new records. Check propagation before
 continuing:
 
 ```sh
-getent hosts hub.example.com
+getent hosts warlay.example.com
 ```
 
 ### 5. Configure the firewall
@@ -432,10 +483,9 @@ getent hosts hub.example.com
 | ---- | -------- | -------------------------------------------- |
 | 22   | TCP      | SSH                                          |
 | 80   | TCP      | HTTP, Let's Encrypt validation and redirects |
-| 443  | TCP      | `wss://` matchmaking through nginx           |
-| 7443 | TCP      | TLS game tunnel through nginx                |
-| 7779 | UDP      | P2P rendezvous                               |
-| 6112 | UDP      | LAN discovery relay                          |
+| 443  | TCP      | `https://` and `wss://` through nginx        |
+| 7779 | UDP      | P2P rendezvous (helper)                      |
+| 7780 | UDP      | UDP relay (helper)                           |
 
 ```sh
 sudo ufw default deny incoming
@@ -443,83 +493,91 @@ sudo ufw default allow outgoing
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow 7443/tcp
 sudo ufw allow 7779/udp
-sudo ufw allow 6112/udp
+sudo ufw allow 7780/udp
 sudo ufw enable
 ```
 
 > [!WARNING]
-> Ports published by Docker bypass `ufw`. That is why the next step
-> publishes 7777 and 7778 on `127.0.0.1` only: they must be reachable
-> exclusively through nginx.
+> Ports published by Docker bypass `ufw`. That is why the next steps publish
+> 8080 on `127.0.0.1` only (it must be reachable exclusively through nginx)
+> and keep PostgreSQL and Redis unpublished, on the internal Docker network.
 
-### 6. Run the hub container
+### 6. Run PostgreSQL, Redis and the main server
 
-Write the server configuration to the host so it survives image updates:
+Create the network and the databases. Pick your own password:
+
+```sh
+docker network create warlay
+docker volume create warlay-pg
+docker run -d --name postgres --network warlay --restart unless-stopped \
+  -e POSTGRES_USER=warlay -e POSTGRES_PASSWORD=CHANGE_ME -e POSTGRES_DB=warlay \
+  -v warlay-pg:/var/lib/postgresql \
+  postgres:18-alpine
+docker run -d --name redis --network warlay --restart unless-stopped \
+  redis:8-alpine redis-server --appendonly yes
+```
+
+Write the server configuration to the host so it survives image updates.
+Start from the sample and enable the embedded helper:
 
 ```sh
 sudo mkdir -p /opt/warlay
-sudo curl -fsSL -o /opt/warlay/hub.toml \
-  https://raw.githubusercontent.com/jhonsferg/warlay/main/server/config/hub.toml
-sudo chmod 644 /opt/warlay/hub.toml
+sudo curl -fsSL -o /opt/warlay/main.toml \
+  https://raw.githubusercontent.com/jhonsferg/warlay/main/server/config/main.toml
+sudo chmod 644 /opt/warlay/main.toml
+openssl rand -hex 32     # the helper secret, used below
 ```
 
-Edit `/opt/warlay/hub.toml`: at least set `server_name` (the name players
-see), and optionally `[security] password` to require a password on first
-connection. See [server/README.md](server/README.md#configuration) for every
-option. Then start the container:
+Edit `/opt/warlay/main.toml`: uncomment the `[embedded_helper]` block and set
+`public_rendezvous_addr` and `public_relay_addr` to `warlay.example.com:7779`
+and `warlay.example.com:7780` (what players' clients will reach), and your
+`region`. The database, Redis and the secret come from the environment, so
+they stay out of the file. See
+[server/README.md](server/README.md#configuration) for every option. Build
+the image (on a machine with enough memory, then transfer it) and start the
+container:
 
 ```sh
-docker volume create warlay-data
-docker run -d --name warlay-hub --restart unless-stopped \
-  -p 127.0.0.1:7777:7777/tcp \
-  -p 127.0.0.1:7778:7778/tcp \
+docker build --target main -t warlay-main -f server/Dockerfile .
+
+docker run -d --name warlay-main --network warlay --restart unless-stopped \
+  -p 127.0.0.1:8080:8080/tcp \
   -p 7779:7779/udp \
-  -p 6112:6112/udp \
-  -v warlay-data:/app/data \
-  -v /opt/warlay/hub.toml:/app/config/hub.toml:ro \
-  ghcr.io/jhonsferg/warlay-server:latest
+  -p 7780:7780/udp \
+  -e WARLAY_DATABASE_URL=postgres://warlay:CHANGE_ME@postgres:5432/warlay \
+  -e WARLAY_REDIS_URL=redis://redis:6379 \
+  -e WARLAY_HELPER_SECRET=<the value from openssl rand -hex 32> \
+  -v /opt/warlay/main.toml:/app/config/main.toml:ro \
+  warlay-main
 
-docker logs warlay-hub   # "starting warlay-server (hub mode)"
+docker logs warlay-main   # "main server listening"
 ```
 
-The `warlay-data` volume holds `warlay.db`, the server identity and every
-issued client key. Never run the container without it, or players have to
-register again after every update.
+The `warlay-pg` volume holds every account, friend and room: back it up (see
+[Operating the server](#operating-the-server)). The main server runs its
+database migrations on start.
 
-### 7. Install nginx and the stream module
+### 7. Install nginx
 
 ```sh
-sudo apt install -y nginx libnginx-mod-stream certbot
+sudo apt install -y nginx certbot
 ```
 
-`libnginx-mod-stream` adds TCP proxying, needed for the TLS game tunnel. If
-you build nginx from source instead, follow
-[Alternative: nginx in a container built from source](#alternative-nginx-in-a-container-built-from-source),
-which already includes the stream module, and come back here. Add a `stream` block at the end of
-`/etc/nginx/nginx.conf`, outside the `http` block:
-
-```nginx
-stream {
-    include /etc/nginx/streams-enabled/*.conf;
-}
-```
-
-```sh
-sudo mkdir -p /etc/nginx/streams-available /etc/nginx/streams-enabled
-```
+If you build nginx from source instead, follow
+[Alternative: nginx in a container built from source](#alternative-nginx-in-a-container-built-from-source)
+and come back here.
 
 ### 8. Obtain a TLS certificate
 
 Serve the ACME challenge over plain HTTP first. Create
-`/etc/nginx/sites-available/hub.example.com.conf`:
+`/etc/nginx/sites-available/warlay.example.com.conf`:
 
 ```nginx
 server {
     listen 80;
     listen [::]:80;
-    server_name hub.example.com;
+    server_name warlay.example.com;
 
     location /.well-known/acme-challenge/ {
         root /var/www/html;
@@ -534,143 +592,125 @@ server {
 Enable it and request the certificate:
 
 ```sh
-sudo ln -s /etc/nginx/sites-available/hub.example.com.conf /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/warlay.example.com.conf /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot certonly --webroot -w /var/www/html -d hub.example.com \
+sudo certbot certonly --webroot -w /var/www/html -d warlay.example.com \
   --deploy-hook "systemctl reload nginx"
 ```
 
-The deploy hook reloads nginx after every automatic renewal, so both the
-HTTPS and the stream listeners pick up the new certificate without dropping
-active games. Verify renewal with `sudo certbot renew --dry-run`.
+The deploy hook reloads nginx after every automatic renewal. Verify renewal
+with `sudo certbot renew --dry-run`.
 
 ### 9. Configure nginx for Warlay
 
-Append the HTTPS server to `/etc/nginx/sites-available/hub.example.com.conf`:
+Append the HTTPS server to `/etc/nginx/sites-available/warlay.example.com.conf`:
 
 ```nginx
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name hub.example.com;
+    server_name warlay.example.com;
 
-    ssl_certificate     /etc/letsencrypt/live/hub.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/hub.example.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/warlay.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/warlay.example.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # Matchmaking WebSocket. Clients ping every few seconds, the long
-    # timeouts only matter for idle sessions.
-    location = /ws {
-        proxy_pass http://127.0.0.1:7777;
+    # REST API and the realtime WebSocket (/ws) share one upstream. The long
+    # timeouts only matter for idle realtime sessions.
+    location / {
+        proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
         proxy_read_timeout 1h;
         proxy_send_timeout 1h;
     }
-
-    location / {
-        return 404;
-    }
 }
 ```
 
-Create `/etc/nginx/streams-available/warlay.conf` for the game tunnel:
+`$connection_upgrade` comes from a `map` in the `http` context (for example
+at the top of `/etc/nginx/conf.d/websocket.conf`):
 
 ```nginx
-server {
-    listen 7443 ssl;
-    listen [::]:7443 ssl;
-
-    ssl_certificate     /etc/letsencrypt/live/hub.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/hub.example.com/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-
-    proxy_pass 127.0.0.1:7778;
-    proxy_connect_timeout 5s;
-    # A room host's control channel can stay idle for hours.
-    proxy_timeout 12h;
-    tcp_nodelay on;
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
 }
 ```
 
-Enable it and reload:
-
 ```sh
-sudo ln -s /etc/nginx/streams-available/warlay.conf /etc/nginx/streams-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ### 10. Verify the deployment
 
 ```sh
-# WebSocket upgrade through nginx: expect "HTTP/1.1 101 Switching Protocols"
-curl -si --http1.1 -m 5 \
-  -H "Connection: Upgrade" -H "Upgrade: websocket" \
-  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  https://hub.example.com/ws | head -1
+# Health check through nginx: expect "ok"
+curl -s https://warlay.example.com/health
 
-# TLS game tunnel: expect "Verify return code: 0 (ok)"
-timeout 5 openssl s_client -connect hub.example.com:7443 -servername hub.example.com </dev/null 2>/dev/null \
-  | grep "Verify return code"
-
-# Hub logs
-docker logs --tail 20 warlay-hub
+# Server logs
+docker logs --tail 20 warlay-main
 ```
 
-Players can now register `wss://hub.example.com` in the desktop client.
+Now build the desktop client with `VITE_WARLAY_MAIN_URL=https://warlay.example.com`
+(see [Desktop client](#desktop-client-windows)); players create an account on
+first launch.
 
 ### Alternative: without a domain
 
 For a quick test or a private server, skip nginx and TLS and publish the
-ports directly. Players then register `<vps-ip>:7777` (no transport
-encryption beyond the built-in session encryption, see
-[SECURITY.md](SECURITY.md)):
+ports directly. Build the client with `VITE_WARLAY_MAIN_URL=http://<vps-ip>:8080`
+(traffic is then not encrypted in transit, see [SECURITY.md](SECURITY.md)):
 
 ```sh
-sudo ufw allow 7777/tcp && sudo ufw allow 7778/tcp
-docker run -d --name warlay-hub --restart unless-stopped \
-  -p 7777:7777/tcp -p 7778:7778/tcp -p 7779:7779/udp -p 6112:6112/udp \
-  -v warlay-data:/app/data \
-  ghcr.io/jhonsferg/warlay-server:latest
+sudo ufw allow 8080/tcp
+docker run -d --name warlay-main --network warlay --restart unless-stopped \
+  -p 8080:8080/tcp -p 7779:7779/udp -p 7780:7780/udp \
+  -e WARLAY_DATABASE_URL=postgres://warlay:CHANGE_ME@postgres:5432/warlay \
+  -e WARLAY_REDIS_URL=redis://redis:6379 \
+  -e WARLAY_HELPER_SECRET=<secret> \
+  -v /opt/warlay/main.toml:/app/config/main.toml:ro \
+  warlay-main
 ```
 
 ### Alternative: without Docker (systemd)
 
-Download `warlay-server-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz` (or the
-`aarch64` one for ARM servers) from the releases page, then:
+Install PostgreSQL and Redis from your distribution (`apt install postgresql
+redis-server`), create a `warlay` database and user, then download
+`warlay-server-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz` (or the `aarch64` one
+for ARM servers) from the releases page:
 
 ```sh
 sudo useradd --system --home /opt/warlay --shell /usr/sbin/nologin warlay
-sudo mkdir -p /opt/warlay/data
+sudo mkdir -p /opt/warlay
 sudo tar -xzf warlay-server-v*-x86_64-unknown-linux-musl.tar.gz -C /opt/warlay --strip-components=1
-sudo sed -i 's|^data_dir = .*|data_dir = "/opt/warlay/data"|' /opt/warlay/config/hub.toml
-sudo sed -i 's|^ws_addr = .*|ws_addr = "127.0.0.1:7777"|; s|^tcp_tunnel_addr = .*|tcp_tunnel_addr = "127.0.0.1:7778"|' \
-  /opt/warlay/config/hub.toml
 sudo chown -R warlay:warlay /opt/warlay
 ```
 
-Create `/etc/systemd/system/warlay.service`:
+Edit `/opt/warlay/config/main.toml` as in step 6 (`database_url`, `redis_url`,
+`helper_secret` and the `[embedded_helper]` block, with `http_addr =
+"127.0.0.1:8080"`). Create `/etc/systemd/system/warlay.service`:
 
 ```ini
 [Unit]
-Description=Warlay hub
-After=network-online.target
+Description=Warlay main server
+After=network-online.target postgresql.service redis-server.service
 Wants=network-online.target
 
 [Service]
 User=warlay
 Group=warlay
 WorkingDirectory=/opt/warlay
-ExecStart=/opt/warlay/warlay-server hub --config /opt/warlay/config/hub.toml
+ExecStart=/opt/warlay/warlay-server main --config /opt/warlay/config/main.toml
 Restart=on-failure
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/warlay/data
 
 [Install]
 WantedBy=multi-user.target
@@ -1263,7 +1303,7 @@ endscript
    configuration with `cp -rL /etc/nginx /root/nginx-shadow/etc-nginx`
    (`-L` copies file contents instead of symlinks, so editing the copy never
    touches production), move every `listen` to alternate ports (80 to 18080,
-   443 to 18443, 7443 to 17443, and any internal listener such as
+   443 to 18443, and any internal listener such as
    `127.0.0.1:7444`), start the image with that copy and a temporary log
    directory owned by `www-data`, and compare each site with the baseline.
    A `server {}` block without `listen` listens on port 80 implicitly; give
@@ -1411,40 +1451,41 @@ is the same edit in reverse.
 
 ## Operating the server
 
-**Update to a new release:**
+**Update to a new release:** build the new `warlay-main` image (or load the
+one you transferred) and recreate the container with the same `docker run`
+command from step 6:
 
 ```sh
-docker pull ghcr.io/jhonsferg/warlay-server:latest
-docker rm -f warlay-hub
+docker rm -f warlay-main
 # re-run the same `docker run` command from step 6
 ```
 
-The data volume and the config file are untouched, so players keep their
-registration.
+`docker stop` sends `SIGTERM` and the server exits right away. PostgreSQL,
+Redis and the config file are untouched, so accounts and rooms survive, and
+clients reconnect on their own; see
+[Replacing a container without cutting games](server/README.md#replacing-a-container-without-cutting-games).
 
-**Back up and restore the data volume:**
+**Back up and restore the database:**
 
 ```sh
-docker run --rm -v warlay-data:/data -v "$PWD":/backup busybox \
-  tar -czf /backup/warlay-data-$(date +%F).tar.gz -C /data .
+docker exec postgres pg_dump -U warlay -Fc warlay > warlay-$(date +%F).dump
 
-docker run --rm -v warlay-data:/data -v "$PWD":/backup busybox \
-  tar -xzf /backup/warlay-data-YYYY-MM-DD.tar.gz -C /data
+docker exec -i postgres pg_restore -U warlay -d warlay --clean < warlay-YYYY-MM-DD.dump
 ```
 
-**Change the configuration:** edit `/opt/warlay/hub.toml` and run
-`docker restart warlay-hub`. Set `log_level = "debug"` temporarily to trace
-tunnel pairing and relays.
+**Change the configuration:** edit `/opt/warlay/main.toml` and run
+`docker restart warlay-main`. Set `log_level = "debug"` temporarily to trace
+rooms and helpers.
 
 **Troubleshooting:**
 
-| Symptom                                                    | Likely cause and fix                                                                                    |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| The client cannot connect to `wss://hub.example.com`       | Port 443 blocked, nginx not reloaded, or the certificate does not cover the hostname. Run step 10.      |
-| Rooms work but joining a game never connects               | Port 7443/tcp (TLS tunnel) or 7779/udp (rendezvous) blocked by the firewall or the provider's firewall. |
-| The host's game does not appear in _Local Area Network_    | The client is not running elevated on the host's PC. Restart the client and accept the UAC prompt.      |
-| Port 7777 or 7778 reachable from the internet behind nginx | Docker publishes ports past `ufw`. Bind them to `127.0.0.1` as in step 6.                               |
-| Every player has to register again after an update         | The container was started without the `warlay-data` volume.                                             |
+| Symptom                                                 | Likely cause and fix                                                                                   |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| The client cannot sign in                               | Port 443 blocked, nginx not reloaded, or the certificate does not cover the hostname. Run step 10.     |
+| Rooms work but joining a game never connects            | UDP 7779 or 7780 blocked by the firewall or the provider's firewall, or the `public_*_addr` are wrong. |
+| The host's game does not appear in _Local Area Network_ | The client is not running elevated on the host's PC. Restart the client and accept the UAC prompt.     |
+| Port 8080 reachable from the internet behind nginx      | Docker publishes ports past `ufw`. Bind it to `127.0.0.1` as in step 6.                                |
+| The server refuses to start                             | PostgreSQL or Redis unreachable, or `WARLAY_HELPER_SECRET` empty. Check `docker logs warlay-main`.     |
 
 Many VPS providers also have a firewall in their control panel; open the
 same ports there.
@@ -1453,7 +1494,7 @@ same ports there.
 
 ```sh
 # Server and shared crates (any OS)
-cargo test -p server -p protocol -p crypto -p matchmaking -p core -p storage -p config -p transport
+cargo test --locked
 
 # Whole workspace (Windows; the binaries that carry the elevation manifest
 # declare `test = false`, so no elevated shell is needed)
@@ -1461,10 +1502,10 @@ WARLAY_TEST_MANIFEST=1 cargo test --workspace
 
 # Frontend: type-check and bundle, then unit tests (src/services/*.test.ts)
 cd desktop && npm run build && npm run test:unit
-
-# Live tests against a deployed hub (opt-in)
-cargo test -p engine -- --ignored
 ```
+
+The `social` API tests need PostgreSQL and Redis and are skipped unless
+`WARLAY_TEST_DATABASE_URL` and `WARLAY_TEST_REDIS_URL` are set.
 
 ## Releases
 
@@ -1476,7 +1517,8 @@ which:
    [Conventional Commits](https://www.conventionalcommits.org) since the last
    tag (`feat` -> minor, `fix` and others -> patch, breaking -> major),
 2. builds the server for five targets and the Windows client and
-   installer with that version stamped in,
+   installer with that version stamped in (the server address comes from the
+   `WARLAY_MAIN_URL` repository secret),
 3. pushes the server image to GHCR,
 4. tags the commit and publishes a GitHub Release with notes and checksums.
 
