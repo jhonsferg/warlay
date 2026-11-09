@@ -156,6 +156,11 @@ import WLogo from "../atoms/WLogo.vue";
     color: var(--danger);
     font-size: var(--fs-sm);
   }
+  &__hint {
+    margin: 0;
+    color: var(--text-3);
+    font-size: var(--fs-sm);
+  }
   &__switch {
     text-align: center;
     color: var(--text-3);
