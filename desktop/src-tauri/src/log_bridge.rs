@@ -12,7 +12,7 @@ static SENDER: OnceLock<UnboundedSender<String>> = OnceLock::new();
 /// receiving end the setup code should drain and forward to the frontend.
 pub fn init_channel() -> UnboundedReceiver<String> {
     let (tx, rx) = mpsc::unbounded_channel();
-    SENDER.set(tx).ok().expect("log_bridge::init_channel called twice");
+    SENDER.set(tx).expect("log_bridge::init_channel called twice");
     rx
 }
 
