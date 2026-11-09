@@ -10,10 +10,6 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP_HANDLE.set(app);
 }
 
-pub fn app_handle() -> Option<&'static AppHandle> {
-    APP_HANDLE.get()
-}
-
 /// Emits a state-broadcast `RuntimeResponse` as a Tauri event to the frontend.
 pub fn emit_runtime_event(app: &AppHandle, response: &RuntimeResponse) {
     match response {

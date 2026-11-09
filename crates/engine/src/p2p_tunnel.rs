@@ -76,9 +76,49 @@ impl ServerCertVerifier for SkipServerVerification {
 const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(4);
 const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Room for a burst of voice, desktop audio and LAN datagrams. The receive
+/// side used to hold a single datagram, so two arriving back to back lost the
+/// first. The send side is kept small on purpose: when the congestion window
+/// is full, datagrams wait here, and a voice frame (about 80 bytes) that waits
+/// seconds in a deep queue is stale audio by the time it leaves. 8 KiB is
+/// roughly a second of one talker in the worst case; older frames are dropped.
+const DATAGRAM_RECEIVE_BUFFER: usize = 64 * 1024;
+const DATAGRAM_SEND_BUFFER: usize = 8 * 1024;
+const INITIAL_RTT: Duration = Duration::from_millis(100);
+/// How long the peer may hold an acknowledgement back. QUIC's default is 25 ms,
+/// which is added to every loss-detection timeout: with sparse traffic (a voice
+/// frame every 20 ms) a lost packet is noticed that much later. Both ends are
+/// Warlay, so the ACK_FREQUENCY extension can ask for a much shorter delay.
+const MAX_ACK_DELAY: Duration = Duration::from_millis(5);
+
+/// Environment variable that switches the congestion controller, to compare
+/// them on a real link: `WARLAY_CONGESTION=bbr`. Anything else keeps quinn's
+/// default (Cubic).
+pub const CONGESTION_ENV: &str = "WARLAY_CONGESTION";
+
+/// BBR keeps the queue at the bottleneck short, so a bulk transfer on the same
+/// link (the map download rides the game's TCP) does not add its queueing
+/// delay to voice and game traffic the way loss-based Cubic does.
+fn wants_bbr(value: Option<&str>) -> bool {
+    value.is_some_and(|v| v.trim().eq_ignore_ascii_case("bbr"))
+}
+
 fn transport_config() -> Arc<quinn::TransportConfig> {
     let mut transport = quinn::TransportConfig::default();
-    transport.datagram_receive_buffer_size(Some(1200));
+    transport.datagram_receive_buffer_size(Some(DATAGRAM_RECEIVE_BUFFER));
+    transport.datagram_send_buffer_size(DATAGRAM_SEND_BUFFER);
+    // Until the first round trip is measured quinn assumes 333 ms, which
+    // makes the handshake and early loss recovery slow on a link that really
+    // takes a fraction of that. It only seeds the estimate: real samples
+    // replace it within the first packets.
+    transport.initial_rtt(INITIAL_RTT);
+    if wants_bbr(std::env::var(CONGESTION_ENV).ok().as_deref()) {
+        info!("QUIC links use the BBR congestion controller");
+        transport.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
+    }
+    let mut ack_frequency = quinn::AckFrequencyConfig::default();
+    ack_frequency.max_ack_delay(Some(MAX_ACK_DELAY));
+    transport.ack_frequency_config(Some(ack_frequency));
     transport.keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
     transport.max_idle_timeout(Some(
         quinn::IdleTimeout::try_from(MAX_IDLE_TIMEOUT).expect("idle timeout fits a QUIC varint"),
@@ -360,6 +400,15 @@ pub async fn connect_via_relay(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bbr_is_opt_in_and_case_insensitive() {
+        assert!(wants_bbr(Some("bbr")));
+        assert!(wants_bbr(Some(" BBR ")));
+        assert!(!wants_bbr(Some("cubic")));
+        assert!(!wants_bbr(Some("")));
+        assert!(!wants_bbr(None));
+    }
 
     fn ticket(secret: &[u8], room_id: Uuid, user_id: Uuid) -> Vec<u8> {
         let t = warlay_protocol::RoomTicket {

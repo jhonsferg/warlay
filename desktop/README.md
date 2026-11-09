@@ -31,6 +31,10 @@ executable does everything.
   end-to-end encrypted), Opus voice chat in the room (captured and played in
   the webview, sent only while you speak) with a global microphone mute
   shortcut.
+- **Low-latency voice** - Settings > Juego > Voz has a switch that sends
+  voice in 10 ms Opus packets instead of 20 ms: about 10 ms less delay for
+  roughly twice the packets per second. Off by default; it applies the next
+  time you join the voice, and clients without it still decode it.
 - **Settings > Avanzado** - the log detail level
   and automatic log cleanup (for this app's own logs), **Actualización** and
   **Acerca de Warlay**.
@@ -199,6 +203,26 @@ runtime statically (`src-tauri/.cargo/config.toml`), so they run on a clean
 Windows install; they only need the WebView2 runtime, which ships with
 Windows 10 and 11. The build stamps the short commit and the build time into
 the binary (`src-tauri/build.rs`); they appear in Avanzado > Acerca de.
+
+## Latency and diagnostics
+
+Voice and game traffic share one QUIC link per player. Things worth knowing
+when chasing lag:
+
+- Every 30 seconds each live link writes a `link quality` line to the log
+  (round trip, share of lost packets, congestion events, window, and whether
+  it runs through the relay). Set the file log level to "Información" in
+  Settings > Avanzado to see them.
+- A link that fell back to the helper relay keeps trying for a direct one in
+  the background (every 30 s); new game connections use the direct link as
+  soon as it is up. A game already running keeps the path it started on.
+- `WARLAY_CONGESTION=bbr` (environment variable, before starting the app)
+  switches the QUIC congestion controller from Cubic to BBR, which keeps the
+  queue at the bottleneck short while a map downloads over the game link. It
+  is opt-in so it can be compared on a real connection.
+- On Windows the app turns off power throttling and requests a 1 ms timer
+  resolution, and WebView2 is started without background throttling, so voice
+  and QUIC timers keep their pace while a fullscreen game has the focus.
 
 ## Tests
 

@@ -181,11 +181,9 @@ pub async fn start(mut settings: HelperSettings) -> Result<(Arc<HelperCore>, Hel
         // Derived from the name so a restart keeps the same identity.
         settings.helper_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, settings.name.as_bytes());
     }
-    let rendezvous_socket = tokio::net::UdpSocket::bind(settings.rendezvous_bind)
-        .await
+    let rendezvous_socket = crate::udp::bind_with_buffers(settings.rendezvous_bind, "rendezvous")
         .with_context(|| format!("binding rendezvous on {}", settings.rendezvous_bind))?;
-    let relay_socket = tokio::net::UdpSocket::bind(settings.relay_bind)
-        .await
+    let relay_socket = crate::udp::bind_with_buffers(settings.relay_bind, "relay")
         .with_context(|| format!("binding relay on {}", settings.relay_bind))?;
     let secret = settings.helper_secret.as_bytes().to_vec();
     let rendezvous = Arc::new(UdpRendezvous::new(rendezvous_socket).with_ticket_secret(secret.clone()));

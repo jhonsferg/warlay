@@ -47,12 +47,18 @@ const HINTS: Record<NoiseLevel, string> = {
     "Usa una red neuronal (RNNoise) para quitar teclado, ventilador y ruidos de fondo. No elimina a otra persona hablando cerca.",
 };
 
-async function save(patch: { micDeviceId?: string; noiseSuppression?: NoiseLevel; shareDesktopAudio?: boolean }) {
+async function save(patch: {
+  micDeviceId?: string;
+  noiseSuppression?: NoiseLevel;
+  shareDesktopAudio?: boolean;
+  lowLatencyVoice?: boolean;
+}) {
   try {
     await settings.setVoicePrefs({
       micDeviceId: patch.micDeviceId ?? settings.micDeviceId,
       noiseSuppression: patch.noiseSuppression ?? settings.noiseSuppression,
       shareDesktopAudio: patch.shareDesktopAudio ?? settings.shareDesktopAudio,
+      lowLatencyVoice: patch.lowLatencyVoice ?? settings.lowLatencyVoice,
     });
     // The PC's sound starts or stops right away when already in voice.
     if (patch.shareDesktopAudio !== undefined) {
@@ -107,6 +113,23 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
         <option v-for="l in NOISE_LEVELS" :key="l.value" :value="l.value">{{ l.label }}</option>
       </select>
     </FormField>
+
+    <div class="voice-settings__share">
+      <div>
+        <strong>Latencia mínima de voz</strong>
+        <p class="voice-settings__note" data-testid="low-latency-hint">
+          Envía tu voz en paquetes de 10 ms en lugar de 20 ms: unos 10 ms menos de retraso, pero casi el doble de
+          paquetes por segundo (más datos de subida, sobre todo en salas grandes). Se aplica la próxima vez que te unas
+          a la voz.
+        </p>
+      </div>
+      <WSwitch
+        :model-value="settings.lowLatencyVoice"
+        label="Latencia mínima de voz"
+        data-testid="low-latency-voice"
+        @update:model-value="save({ lowLatencyVoice: $event })"
+      />
+    </div>
 
     <div class="voice-settings__share">
       <div>

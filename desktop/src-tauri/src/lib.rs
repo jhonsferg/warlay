@@ -8,6 +8,7 @@ mod log_cleanup;
 mod log_control;
 mod network;
 mod permissions;
+mod power;
 pub use warlay::protocol;
 mod runtime;
 mod state;
@@ -392,6 +393,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
+            // Behind a fullscreen game, Windows would slow this process down.
+            power::keep_responsive();
             app.manage(AppState::new(store));
             let state = app.state::<AppState>();
             // The shared runtime state: hub connections, LAN capture, tunnels
@@ -511,6 +514,8 @@ pub fn run() {
             commands::updater::install_update,
             commands::updater::open_release_page,
             commands::voice::send_voice_frame,
+            commands::voice::register_frame_stream,
+            commands::voice::unregister_frame_stream,
             commands::voice::start_desktop_audio,
             commands::voice::stop_desktop_audio,
             commands::voice::set_mic_consent,

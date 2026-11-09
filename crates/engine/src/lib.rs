@@ -1,4 +1,5 @@
 mod discovery_service;
+mod frame_queue;
 mod hub_address;
 // LAN capture is per platform (raw SIO_RCVALL socket on Windows, AF_PACKET
 // on Linux) behind one API; everything else builds anywhere.

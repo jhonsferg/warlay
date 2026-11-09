@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use warlay_protocol::RendezvousMessage;
 
+use crate::frame_queue::FrameQueue;
 use crate::p2p_tunnel::{connect_via_relay, punch_and_connect_any, P2pTunnelHandle};
 use crate::w3gs_sniff;
 
@@ -173,6 +174,12 @@ pub struct PeerEntry {
     pub peer_wants_relay: bool,
     /// Attempts that failed since the last successful link.
     pub failures: u32,
+    /// A background attempt to replace a relayed link with a direct one is
+    /// running (the relayed link stays in use until it succeeds).
+    pub upgrading: bool,
+    /// When the last attempt for this peer ended; spaces out the background
+    /// retries of a relayed link.
+    pub upgrade_ended: Option<Instant>,
     pub is_host: bool,
     pub state: PeerLinkState,
 }
@@ -197,8 +204,11 @@ pub struct PeerMeshSharedState {
     pub datagram_tasks: Vec<JoinHandle<()>>,
     pub own_registration_addr: Option<SocketAddr>,
     lan_tx: tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
-    voice_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
-    desktop_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
+    voice_queue: Arc<FrameQueue>,
+    desktop_queue: Arc<FrameQueue>,
+    /// Woken every time a datagram lands in any of the queues above, so the
+    /// consumer reacts at once instead of polling on a timer.
+    inbound_wake: Arc<tokio::sync::Notify>,
     /// Where `STREAM_LOCAL_GAME` streams get bridged while a game tunnel is
     /// running on this machine; `None` means "no tunnel yet" and makes the
     /// dispatchers hold (bounded) instead of dropping sessions that raced us.
@@ -216,8 +226,9 @@ pub struct PeerMeshHandle {
     task: JoinHandle<()>,
     state: Arc<std::sync::RwLock<PeerMeshSharedState>>,
     lan_rx: std::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>,
-    voice_rx: std::sync::Mutex<tokio::sync::mpsc::Receiver<(Uuid, Vec<u8>)>>,
-    desktop_rx: std::sync::Mutex<tokio::sync::mpsc::Receiver<(Uuid, Vec<u8>)>>,
+    voice_queue: Arc<FrameQueue>,
+    desktop_queue: Arc<FrameQueue>,
+    inbound_wake: Arc<tokio::sync::Notify>,
     /// Where the mesh registers (rendezvous) and relays, changeable live.
     helper_tx: tokio::sync::watch::Sender<(SocketAddr, Option<SocketAddr>)>,
 }
@@ -376,26 +387,21 @@ impl PeerMeshHandle {
 
     /// Desktop-audio frames received from peers since the last call.
     pub fn poll_desktop_frames(&self) -> Vec<(Uuid, Vec<u8>)> {
-        let mut items = Vec::new();
-        if let Ok(mut rx) = self.desktop_rx.lock() {
-            while let Ok(item) = rx.try_recv() {
-                items.push(item);
-            }
-        }
-        items
+        self.desktop_queue.drain()
+    }
+
+    /// Resolves as soon as something arrives from a peer (a voice or desktop
+    /// audio frame, or a LAN packet); drain it with the `poll_*` methods.
+    /// A wake-up that happens while nobody waits is kept, so none is lost.
+    pub async fn inbound_ready(&self) {
+        self.inbound_wake.notified().await;
     }
 
     /// Voice frames received from peers since the last call, tagged with the
-    /// sender. The queue is bounded: if nobody polls, the oldest unread
-    /// frames stay and newer ones are dropped rather than growing memory.
+    /// sender. The queue is bounded: if nobody polls, the newest frames are
+    /// kept and the oldest are dropped, so audio never lags further behind.
     pub fn poll_voice_frames(&self) -> Vec<(Uuid, Vec<u8>)> {
-        let mut items = Vec::new();
-        if let Ok(mut rx) = self.voice_rx.lock() {
-            while let Ok(item) = rx.try_recv() {
-                items.push(item);
-            }
-        }
-        items
+        self.voice_queue.drain()
     }
 
     /// A snapshot of every peer this mesh knows about and how far its
@@ -473,9 +479,10 @@ const DATAGRAM_VOICE: u8 = 0x03;
 /// The sender's shared desktop audio (a second, independent stream).
 const DATAGRAM_DESKTOP: u8 = 0x04;
 
-/// Frames buffered for the consumer before newer ones are dropped: ~5 s of
-/// 20 ms frames from one talker, a few hundred ms from a full room.
-const VOICE_QUEUE_FRAMES: usize = 256;
+/// Frames buffered for the consumer before the oldest are dropped: ~0.5 s of
+/// 20 ms frames from one talker. The consumer is woken per frame, so the
+/// queue only fills when it stalls, and then stale audio is worth losing.
+const VOICE_QUEUE_FRAMES: usize = 25;
 
 fn drain(rx: &std::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>) -> Vec<(Uuid, Vec<u8>)> {
     let mut items = Vec::new();
@@ -502,7 +509,10 @@ pub struct MeshConfig {
 }
 
 /// After this many failed punch attempts with a peer, go through the relay.
-const RELAY_AFTER_FAILURES: u32 = 2;
+/// One is enough: a relayed link is not final (it keeps trying for a direct
+/// one, see `upgrade_due`), and a second punch attempt only delays the player
+/// by several seconds on the networks where punching cannot work.
+const RELAY_AFTER_FAILURES: u32 = 1;
 
 pub struct PeerMesh;
 
@@ -532,8 +542,9 @@ impl PeerMesh {
             _ => None,
         };
         let (lan_tx, lan_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (voice_tx, voice_rx) = tokio::sync::mpsc::channel(VOICE_QUEUE_FRAMES);
-        let (desktop_tx, desktop_rx) = tokio::sync::mpsc::channel(VOICE_QUEUE_FRAMES);
+        let voice_queue = Arc::new(FrameQueue::new(VOICE_QUEUE_FRAMES));
+        let desktop_queue = Arc::new(FrameQueue::new(VOICE_QUEUE_FRAMES));
+        let inbound_wake = Arc::new(tokio::sync::Notify::new());
         let state = Arc::new(std::sync::RwLock::new(PeerMeshSharedState {
             own_client_id,
             is_host,
@@ -546,8 +557,9 @@ impl PeerMesh {
             datagram_tasks: Vec::new(),
             own_registration_addr: None,
             lan_tx,
-            voice_tx,
-            desktop_tx,
+            voice_queue: voice_queue.clone(),
+            desktop_queue: desktop_queue.clone(),
+            inbound_wake: inbound_wake.clone(),
             local_game: None,
             relay,
             sync_routes: HashMap::new(),
@@ -572,8 +584,9 @@ impl PeerMesh {
             task,
             state,
             lan_rx: std::sync::Mutex::new(lan_rx),
-            voice_rx: std::sync::Mutex::new(voice_rx),
-            desktop_rx: std::sync::Mutex::new(desktop_rx),
+            voice_queue,
+            desktop_queue,
+            inbound_wake,
             helper_tx,
         }
     }
@@ -590,6 +603,8 @@ impl PeerEntry {
             peer_attempt: 0,
             peer_wants_relay: false,
             failures: 0,
+            upgrading: false,
+            upgrade_ended: None,
             is_host,
             state: PeerLinkState::NotAttempted,
         }
@@ -696,6 +711,10 @@ async fn run_peer_mesh(
     let mut register_retry = tokio::time::interval(Duration::from_millis(700));
     register_retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    let mut link_stats = tokio::time::interval(LINK_STATS_INTERVAL);
+    link_stats.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    link_stats.tick().await;
+
     loop {
         tokio::select! {
             // The room moved to another helper (the old one died): register
@@ -719,6 +738,9 @@ async fn run_peer_mesh(
             }
             _ = attempt_interval.tick() => {
                 trigger_connection_attempts(ctx, &state, &socket);
+            }
+            _ = link_stats.tick() => {
+                log_link_quality(&state);
             }
             recv_res = socket.recv_from(&mut buf) => {
                 match recv_res {
@@ -1074,8 +1096,112 @@ fn clear_sync_route(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>, peer_id
 fn mark_failed(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>, peer_id: Uuid) {
     let mut st = state.write().unwrap();
     if let Some(p) = st.peers.get_mut(&peer_id) {
+        p.upgrading = false;
+        p.upgrade_ended = Some(Instant::now());
+        // A failed background upgrade must not drop the link in use.
+        if matches!(p.state, PeerLinkState::Connected(_)) {
+            return;
+        }
         p.state = PeerLinkState::Failed;
         p.failures += 1;
+    }
+}
+
+/// How long a relayed link waits before the next background try at a direct
+/// one. A relayed link is only a fallback: the direct path usually has far
+/// less latency, and a failed punch is often transient.
+const UPGRADE_INTERVAL: Duration = Duration::from_secs(30);
+/// When the peer itself offers a direct link, answer sooner than that.
+const UPGRADE_RESPOND_COOLDOWN: Duration = Duration::from_secs(5);
+/// A replaced relayed link is closed once it carries no stream traffic for
+/// this long (game sessions already on it are never cut short).
+const RETIRE_IDLE: Duration = Duration::from_secs(300);
+const RETIRE_POLL: Duration = Duration::from_secs(30);
+
+/// How often each live link's quality is written to the log.
+const LINK_STATS_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Share of sent packets that were declared lost, in percent.
+fn loss_percent(lost: u64, sent: u64) -> f64 {
+    if sent == 0 {
+        0.0
+    } else {
+        lost as f64 * 100.0 / sent as f64
+    }
+}
+
+/// Writes one line per live link with what matters for lag: the round trip,
+/// the share of lost packets and the congestion window. It is how a report of
+/// "the game lags" can be told apart (a far relay, a lossy path, a full pipe).
+fn log_link_quality(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>) {
+    let Ok(st) = state.read() else {
+        return;
+    };
+    for (peer_id, peer) in &st.peers {
+        let PeerLinkState::Connected(handle) = &peer.state else {
+            continue;
+        };
+        let stats = handle.connection.stats();
+        let path = stats.path;
+        info!(
+            %peer_id,
+            relayed = handle.relayed,
+            rtt_ms = path.rtt.as_millis() as u64,
+            loss_pct = format!("{:.1}", loss_percent(path.lost_packets, path.sent_packets)),
+            congestion_events = path.congestion_events,
+            cwnd = path.cwnd,
+            "link quality"
+        );
+    }
+}
+
+/// Whether a relayed link should try for a direct one now.
+fn upgrade_due(relayed: bool, upgrading: bool, since_last_attempt: Option<Duration>, fresh_offer: bool) -> bool {
+    if !relayed || upgrading {
+        return false;
+    }
+    let wait = if fresh_offer {
+        UPGRADE_RESPOND_COOLDOWN
+    } else {
+        UPGRADE_INTERVAL
+    };
+    since_last_attempt.is_none_or(|elapsed| elapsed >= wait)
+}
+
+/// How long a link has been without stream traffic, given the stream-frame
+/// count at the previous and the current check.
+fn idle_after(previous_frames: u64, current_frames: u64, idle: Duration, step: Duration) -> Duration {
+    if current_frames == previous_frames {
+        idle + step
+    } else {
+        Duration::ZERO
+    }
+}
+
+fn stream_frames(handle: &P2pTunnelHandle) -> u64 {
+    let stats = handle.connection.stats();
+    stats.frame_tx.stream + stats.frame_rx.stream
+}
+
+/// Closes a link that a direct one replaced, once nothing uses it anymore.
+/// Games already running on it keep working: it is only closed after a long
+/// stretch with no stream traffic at all.
+async fn retire_when_idle(old: Arc<P2pTunnelHandle>) {
+    let mut frames = stream_frames(&old);
+    let mut idle = Duration::ZERO;
+    loop {
+        tokio::time::sleep(RETIRE_POLL).await;
+        if old.connection.close_reason().is_some() {
+            return;
+        }
+        let now = stream_frames(&old);
+        idle = idle_after(frames, now, idle, RETIRE_POLL);
+        frames = now;
+        if idle >= RETIRE_IDLE {
+            info!(remote = %old.connection.remote_address(), "closing the relayed link a direct one replaced");
+            old.connection.close(0u32.into(), b"replaced by a direct link");
+            return;
+        }
     }
 }
 
@@ -1094,6 +1220,26 @@ fn trigger_connection_attempts(
     {
         let mut st = state.write().unwrap();
         for peer in st.peers.values_mut() {
+            // A running background attempt owns this peer until it ends.
+            if peer.upgrading {
+                continue;
+            }
+            let relayed = matches!(&peer.state, PeerLinkState::Connected(h) if h.relayed);
+            if relayed {
+                let fresh = peer.offer_at.is_some_and(|at| at.elapsed() < OFFER_WINDOW);
+                let since = peer.upgrade_ended.map(|at| at.elapsed());
+                if upgrade_due(true, false, since, fresh) {
+                    // The relayed link stays up and in use meanwhile.
+                    peer.upgrading = true;
+                    if !fresh {
+                        peer.p2p_addr = None;
+                        peer.p2p_candidates.clear();
+                        peer.offer_at = None;
+                    }
+                    targets.push((peer.client_id, peer.addr, peer.is_host, true));
+                }
+                continue;
+            }
             match peer.state {
                 PeerLinkState::NotAttempted | PeerLinkState::Failed => {
                     peer.state = PeerLinkState::Connecting;
@@ -1106,7 +1252,7 @@ fn trigger_connection_attempts(
                         peer.p2p_candidates.clear();
                         peer.offer_at = None;
                     }
-                    targets.push((peer.client_id, peer.addr, peer.is_host));
+                    targets.push((peer.client_id, peer.addr, peer.is_host, false));
                 }
                 _ => {}
             }
@@ -1118,9 +1264,9 @@ fn trigger_connection_attempts(
     }
 
     // Prioritize peer with is_host == true first
-    targets.sort_by_key(|(_, _, peer_is_host)| !peer_is_host);
+    targets.sort_by_key(|(_, _, peer_is_host, _)| !peer_is_host);
 
-    for (peer_id, peer_reg_addr, peer_is_host) in targets {
+    for (peer_id, peer_reg_addr, peer_is_host, upgrade) in targets {
         let state_clone = state.clone();
         let reg_socket_clone = reg_socket.clone();
 
@@ -1148,7 +1294,8 @@ fn trigger_connection_attempts(
                 let st = state_clone.read().unwrap();
                 (st.relay.clone(), st.peers.get(&peer_id).map_or(0, |p| p.failures))
             };
-            let mut use_relay = relay_cfg.is_some() && own_failures >= RELAY_AFTER_FAILURES;
+            // A background upgrade is only worth it if it ends direct.
+            let mut use_relay = !upgrade && relay_cfg.is_some() && own_failures >= RELAY_AFTER_FAILURES;
 
             let public_addr = probe_public_addr(&local_socket, rendezvous_addr).await;
             let offer = LinkOffer {
@@ -1199,7 +1346,7 @@ fn trigger_connection_attempts(
                         if !peer.p2p_candidates.is_empty() {
                             target_candidates = peer.p2p_candidates.clone();
                             target_attempt = peer.peer_attempt;
-                            use_relay |= relay_cfg.is_some() && peer.peer_wants_relay;
+                            use_relay |= !upgrade && relay_cfg.is_some() && peer.peer_wants_relay;
                             break;
                         }
                     }
@@ -1286,10 +1433,22 @@ fn trigger_connection_attempts(
                     let remote = handle.connection.remote_address();
                     info!(%room_token, %peer_id, %remote, "successfully connected P2P link to peer");
                     let handle_arc = Arc::new(handle);
+                    let mut replaced = None;
                     if let Some(p) = st.peers.get_mut(&peer_id) {
+                        if upgrade {
+                            if let PeerLinkState::Connected(old) = &p.state {
+                                replaced = Some(old.clone());
+                            }
+                        }
                         p.state = PeerLinkState::Connected(handle_arc.clone());
                         p.failures = 0;
                         p.p2p_addr = Some(remote);
+                        p.upgrading = false;
+                        p.upgrade_ended = Some(Instant::now());
+                    }
+                    if let Some(old) = replaced {
+                        info!(%room_token, %peer_id, %remote, "relayed link replaced by a direct one; new game connections use it");
+                        tokio::spawn(retire_when_idle(old));
                     }
 
                     let watch_state = state_clone.clone();
@@ -1298,13 +1457,19 @@ fn trigger_connection_attempts(
                         watch_link(watch_state, peer_id, watch_handle).await;
                     });
 
-                    if st.datagram_peers.insert(peer_id) {
+                    // An upgrade brings a second connection to a peer that
+                    // already has listeners (on the relayed one).
+                    if st.datagram_peers.insert(peer_id) || upgrade {
                         let handle_task = handle_arc.clone();
                         let lan_tx = st.lan_tx.clone();
-                        let voice_tx = st.voice_tx.clone();
-                        let desktop_tx = st.desktop_tx.clone();
+                        let inbound = Inbound {
+                            lan_tx,
+                            voice: st.voice_queue.clone(),
+                            desktop: st.desktop_queue.clone(),
+                            wake: st.inbound_wake.clone(),
+                        };
                         let datagram_task = tokio::spawn(async move {
-                            run_datagram_listener_for_peer(peer_id, handle_task, lan_tx, voice_tx, desktop_tx).await;
+                            run_datagram_listener_for_peer(peer_id, handle_task, inbound).await;
                         });
                         st.datagram_tasks.push(datagram_task);
                     }
@@ -1314,7 +1479,7 @@ fn trigger_connection_attempts(
                     // WC3, or transit it is carrying for someone else) is
                     // routed by tag here — on every link, host or not, since
                     // now any member can be joined in a game.
-                    if st.dispatcher_peers.insert(peer_id) {
+                    if st.dispatcher_peers.insert(peer_id) || upgrade {
                         let state_task = state_clone.clone();
                         let dispatcher_task = tokio::spawn(async move {
                             run_stream_dispatcher(state_task, peer_id, handle_arc).await;
@@ -1325,8 +1490,13 @@ fn trigger_connection_attempts(
                 _ => {
                     debug!(%room_token, %peer_id, ?target_candidates, "P2P connection attempt to peer failed or timed out");
                     if let Some(p) = st.peers.get_mut(&peer_id) {
-                        p.state = PeerLinkState::Failed;
-                        p.failures += 1;
+                        p.upgrading = false;
+                        p.upgrade_ended = Some(Instant::now());
+                        // A failed upgrade leaves the relayed link in use.
+                        if !upgrade {
+                            p.state = PeerLinkState::Failed;
+                            p.failures += 1;
+                        }
                     }
                 }
             }
@@ -1547,38 +1717,43 @@ async fn connect_local_game(local_game_port: u16) -> Option<TcpStream> {
 /// Delivers one received datagram to its consumer by its tag byte. Returns
 /// false only when the LAN consumer is gone (the mesh is shutting down); a
 /// full or closed voice queue just drops the frame, as real-time audio must.
-fn route_datagram(
-    peer_id: Uuid,
-    bytes: &[u8],
-    lan_tx: &tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
-    voice_tx: &tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
-    desktop_tx: &tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
-) -> bool {
-    match bytes.split_first() {
-        Some((&DATAGRAM_LAN, payload)) => lan_tx.send((peer_id, payload.to_vec())).is_ok(),
+fn route_datagram(peer_id: Uuid, bytes: &[u8], inbound: &Inbound) -> bool {
+    let delivered = match bytes.split_first() {
+        Some((&DATAGRAM_LAN, payload)) => {
+            if inbound.lan_tx.send((peer_id, payload.to_vec())).is_err() {
+                return false;
+            }
+            true
+        }
         Some((&DATAGRAM_VOICE, payload)) => {
-            let _ = voice_tx.try_send((peer_id, payload.to_vec()));
+            inbound.voice.push((peer_id, payload.to_vec()));
             true
         }
         Some((&DATAGRAM_DESKTOP, payload)) => {
-            let _ = desktop_tx.try_send((peer_id, payload.to_vec()));
+            inbound.desktop.push((peer_id, payload.to_vec()));
             true
         }
-        _ => true,
+        _ => false,
+    };
+    if delivered {
+        inbound.wake.notify_one();
     }
+    true
 }
 
-async fn run_datagram_listener_for_peer(
-    peer_id: Uuid,
-    handle_peer: Arc<P2pTunnelHandle>,
+/// Where a link's listener delivers what it receives.
+struct Inbound {
     lan_tx: tokio::sync::mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
-    voice_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
-    desktop_tx: tokio::sync::mpsc::Sender<(Uuid, Vec<u8>)>,
-) {
+    voice: Arc<FrameQueue>,
+    desktop: Arc<FrameQueue>,
+    wake: Arc<tokio::sync::Notify>,
+}
+
+async fn run_datagram_listener_for_peer(peer_id: Uuid, handle_peer: Arc<P2pTunnelHandle>, inbound: Inbound) {
     loop {
         match handle_peer.connection.read_datagram().await {
             Ok(bytes) => {
-                if !route_datagram(peer_id, &bytes, &lan_tx, &voice_tx, &desktop_tx) {
+                if !route_datagram(peer_id, &bytes, &inbound) {
                     break;
                 }
             }
@@ -1615,91 +1790,99 @@ mod tests {
     use super::*;
     use warlay_core::{UdpRendezvous, UdpRendezvousHandle};
 
-    #[test]
-    fn datagrams_are_routed_by_their_tag_byte() {
-        let peer = Uuid::new_v4();
-        let (lan_tx, mut lan_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel(4);
-        let (desktop_tx, mut desktop_rx) = tokio::sync::mpsc::channel(4);
-
-        assert!(route_datagram(
-            peer,
-            &[DATAGRAM_LAN, 1, 2, 3],
-            &lan_tx,
-            &voice_tx,
-            &desktop_tx
-        ));
-        assert!(route_datagram(
-            peer,
-            &[DATAGRAM_VOICE, 9, 8],
-            &lan_tx,
-            &voice_tx,
-            &desktop_tx
-        ));
-        assert!(route_datagram(
-            peer,
-            &[DATAGRAM_DESKTOP, 5, 6, 7],
-            &lan_tx,
-            &voice_tx,
-            &desktop_tx
-        ));
-        // Unknown tags and empty datagrams are ignored, never fatal.
-        assert!(route_datagram(peer, &[0x7F, 1], &lan_tx, &voice_tx, &desktop_tx));
-        assert!(route_datagram(peer, &[], &lan_tx, &voice_tx, &desktop_tx));
-
-        assert_eq!(lan_rx.try_recv().unwrap(), (peer, vec![1, 2, 3]));
-        assert!(lan_rx.try_recv().is_err());
-        assert_eq!(voice_rx.try_recv().unwrap(), (peer, vec![9, 8]));
-        assert!(voice_rx.try_recv().is_err());
-        // Desktop audio is its own stream: never mixed into voice.
-        assert_eq!(desktop_rx.try_recv().unwrap(), (peer, vec![5, 6, 7]));
-        assert!(desktop_rx.try_recv().is_err());
+    fn inbound_for_test(capacity: usize) -> (Inbound, tokio::sync::mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>) {
+        let (lan_tx, lan_rx) = tokio::sync::mpsc::unbounded_channel();
+        let inbound = Inbound {
+            lan_tx,
+            voice: Arc::new(FrameQueue::new(capacity)),
+            desktop: Arc::new(FrameQueue::new(capacity)),
+            wake: Arc::new(tokio::sync::Notify::new()),
+        };
+        (inbound, lan_rx)
     }
 
     #[test]
-    fn a_full_or_closed_voice_queue_drops_frames_without_stopping_the_listener() {
+    fn datagrams_are_routed_by_their_tag_byte() {
         let peer = Uuid::new_v4();
-        let (lan_tx, _lan_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel(2);
-        let (desktop_tx, _desktop_rx) = tokio::sync::mpsc::channel(2);
+        let (inbound, mut lan_rx) = inbound_for_test(4);
+
+        assert!(route_datagram(peer, &[DATAGRAM_LAN, 1, 2, 3], &inbound));
+        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 9, 8], &inbound));
+        assert!(route_datagram(peer, &[DATAGRAM_DESKTOP, 5, 6, 7], &inbound));
+        // Unknown tags and empty datagrams are ignored, never fatal.
+        assert!(route_datagram(peer, &[0x7F, 1], &inbound));
+        assert!(route_datagram(peer, &[], &inbound));
+
+        assert_eq!(lan_rx.try_recv().unwrap(), (peer, vec![1, 2, 3]));
+        assert!(lan_rx.try_recv().is_err());
+        assert_eq!(inbound.voice.drain(), vec![(peer, vec![9, 8])]);
+        // Desktop audio is its own stream: never mixed into voice.
+        assert_eq!(inbound.desktop.drain(), vec![(peer, vec![5, 6, 7])]);
+        assert!(inbound.voice.drain().is_empty());
+    }
+
+    #[test]
+    fn a_full_voice_queue_keeps_the_newest_frames_without_stopping_the_listener() {
+        let peer = Uuid::new_v4();
+        let (inbound, _lan_rx) = inbound_for_test(2);
 
         for i in 0..5u8 {
-            assert!(route_datagram(
-                peer,
-                &[DATAGRAM_VOICE, i],
-                &lan_tx,
-                &voice_tx,
-                &desktop_tx
-            ));
+            assert!(route_datagram(peer, &[DATAGRAM_VOICE, i], &inbound));
         }
-        // Only the first two fit; the rest were dropped, not queued.
-        assert_eq!(voice_rx.try_recv().unwrap().1, vec![0]);
-        assert_eq!(voice_rx.try_recv().unwrap().1, vec![1]);
-        assert!(voice_rx.try_recv().is_err());
-
-        drop(voice_rx);
-        assert!(route_datagram(
-            peer,
-            &[DATAGRAM_VOICE, 7],
-            &lan_tx,
-            &voice_tx,
-            &desktop_tx
-        ));
+        // Only the two newest are kept: stale audio is what gets dropped.
+        assert_eq!(inbound.voice.drain(), vec![(peer, vec![3]), (peer, vec![4])]);
     }
 
     #[test]
     fn the_listener_stops_only_when_the_lan_consumer_is_gone() {
-        let (lan_tx, lan_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (voice_tx, _voice_rx) = tokio::sync::mpsc::channel(1);
-        let (desktop_tx, _desktop_rx) = tokio::sync::mpsc::channel(1);
+        let (inbound, lan_rx) = inbound_for_test(1);
         drop(lan_rx);
-        assert!(!route_datagram(
-            Uuid::new_v4(),
-            &[DATAGRAM_LAN, 1],
-            &lan_tx,
-            &voice_tx,
-            &desktop_tx
-        ));
+        assert!(!route_datagram(Uuid::new_v4(), &[DATAGRAM_LAN, 1], &inbound));
+        // Voice never depends on the LAN consumer.
+        assert!(route_datagram(Uuid::new_v4(), &[DATAGRAM_VOICE, 1], &inbound));
+    }
+
+    #[tokio::test]
+    async fn a_received_frame_wakes_the_consumer_even_if_it_was_not_waiting_yet() {
+        let (inbound, _lan_rx) = inbound_for_test(4);
+        let peer = Uuid::new_v4();
+        assert!(route_datagram(peer, &[DATAGRAM_VOICE, 1], &inbound));
+        // The wake-up was stored: waiting afterwards returns immediately.
+        tokio::time::timeout(Duration::from_millis(200), inbound.wake.notified())
+            .await
+            .expect("the stored wake-up resolves at once");
+    }
+
+    #[test]
+    fn only_an_idle_relayed_link_tries_for_a_direct_one_and_not_too_often() {
+        let long = Some(UPGRADE_INTERVAL);
+        // Direct links and attempts already running are left alone.
+        assert!(!upgrade_due(false, false, long, false));
+        assert!(!upgrade_due(true, true, long, false));
+        // Retries are spaced out...
+        assert!(!upgrade_due(true, false, Some(Duration::from_secs(5)), false));
+        assert!(upgrade_due(true, false, long, false));
+        assert!(upgrade_due(true, false, None, false));
+        // ...but a peer's fresh offer is answered after a short cooldown.
+        assert!(!upgrade_due(true, false, Some(Duration::from_secs(1)), true));
+        assert!(upgrade_due(true, false, Some(UPGRADE_RESPOND_COOLDOWN), true));
+    }
+
+    #[test]
+    fn loss_is_a_share_of_what_was_sent() {
+        assert_eq!(loss_percent(0, 0), 0.0);
+        assert_eq!(loss_percent(5, 100), 5.0);
+        assert_eq!(loss_percent(0, 1000), 0.0);
+    }
+
+    #[test]
+    fn a_replaced_link_is_idle_only_while_no_stream_frames_move() {
+        let step = Duration::from_secs(30);
+        let idle = idle_after(10, 10, Duration::ZERO, step);
+        assert_eq!(idle, step);
+        assert_eq!(idle_after(10, 10, idle, step), step * 2);
+        // Any stream traffic resets the count.
+        assert_eq!(idle_after(10, 11, step * 5, step), Duration::ZERO);
     }
 
     #[test]
@@ -1808,6 +1991,114 @@ mod tests {
         host.abort();
         joiner.abort();
         late.abort();
+    }
+
+    /// Median of the delays, in milliseconds.
+    fn median_ms(mut delays: Vec<Duration>) -> f64 {
+        delays.sort();
+        delays[delays.len() / 2].as_secs_f64() * 1000.0
+    }
+
+    /// How long a voice frame takes from `broadcast_voice_frame` on one member
+    /// to being handed to the consumer on another, over loopback. The consumer
+    /// is woken per frame (`inbound_ready`); the old design polled on a 20 ms
+    /// tick, which is measured here too as a baseline so the gain is visible.
+    #[tokio::test]
+    async fn voice_frames_reach_the_consumer_within_a_few_milliseconds() {
+        let secret = b"mesh-latency-secret".to_vec();
+        let rv_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let rv_addr = rv_socket.local_addr().unwrap();
+        Arc::new(UdpRendezvous::new(rv_socket).with_ticket_secret(secret.clone())).spawn();
+
+        let room = Uuid::new_v4();
+        let mesh_for = |user: Uuid, is_host: bool| {
+            let t = warlay_protocol::RoomTicket {
+                room_id: room,
+                user_id: user,
+                is_host,
+                expires_unix: u64::MAX,
+            };
+            PeerMesh::spawn_with(MeshConfig {
+                rendezvous_addr: rv_addr,
+                room_token: room,
+                own_client_id: user,
+                is_host,
+                ticket: Some(warlay_crypto::sign_token(&secret, &t.encode().unwrap())),
+                relay_addr: None,
+            })
+        };
+        let host = Arc::new(mesh_for(Uuid::new_v4(), true));
+        let joiner = mesh_for(Uuid::new_v4(), false);
+        let start = tokio::time::Instant::now();
+        while joiner.best_path_to_host().is_none() || host.connected_peers().is_empty() {
+            assert!(start.elapsed() < Duration::from_secs(10), "members never linked");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        const FRAMES: usize = 50;
+        let epoch = std::time::Instant::now();
+        let stamp = move || epoch.elapsed().as_nanos() as u64;
+        let delay_of = move |frame: &[u8], now_ns: u64| {
+            Duration::from_nanos(now_ns - u64::from_le_bytes(frame[..8].try_into().unwrap()))
+        };
+
+        // Woken per frame.
+        let consumer = host.clone();
+        let received = tokio::spawn(async move {
+            let mut delays = Vec::new();
+            while delays.len() < FRAMES {
+                consumer.inbound_ready().await;
+                let now = stamp();
+                for (_, frame) in consumer.poll_voice_frames() {
+                    delays.push(delay_of(&frame, now));
+                }
+            }
+            delays
+        });
+        for _ in 0..FRAMES {
+            joiner.broadcast_voice_frame(&stamp().to_le_bytes());
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let woken = tokio::time::timeout(Duration::from_secs(5), received)
+            .await
+            .expect("frames arrived")
+            .unwrap();
+        let woken_ms = median_ms(woken);
+
+        // Polled on a 20 ms tick, as before. Frames are sent every 23 ms so
+        // they land at every phase of the tick, like a real talker's would.
+        let consumer = host.clone();
+        let polled = tokio::spawn(async move {
+            let mut delays = Vec::new();
+            let mut tick = tokio::time::interval(Duration::from_millis(20));
+            while delays.len() < FRAMES {
+                tick.tick().await;
+                let now = stamp();
+                for (_, frame) in consumer.poll_voice_frames() {
+                    delays.push(delay_of(&frame, now));
+                }
+            }
+            delays
+        });
+        for _ in 0..FRAMES {
+            joiner.broadcast_voice_frame(&stamp().to_le_bytes());
+            tokio::time::sleep(Duration::from_millis(23)).await;
+        }
+        let polled = tokio::time::timeout(Duration::from_secs(5), polled)
+            .await
+            .expect("frames arrived")
+            .unwrap();
+        let polled_ms = median_ms(polled);
+
+        eprintln!(
+            "voice delivery latency over loopback: woken per frame {woken_ms:.2} ms, 20 ms poll {polled_ms:.2} ms"
+        );
+        // Generous bound for a loaded CI machine; the point is that no timer
+        // sits between the datagram and the consumer.
+        assert!(woken_ms < 5.0, "median {woken_ms:.2} ms");
+
+        host.abort();
+        joiner.abort();
     }
 
     #[tokio::test]

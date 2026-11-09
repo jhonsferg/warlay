@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { audioConstraints, classifyMicError, normalizeNoiseLevel, usesRnnoise } from "./voicePrefs.ts";
+import { audioConstraints, classifyMicError, normalizeNoiseLevel, opusFrameMicros, usesRnnoise } from "./voicePrefs.ts";
 
 test("an unknown or missing noise level falls back to standard", () => {
   assert.equal(normalizeNoiseLevel("strong"), "strong");
@@ -62,4 +62,10 @@ test("every failure carries a message in Spanish for the user", () => {
     assert.ok(message.length > 10, name);
   }
   assert.match(classifyMicError({ name: "NotAllowedError" }, true).message, /Windows/);
+});
+
+test("low-latency voice halves the Opus packet length", () => {
+  assert.equal(opusFrameMicros(false), 20000);
+  assert.equal(opusFrameMicros(undefined), 20000);
+  assert.equal(opusFrameMicros(true), 10000);
 });

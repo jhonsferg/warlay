@@ -22,6 +22,7 @@
         "center": true,
         "transparent": false,
         "backgroundColor": "#07090e",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --disable-renderer-backgrounding --disable-background-timer-throttling --disable-backgrounding-occluded-windows",
         "devtools": true
       }
     ],

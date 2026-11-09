@@ -98,6 +98,10 @@ pub struct AppSettings {
     // default; Warlay's own audio is always excluded from what is shared.
     #[serde(default)]
     pub share_desktop_audio: bool,
+    // Send voice in 10 ms Opus packets instead of 20 ms: about 10 ms less
+    // delay for roughly twice the packets per second. Off by default.
+    #[serde(default)]
+    pub low_latency_voice: bool,
 }
 
 #[cfg(test)]
