@@ -32,10 +32,21 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "Warlay",
+    "copyright": "Warlay",
     "targets": ["nsis"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
     "windows": {
       "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "windows/installer/header.bmp",
+        "sidebarImage": "windows/installer/sidebar.bmp",
+        "languages": ["English", "Spanish"],
+        "customLanguageFiles": {
+          "English": "windows/installer/English.nsh",
+          "Spanish": "windows/installer/Spanish.nsh"
+        },
+        "template": "windows/installer/installer.nsi",
         "installerHooks": "./windows/hooks.nsh"
       }
     }

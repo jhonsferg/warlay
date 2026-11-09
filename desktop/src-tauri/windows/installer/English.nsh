@@ -1,0 +1,5 @@
+LangString welcomeTitle ${LANG_ENGLISH} "Welcome to Warlay"
+LangString welcomeText ${LANG_ENGLISH} "Warlay lets you play Warcraft III LAN games with people who are not on your network.$\r$\n$\r$\nThis wizard will install Warlay on your computer. Close any running copy of Warlay before you continue.$\r$\n$\r$\nClick Next to continue."
+LangString finishTitle ${LANG_ENGLISH} "Warlay is ready"
+LangString finishText ${LANG_ENGLISH} "Warlay has been installed on your computer.$\r$\n$\r$\nClick Finish to close this wizard."
+LangString visitWebsite ${LANG_ENGLISH} "Visit the Warlay website"

@@ -1,0 +1,5 @@
+LangString welcomeTitle ${LANG_SPANISH} "Bienvenido a Warlay"
+LangString welcomeText ${LANG_SPANISH} "Warlay te permite jugar partidas LAN de Warcraft III con personas que no estan en tu red.$\r$\n$\r$\nEste asistente instalara Warlay en tu equipo. Cierra Warlay si esta en ejecucion antes de continuar.$\r$\n$\r$\nPulsa Siguiente para continuar."
+LangString finishTitle ${LANG_SPANISH} "Warlay esta listo"
+LangString finishText ${LANG_SPANISH} "Warlay se ha instalado en tu equipo.$\r$\n$\r$\nPulsa Finalizar para cerrar este asistente."
+LangString visitWebsite ${LANG_SPANISH} "Visitar el sitio web de Warlay"
