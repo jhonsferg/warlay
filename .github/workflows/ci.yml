@@ -48,6 +48,16 @@ jobs:
       - name: Prettier
         run: npx --yes prettier@3.3.3 --check .
 
+  dependencies:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: cargo-deny (RustSec advisories)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
+
   server:
     name: Server and shared crates (${{ matrix.os }})
     strategy:
@@ -62,7 +72,7 @@ jobs:
       - name: Test
         run: >
           cargo test --locked
-          -p server -p protocol -p crypto -p matchmaking -p core -p storage -p config -p transport
+          -p server -p social -p protocol -p crypto -p matchmaking -p core -p storage -p config -p transport
 
   windows:
     name: Workspace (Windows)
