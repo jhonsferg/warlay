@@ -1993,6 +1993,114 @@ mod tests {
         late.abort();
     }
 
+    /// Median of the delays, in milliseconds.
+    fn median_ms(mut delays: Vec<Duration>) -> f64 {
+        delays.sort();
+        delays[delays.len() / 2].as_secs_f64() * 1000.0
+    }
+
+    /// How long a voice frame takes from `broadcast_voice_frame` on one member
+    /// to being handed to the consumer on another, over loopback. The consumer
+    /// is woken per frame (`inbound_ready`); the old design polled on a 20 ms
+    /// tick, which is measured here too as a baseline so the gain is visible.
+    #[tokio::test]
+    async fn voice_frames_reach_the_consumer_within_a_few_milliseconds() {
+        let secret = b"mesh-latency-secret".to_vec();
+        let rv_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let rv_addr = rv_socket.local_addr().unwrap();
+        Arc::new(UdpRendezvous::new(rv_socket).with_ticket_secret(secret.clone())).spawn();
+
+        let room = Uuid::new_v4();
+        let mesh_for = |user: Uuid, is_host: bool| {
+            let t = warlay_protocol::RoomTicket {
+                room_id: room,
+                user_id: user,
+                is_host,
+                expires_unix: u64::MAX,
+            };
+            PeerMesh::spawn_with(MeshConfig {
+                rendezvous_addr: rv_addr,
+                room_token: room,
+                own_client_id: user,
+                is_host,
+                ticket: Some(warlay_crypto::sign_token(&secret, &t.encode().unwrap())),
+                relay_addr: None,
+            })
+        };
+        let host = Arc::new(mesh_for(Uuid::new_v4(), true));
+        let joiner = mesh_for(Uuid::new_v4(), false);
+        let start = tokio::time::Instant::now();
+        while joiner.best_path_to_host().is_none() || host.connected_peers().is_empty() {
+            assert!(start.elapsed() < Duration::from_secs(10), "members never linked");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        const FRAMES: usize = 50;
+        let epoch = std::time::Instant::now();
+        let stamp = move || epoch.elapsed().as_nanos() as u64;
+        let delay_of = move |frame: &[u8], now_ns: u64| {
+            Duration::from_nanos(now_ns - u64::from_le_bytes(frame[..8].try_into().unwrap()))
+        };
+
+        // Woken per frame.
+        let consumer = host.clone();
+        let received = tokio::spawn(async move {
+            let mut delays = Vec::new();
+            while delays.len() < FRAMES {
+                consumer.inbound_ready().await;
+                let now = stamp();
+                for (_, frame) in consumer.poll_voice_frames() {
+                    delays.push(delay_of(&frame, now));
+                }
+            }
+            delays
+        });
+        for _ in 0..FRAMES {
+            joiner.broadcast_voice_frame(&stamp().to_le_bytes());
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let woken = tokio::time::timeout(Duration::from_secs(5), received)
+            .await
+            .expect("frames arrived")
+            .unwrap();
+        let woken_ms = median_ms(woken);
+
+        // Polled on a 20 ms tick, as before. Frames are sent every 23 ms so
+        // they land at every phase of the tick, like a real talker's would.
+        let consumer = host.clone();
+        let polled = tokio::spawn(async move {
+            let mut delays = Vec::new();
+            let mut tick = tokio::time::interval(Duration::from_millis(20));
+            while delays.len() < FRAMES {
+                tick.tick().await;
+                let now = stamp();
+                for (_, frame) in consumer.poll_voice_frames() {
+                    delays.push(delay_of(&frame, now));
+                }
+            }
+            delays
+        });
+        for _ in 0..FRAMES {
+            joiner.broadcast_voice_frame(&stamp().to_le_bytes());
+            tokio::time::sleep(Duration::from_millis(23)).await;
+        }
+        let polled = tokio::time::timeout(Duration::from_secs(5), polled)
+            .await
+            .expect("frames arrived")
+            .unwrap();
+        let polled_ms = median_ms(polled);
+
+        eprintln!(
+            "voice delivery latency over loopback: woken per frame {woken_ms:.2} ms, 20 ms poll {polled_ms:.2} ms"
+        );
+        // Generous bound for a loaded CI machine; the point is that no timer
+        // sits between the datagram and the consumer.
+        assert!(woken_ms < 5.0, "median {woken_ms:.2} ms");
+
+        host.abort();
+        joiner.abort();
+    }
+
     #[tokio::test]
     async fn ticket_holders_link_up_and_exchange_lan_and_voice_datagrams() {
         let secret = b"mesh-ticket-secret".to_vec();
