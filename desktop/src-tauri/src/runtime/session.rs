@@ -41,6 +41,7 @@ async fn resolve(addr: &str) -> Result<SocketAddr, String> {
 
 /// Ends the current room session (mesh, game tunnel, LAN bridging).
 pub fn clear_room_session(s: &mut RuntimeState) {
+    super::voice::set_voice_mesh(None);
     if let Some(mesh) = s.peer_mesh.take() {
         mesh.abort();
     }
@@ -90,6 +91,7 @@ pub async fn start_room_session(
         relay_addr: relay,
     }));
     s.peer_mesh = Some(mesh.clone());
+    super::voice::set_voice_mesh(Some(mesh.clone()));
 
     let inbound_state = state.clone();
     let inbound_mesh = mesh.clone();
