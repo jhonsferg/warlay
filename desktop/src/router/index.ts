@@ -7,6 +7,7 @@ export const router = createRouter({
   routes: [
     { path: "/login", component: () => import("../pages/LoginPage.vue"), meta: { guest: true } },
     { path: "/register", component: () => import("../pages/RegisterPage.vue"), meta: { guest: true } },
+    { path: "/recover", component: () => import("../pages/RecoverPage.vue"), meta: { guest: true } },
     { path: "/", component: () => import("../pages/LobbyPage.vue") },
     { path: "/friends/:id?", component: () => import("../pages/FriendsPage.vue") },
     // Old direct-message links open the same conversation inside Friends.
