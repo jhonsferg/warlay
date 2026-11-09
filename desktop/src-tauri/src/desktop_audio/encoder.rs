@@ -59,6 +59,7 @@ impl DesktopEncoder {
     }
 
     /// Samples waiting for the rest of their 20 ms frame.
+    #[cfg(test)]
     pub fn buffered(&self) -> usize {
         self.pending.len()
     }
