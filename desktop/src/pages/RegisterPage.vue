@@ -4,6 +4,7 @@ import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ApiError, errorMessage } from "../services/http";
 import { useSession } from "../stores/session";
+import RecoveryCodesPanel from "../ui/organisms/RecoveryCodesPanel.vue";
 import WButton from "../ui/atoms/WButton.vue";
 import WInput from "../ui/atoms/WInput.vue";
 import FormField from "../ui/molecules/FormField.vue";
@@ -19,6 +20,9 @@ const busy = ref(false);
 const error = ref<string | null>(null);
 const fieldError = ref<Record<string, string>>({});
 const touched = ref(false);
+/** Shown once, right after the account is created. */
+const recoveryCodes = ref<string[]>([]);
+const saved = ref(false);
 
 // Validate as the user types, mirroring the server's own rules.
 const errors = computed(() => {
@@ -49,13 +53,16 @@ async function submit() {
   error.value = null;
   fieldError.value = {};
   try {
-    await session.register({
+    const codes = await session.register({
       username: username.value.trim(),
       email: email.value.trim(),
       password: password.value,
       displayName: displayName.value.trim() || undefined,
     });
-    void router.replace("/");
+    // The codes appear once and the player confirms having kept them before
+    // going on; an older server sends none.
+    if (codes.length) recoveryCodes.value = codes;
+    else void router.replace("/");
   } catch (e) {
     if (e instanceof ApiError && e.code === "username_taken") fieldError.value = { username: e.message };
     else if (e instanceof ApiError && e.code === "email_taken") fieldError.value = { email: e.message };
@@ -68,7 +75,19 @@ async function submit() {
 
 <template>
   <AuthLayout>
-    <form class="auth-form" @submit.prevent="submit">
+    <div v-if="recoveryCodes.length" class="auth-form">
+      <header>
+        <p class="auth-form__eyebrow">Cuenta creada</p>
+        <h2>Tus códigos de recuperación</h2>
+      </header>
+      <RecoveryCodesPanel :username="username.trim()" :codes="recoveryCodes" />
+      <label class="auth-form__confirm">
+        <input v-model="saved" type="checkbox" data-testid="codes-saved" />
+        Ya guardé mis códigos en un lugar seguro
+      </label>
+      <WButton size="lg" block :disabled="!saved" @click="router.replace('/')">Continuar</WButton>
+    </div>
+    <form v-else class="auth-form" @submit.prevent="submit">
       <header>
         <p class="auth-form__eyebrow">Únete a Warlay</p>
         <h2>Crear cuenta</h2>
@@ -129,6 +148,14 @@ async function submit() {
 </template>
 
 <style lang="scss">
+.auth-form__confirm {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  cursor: pointer;
+}
 .auth-form__strength {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
