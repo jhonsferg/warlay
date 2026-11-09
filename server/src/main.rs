@@ -2,6 +2,7 @@ mod cli;
 mod helper;
 mod logging;
 mod main_server;
+mod udp;
 mod ws_server;
 
 use anyhow::{Context, Result};
@@ -105,8 +106,7 @@ async fn run_hub(args: HubArgs) -> Result<()> {
     let tcp_tunnel_hub = Arc::new(TcpTunnelHub::new(tcp_tunnel_listener));
     let tcp_tunnel_handle = tcp_tunnel_hub.spawn();
 
-    let rendezvous_socket = tokio::net::UdpSocket::bind(settings.hub.rendezvous_udp_addr)
-        .await
+    let rendezvous_socket = udp::bind_with_buffers(settings.hub.rendezvous_udp_addr, "rendezvous")
         .context("binding udp rendezvous socket")?;
     let rendezvous_hub = Arc::new(UdpRendezvous::new(rendezvous_socket));
     let rendezvous_handle = rendezvous_hub.spawn();
