@@ -12,6 +12,7 @@ edition = "2021"
 authors = ["Warlay contributors"]
 license = "MIT"
 repository = "https://github.com/jhonsferg/warlay"
+homepage = "https://github.com/jhonsferg/warlay#readme"
 
 [workspace.dependencies]
 # Internal crates
