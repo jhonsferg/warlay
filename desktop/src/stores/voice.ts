@@ -17,13 +17,6 @@ import { useSession } from "./session";
 import { useSettings } from "./settings";
 import { useToasts } from "./toasts";
 
-function fromBase64(text: string): Uint8Array {
-  const bin = atob(text);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
 /** Which microphone dialog is showing: Warlay's own request, or the guide
  * for when Windows itself blocks the microphone. */
 export type MicDialog = "ask" | "blocked" | null;
@@ -96,8 +89,7 @@ export const useVoice = defineStore("voice", () => {
     if (!unlistenFrames) {
       unlistenFrames = await native.onVoiceFrames((batch) => {
         const now = performance.now();
-        for (const { from, data } of batch) {
-          const bytes = fromBase64(data);
+        for (const { from, data: bytes } of batch) {
           const control = decodeStateFrame(bytes);
           if (control) {
             if (control === "left") presence.forget(from);
@@ -113,7 +105,7 @@ export const useVoice = defineStore("voice", () => {
     }
     if (!unlistenDesktop) {
       unlistenDesktop = await native.onDesktopFrames((batch) => {
-        for (const { from, data } of batch) engine.pushDesktop(from, fromBase64(data));
+        for (const { from, data } of batch) engine.pushDesktop(from, data);
       });
     }
     if (!speakingTimer) {
@@ -175,6 +167,7 @@ export const useVoice = defineStore("voice", () => {
             micDeviceId: settings.micDeviceId,
             noiseSuppression: settings.noiseSuppression,
             shareDesktopAudio: false,
+            lowLatencyVoice: settings.lowLatencyVoice,
           })
           .catch(() => {});
       }
@@ -212,7 +205,11 @@ export const useVoice = defineStore("voice", () => {
         await settings.setMicConsent(true);
       }
       await ensureListeners();
-      await engine.start({ deviceId: settings.micDeviceId, noise: settings.noiseSuppression });
+      await engine.start({
+        deviceId: settings.micDeviceId,
+        noise: settings.noiseSuppression,
+        lowLatency: settings.lowLatencyVoice,
+      });
       engine.setMuted(false);
       muted.value = false;
       active.value = true;
