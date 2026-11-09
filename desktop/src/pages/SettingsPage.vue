@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FolderOpen, Gamepad2, KeyRound, LogOut, Palette, Settings, User } from "@lucide/vue";
+import { FolderOpen, Gamepad2, KeyRound, LogOut, Palette, Settings, ShieldCheck, User } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { auth } from "../services/api";
@@ -18,6 +18,7 @@ import WInput from "../ui/atoms/WInput.vue";
 import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import AdvancedSettingsSection from "../ui/organisms/AdvancedSettingsSection.vue";
+import RecoveryCodesPanel from "../ui/organisms/RecoveryCodesPanel.vue";
 import GameArgsSwitches from "../ui/organisms/GameArgsSwitches.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import VoiceSettingsSection from "../ui/organisms/VoiceSettingsSection.vue";
@@ -50,6 +51,12 @@ const currentPassword = ref("");
 const newPassword = ref("");
 const savingPassword = ref(false);
 
+// Recovery codes: how many are left, and a new set when asked for.
+const recoveryRemaining = ref<number | null>(null);
+const recoveryPassword = ref("");
+const newCodes = ref<string[]>([]);
+const generatingCodes = ref(false);
+
 const profileDirty = computed(
   () =>
     displayName.value.trim() !== session.me?.displayName ||
@@ -81,6 +88,27 @@ async function logout() {
   await rooms.leave().catch(() => {});
   await session.logout();
   void router.push("/login");
+}
+
+onMounted(async () => {
+  try {
+    recoveryRemaining.value = (await auth.recoveryStatus()).remaining;
+  } catch {
+    /* older servers have no recovery codes: the card just stays empty */
+  }
+});
+
+async function generateCodes() {
+  generatingCodes.value = true;
+  try {
+    newCodes.value = (await auth.newRecoveryCodes(recoveryPassword.value)).codes;
+    recoveryRemaining.value = newCodes.value.length;
+    recoveryPassword.value = "";
+  } catch (e) {
+    toasts.error("No se pudieron generar los códigos", errorMessage(e));
+  } finally {
+    generatingCodes.value = false;
+  }
 }
 
 async function changePassword() {
@@ -185,6 +213,23 @@ onMounted(() => {
             @click="changePassword"
           >
             Cambiar contraseña
+          </WButton>
+        </div>
+      </section>
+
+      <section v-if="recoveryRemaining !== null" class="settings__card" data-testid="recovery-card">
+        <h3><ShieldCheck /> Códigos de recuperación</h3>
+        <p class="settings__muted">
+          Sirven para poner una contraseña nueva si olvidas la tuya. Te quedan
+          <strong>{{ recoveryRemaining }}</strong> sin usar.
+        </p>
+        <RecoveryCodesPanel v-if="newCodes.length" :username="session.me?.username ?? ''" :codes="newCodes" />
+        <FormField label="Tu contraseña" for="recovery-password" hint="Los códigos nuevos reemplazan a los anteriores.">
+          <WInput id="recovery-password" v-model="recoveryPassword" type="password" autocomplete="current-password" />
+        </FormField>
+        <div class="settings__actions">
+          <WButton variant="secondary" :disabled="!recoveryPassword" :loading="generatingCodes" @click="generateCodes">
+            Generar códigos nuevos
           </WButton>
         </div>
       </section>

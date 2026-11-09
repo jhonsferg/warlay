@@ -42,6 +42,17 @@ export interface Tokens {
 export interface AuthResponse {
   user: Me;
   tokens: Tokens;
+  /** Only in the answer to sign-up, and shown only once. */
+  recoveryCodes?: string[];
+}
+
+export interface RecoveryStatus {
+  /** Recovery codes not used yet. */
+  remaining: number;
+}
+
+export interface RecoveryCodes {
+  codes: string[];
 }
 
 export interface FriendRequest {

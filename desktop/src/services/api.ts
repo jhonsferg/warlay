@@ -15,6 +15,8 @@ import type {
   Profile,
   PublicKeyView,
   ReceiptCursors,
+  RecoveryCodes,
+  RecoveryStatus,
   RoomSession,
   RoomView,
   Tokens,
@@ -31,6 +33,12 @@ export const auth = {
   updateMe: (body: { displayName?: string; bio?: string; avatarColor?: string }) => api<Me>("PATCH", "/me", body),
   changePassword: (currentPassword: string, newPassword: string) =>
     api<void>("POST", "/me/password", { currentPassword, newPassword }),
+  /** Sets a new password with a recovery code; every session is closed. */
+  recover: (login: string, code: string, newPassword: string) =>
+    api<RecoveryStatus>("POST", "/auth/recover", { login, code, newPassword }),
+  recoveryStatus: () => api<RecoveryStatus>("GET", "/me/recovery-codes"),
+  /** Replaces the codes with a new set; the password is asked again. */
+  newRecoveryCodes: (password: string) => api<RecoveryCodes>("POST", "/me/recovery-codes", { password }),
 };
 
 export type { Tokens };

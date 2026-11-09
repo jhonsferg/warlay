@@ -57,6 +57,7 @@ async function submit() {
       </FormField>
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
       <WButton type="submit" size="lg" block :loading="busy" :disabled="!login.trim() || !password">Entrar</WButton>
+      <p class="auth-form__switch"><RouterLink to="/recover">¿Olvidaste tu contraseña?</RouterLink></p>
       <p class="auth-form__switch">¿No tienes cuenta? <RouterLink to="/register">Crear una</RouterLink></p>
     </form>
   </AuthLayout>
