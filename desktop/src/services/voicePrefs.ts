@@ -19,6 +19,13 @@ export interface MicPrefs {
   /** `MediaDeviceInfo.deviceId`; "" is the OS default input. */
   deviceId: string;
   noise: NoiseLevel;
+  /** Opus packets of 10 ms instead of 20 ms: less delay, more packets. */
+  lowLatency?: boolean;
+}
+
+/** Length of one Opus packet in microseconds, as WebCodecs wants it. */
+export function opusFrameMicros(lowLatency: boolean | undefined): number {
+  return lowLatency ? 10000 : 20000;
 }
 
 /** What the Opus encoder is configured for (mono, 48 kHz). */
