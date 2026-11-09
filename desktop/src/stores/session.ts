@@ -1,7 +1,8 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { auth } from "../services/api";
-import { hasSession, onSessionChange, setTokens } from "../services/http";
+import { ApiError, hasSession, onSessionChange, setTokens } from "../services/http";
+import { isServerUnavailable, RESTORE_RETRY_MS } from "../services/outage";
 import type { Me } from "../services/types";
 
 export type AuthStatus = "unknown" | "signedOut" | "signedIn";
@@ -23,12 +24,26 @@ export const useSession = defineStore("session", () => {
       status.value = "signedOut";
       return;
     }
-    try {
-      me.value = await auth.me();
-      status.value = "signedIn";
-    } catch {
-      setTokens(null);
-      status.value = "signedOut";
+    for (let attempt = 0; ; attempt++) {
+      try {
+        me.value = await auth.me();
+        status.value = "signedIn";
+        return;
+      } catch (e) {
+        // Only the server refusing the session ends it. A server that is down or
+        // being replaced is waited for a few seconds; if it stays away the
+        // session is kept for the next start, not erased.
+        if (e instanceof ApiError && !isServerUnavailable(e.status)) {
+          setTokens(null);
+          status.value = "signedOut";
+          return;
+        }
+        if (attempt >= RESTORE_RETRY_MS.length) {
+          status.value = "signedOut";
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, RESTORE_RETRY_MS[attempt]));
+      }
     }
   }
 
