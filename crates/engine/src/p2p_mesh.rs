@@ -509,7 +509,10 @@ pub struct MeshConfig {
 }
 
 /// After this many failed punch attempts with a peer, go through the relay.
-const RELAY_AFTER_FAILURES: u32 = 2;
+/// One is enough: a relayed link is not final (it keeps trying for a direct
+/// one, see `upgrade_due`), and a second punch attempt only delays the player
+/// by several seconds on the networks where punching cannot work.
+const RELAY_AFTER_FAILURES: u32 = 1;
 
 pub struct PeerMesh;
 
@@ -708,6 +711,10 @@ async fn run_peer_mesh(
     let mut register_retry = tokio::time::interval(Duration::from_millis(700));
     register_retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    let mut link_stats = tokio::time::interval(LINK_STATS_INTERVAL);
+    link_stats.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    link_stats.tick().await;
+
     loop {
         tokio::select! {
             // The room moved to another helper (the old one died): register
@@ -731,6 +738,9 @@ async fn run_peer_mesh(
             }
             _ = attempt_interval.tick() => {
                 trigger_connection_attempts(ctx, &state, &socket);
+            }
+            _ = link_stats.tick() => {
+                log_link_quality(&state);
             }
             recv_res = socket.recv_from(&mut buf) => {
                 match recv_res {
@@ -1107,6 +1117,43 @@ const UPGRADE_RESPOND_COOLDOWN: Duration = Duration::from_secs(5);
 /// this long (game sessions already on it are never cut short).
 const RETIRE_IDLE: Duration = Duration::from_secs(300);
 const RETIRE_POLL: Duration = Duration::from_secs(30);
+
+/// How often each live link's quality is written to the log.
+const LINK_STATS_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Share of sent packets that were declared lost, in percent.
+fn loss_percent(lost: u64, sent: u64) -> f64 {
+    if sent == 0 {
+        0.0
+    } else {
+        lost as f64 * 100.0 / sent as f64
+    }
+}
+
+/// Writes one line per live link with what matters for lag: the round trip,
+/// the share of lost packets and the congestion window. It is how a report of
+/// "the game lags" can be told apart (a far relay, a lossy path, a full pipe).
+fn log_link_quality(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>) {
+    let Ok(st) = state.read() else {
+        return;
+    };
+    for (peer_id, peer) in &st.peers {
+        let PeerLinkState::Connected(handle) = &peer.state else {
+            continue;
+        };
+        let stats = handle.connection.stats();
+        let path = stats.path;
+        info!(
+            %peer_id,
+            relayed = handle.relayed,
+            rtt_ms = path.rtt.as_millis() as u64,
+            loss_pct = format!("{:.1}", loss_percent(path.lost_packets, path.sent_packets)),
+            congestion_events = path.congestion_events,
+            cwnd = path.cwnd,
+            "link quality"
+        );
+    }
+}
 
 /// Whether a relayed link should try for a direct one now.
 fn upgrade_due(relayed: bool, upgrading: bool, since_last_attempt: Option<Duration>, fresh_offer: bool) -> bool {
@@ -1819,6 +1866,13 @@ mod tests {
         // ...but a peer's fresh offer is answered after a short cooldown.
         assert!(!upgrade_due(true, false, Some(Duration::from_secs(1)), true));
         assert!(upgrade_due(true, false, Some(UPGRADE_RESPOND_COOLDOWN), true));
+    }
+
+    #[test]
+    fn loss_is_a_share_of_what_was_sent() {
+        assert_eq!(loss_percent(0, 0), 0.0);
+        assert_eq!(loss_percent(5, 100), 5.0);
+        assert_eq!(loss_percent(0, 1000), 0.0);
     }
 
     #[test]
