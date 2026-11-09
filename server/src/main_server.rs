@@ -42,7 +42,7 @@ pub fn load(path: &Path) -> Result<MainConfigFile> {
 }
 
 /// Environment overrides, handy for containers: `WARLAY_DATABASE_URL`,
-/// `WARLAY_REDIS_URL`, `WARLAY_HELPER_SECRET`.
+/// `WARLAY_REDIS_URL`, `WARLAY_HELPER_SECRET` and `WARLAY_CLIENT_IP_HEADER`.
 pub fn apply_env(config: &mut MainConfigFile) {
     if let Ok(v) = std::env::var("WARLAY_DATABASE_URL") {
         config.main.database_url = v;
@@ -52,6 +52,9 @@ pub fn apply_env(config: &mut MainConfigFile) {
     }
     if let Ok(v) = std::env::var("WARLAY_HELPER_SECRET") {
         config.main.helper_secret = v;
+    }
+    if let Ok(v) = std::env::var("WARLAY_CLIENT_IP_HEADER") {
+        config.main.client_ip_header = v;
     }
 }
 
