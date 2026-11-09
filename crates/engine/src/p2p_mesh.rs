@@ -193,9 +193,6 @@ fn is_live(handle: &P2pTunnelHandle) -> bool {
 }
 
 pub struct PeerMeshSharedState {
-    pub own_client_id: Uuid,
-    pub is_host: bool,
-    pub room_token: Uuid,
     pub peers: HashMap<Uuid, PeerEntry>,
     pub pending_sockets: HashMap<Uuid, SocketAddr>,
     /// Links that already run a stream dispatcher (one consumer per QUIC
@@ -548,9 +545,6 @@ impl PeerMesh {
         let desktop_queue = Arc::new(FrameQueue::new(VOICE_QUEUE_FRAMES));
         let inbound_wake = Arc::new(tokio::sync::Notify::new());
         let state = Arc::new(std::sync::RwLock::new(PeerMeshSharedState {
-            own_client_id,
-            is_host,
-            room_token,
             peers: HashMap::new(),
             pending_sockets: HashMap::new(),
             dispatcher_peers: HashSet::new(),
