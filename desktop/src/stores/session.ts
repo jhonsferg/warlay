@@ -54,11 +54,13 @@ export const useSession = defineStore("session", () => {
     status.value = "signedIn";
   }
 
+  /** Creates the account and signs in. Returns the recovery codes, to show once. */
   async function register(body: { username: string; email: string; password: string; displayName?: string }) {
     const res = await auth.register(body);
     setTokens(res.tokens);
     me.value = res.user;
     status.value = "signedIn";
+    return res.recoveryCodes ?? [];
   }
 
   async function logout() {
