@@ -273,6 +273,11 @@ Everything else lives in the shared crates (see the
   so they can attempt a direct QUIC connection (NAT hole punching). It never
   carries game bytes, and its failure only means sessions fall back to the
   TCP tunnel.
+- **UDP buffers** - the rendezvous and relay sockets ask the kernel for 4 MiB
+  receive and send buffers (logged as `UDP socket bound`, with the size
+  actually granted). Linux caps them at `net.core.rmem_max` and
+  `net.core.wmem_max`; raise both to 4194304 (`sysctl -w`) so a burst from many
+  rooms is not dropped by the kernel.
 - **UDP relay** (`relay_addr`) - fans `RelayFrame { room_token, payload }`
   datagrams out to the other members of a room, as unicast. Because nothing is
   broadcast there is no self-echo risk, so hub mode needs no `LoopGuard`.
