@@ -206,15 +206,46 @@ fn access_key(token: &str) -> String {
 /// Issues a short-lived access token for `session_id`, kept in Redis only.
 pub async fn issue_access_token(state: &AppState, user_id: Uuid, session_id: Uuid) -> ApiResult<String> {
     let token = random_token();
+    let key = access_key(&token);
+    let index = session_index_key(session_id);
+    let ttl = state.settings.access_token_ttl_secs;
     let mut redis = state.redis.clone();
-    let _: () = redis
-        .set_ex(
-            access_key(&token),
-            format!("{user_id}:{session_id}"),
-            state.settings.access_token_ttl_secs,
-        )
+    // The index lets every token of a session be cut at once (see
+    // `revoke_user_access_tokens`); it lives as long as the tokens it lists.
+    let _: () = redis::pipe()
+        .set_ex(&key, format!("{user_id}:{session_id}"), ttl)
+        .ignore()
+        .sadd(&index, &key)
+        .ignore()
+        .expire(&index, ttl as i64)
+        .ignore()
+        .query_async(&mut redis)
         .await?;
     Ok(token)
+}
+
+fn session_index_key(session_id: Uuid) -> String {
+    format!("wl:access-by-session:{session_id}")
+}
+
+/// Invalidates, right now, every access token of every session of a user. Used
+/// when the account is recovered: the tokens would otherwise keep working until
+/// they expire.
+pub async fn revoke_user_access_tokens(state: &AppState, user_id: Uuid) -> ApiResult<()> {
+    let sessions: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM sessions WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_all(&state.db)
+        .await?;
+    let mut redis = state.redis.clone();
+    for session in sessions {
+        let index = session_index_key(session);
+        let keys: Vec<String> = redis.smembers(&index).await?;
+        if !keys.is_empty() {
+            let _: () = redis.del(keys).await?;
+        }
+        let _: () = redis.del(index).await?;
+    }
+    Ok(())
 }
 
 pub async fn revoke_access_token(state: &AppState, token: &str) -> ApiResult<()> {
