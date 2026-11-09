@@ -120,6 +120,7 @@ impl ClientStore {
             mic_device_id: String::new(),
             noise_suppression: "standard".to_string(),
             share_desktop_audio: false,
+            low_latency_voice: false,
         })
     }
 
