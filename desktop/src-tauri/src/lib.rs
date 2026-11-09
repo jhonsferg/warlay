@@ -514,6 +514,8 @@ pub fn run() {
             commands::updater::install_update,
             commands::updater::open_release_page,
             commands::voice::send_voice_frame,
+            commands::voice::register_frame_stream,
+            commands::voice::unregister_frame_stream,
             commands::voice::start_desktop_audio,
             commands::voice::stop_desktop_audio,
             commands::voice::set_mic_consent,
