@@ -82,11 +82,17 @@ const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 /// in a deep queue is stale audio by the time it leaves.
 const DATAGRAM_RECEIVE_BUFFER: usize = 64 * 1024;
 const DATAGRAM_SEND_BUFFER: usize = 64 * 1024;
+const INITIAL_RTT: Duration = Duration::from_millis(100);
 
 fn transport_config() -> Arc<quinn::TransportConfig> {
     let mut transport = quinn::TransportConfig::default();
     transport.datagram_receive_buffer_size(Some(DATAGRAM_RECEIVE_BUFFER));
     transport.datagram_send_buffer_size(DATAGRAM_SEND_BUFFER);
+    // Until the first round trip is measured quinn assumes 333 ms, which
+    // makes the handshake and early loss recovery slow on a link that really
+    // takes a fraction of that. It only seeds the estimate: real samples
+    // replace it within the first packets.
+    transport.initial_rtt(INITIAL_RTT);
     transport.keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
     transport.max_idle_timeout(Some(
         quinn::IdleTimeout::try_from(MAX_IDLE_TIMEOUT).expect("idle timeout fits a QUIC varint"),
