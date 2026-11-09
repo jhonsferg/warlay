@@ -76,9 +76,17 @@ impl ServerCertVerifier for SkipServerVerification {
 const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(4);
 const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Room for a burst of voice, desktop audio and LAN datagrams. The receive
+/// side used to hold a single datagram, so two arriving back to back lost the
+/// first. The send side is kept small on purpose: a datagram that waits long
+/// in a deep queue is stale audio by the time it leaves.
+const DATAGRAM_RECEIVE_BUFFER: usize = 64 * 1024;
+const DATAGRAM_SEND_BUFFER: usize = 64 * 1024;
+
 fn transport_config() -> Arc<quinn::TransportConfig> {
     let mut transport = quinn::TransportConfig::default();
-    transport.datagram_receive_buffer_size(Some(1200));
+    transport.datagram_receive_buffer_size(Some(DATAGRAM_RECEIVE_BUFFER));
+    transport.datagram_send_buffer_size(DATAGRAM_SEND_BUFFER);
     transport.keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
     transport.max_idle_timeout(Some(
         quinn::IdleTimeout::try_from(MAX_IDLE_TIMEOUT).expect("idle timeout fits a QUIC varint"),
