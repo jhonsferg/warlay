@@ -32,6 +32,12 @@ pub struct MainSettings {
     pub run_migrations: bool,
     /// Connection pool size; helpers run with a small one.
     pub max_db_connections: u32,
+    /// Request header in which the reverse proxy puts the real client address
+    /// (`x-real-ip`, or `x-forwarded-for`, whose last entry is used). Set it
+    /// only behind a proxy that overwrites that header; empty (the default)
+    /// uses the socket's peer address, which behind a proxy is the proxy.
+    /// Per-IP rate limits on sign-up, login and token refresh use this.
+    pub client_ip_header: String,
 }
 
 impl Default for MainSettings {
@@ -49,6 +55,7 @@ impl Default for MainSettings {
             host_absence_close_secs: 24 * 60 * 60,
             run_migrations: true,
             max_db_connections: 20,
+            client_ip_header: String::new(),
         }
     }
 }
