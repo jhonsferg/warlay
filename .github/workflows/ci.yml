@@ -76,6 +76,8 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Install frontend dependencies
         working-directory: desktop
@@ -91,6 +93,9 @@ jobs:
       - name: Frontend unit tests
         working-directory: desktop
         run: npm run test:unit
+      - name: Clippy
+        # Needs the frontend build above: the Tauri crate embeds it.
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
         # Test-only manifest (Common Controls v6, no elevation); see desktop/src-tauri/build.rs.
         env:
