@@ -1,11 +1,12 @@
 [package]
 name = "server"
-description = "Warlay hub: matchmaking, relay and game-session tunnel server"
+description = "Warlay server: accounts, friends, rooms and chat, plus the P2P rendezvous and relay helpers"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 [[bin]]
 name = "warlay-server"
