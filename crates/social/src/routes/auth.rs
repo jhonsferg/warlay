@@ -160,7 +160,7 @@ pub async fn register(
     let display_name = validate_display_name(req.display_name.as_deref().unwrap_or(&username))?;
     ensure_hashing_capacity()?;
     if let Some(ip) = ip {
-        rate_limit(&state, &format!("register-ip:{ip}"), 10, 3600).await?;
+        rate_limit(&state, &format!("register-ip:{ip}"), 30, 3600).await?;
     }
     rate_limit(&state, &format!("register:{}", email), 5, 3600).await?;
 
@@ -205,9 +205,10 @@ pub async fn login(
     let login = req.login.trim().to_lowercase();
     ensure_hashing_capacity()?;
     // Per account (guessing one password) and per address (trying one
-    // password against many accounts).
+    // password against many accounts). The address limits are generous: many
+    // players share one address (a LAN party, a household, carrier NAT).
     if let Some(ip) = ip {
-        rate_limit(&state, &format!("login-ip:{ip}"), 30, 300).await?;
+        rate_limit(&state, &format!("login-ip:{ip}"), 100, 300).await?;
     }
     rate_limit(&state, &format!("login:{login}"), 10, 300).await?;
     let user = sqlx::query_as::<_, UserRow>(
@@ -239,7 +240,7 @@ pub async fn refresh(
     Json(req): Json<RefreshRequest>,
 ) -> ApiResult<Json<Tokens>> {
     if let Some(ip) = ip {
-        rate_limit(&state, &format!("refresh-ip:{ip}"), 120, 300).await?;
+        rate_limit(&state, &format!("refresh-ip:{ip}"), 600, 300).await?;
     }
     let row: Option<(Uuid, Uuid)> = sqlx::query_as(
         "SELECT id, user_id FROM sessions
