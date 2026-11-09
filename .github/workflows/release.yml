@@ -174,9 +174,20 @@ jobs:
       - name: Build client and installer
         # beforeBuildCommand runs `npm run build`, which reads the variable.
         working-directory: desktop
+        shell: bash
         env:
           VITE_WARLAY_MAIN_URL: ${{ secrets.WARLAY_MAIN_URL }}
-        run: npx tauri build
+        # Tauri downloads its NSIS installer tools from GitHub with no retry, and
+        # those downloads sometimes answer 504 for hours. A failed attempt only
+        # repeats the bundling (the compiled app is reused, and a half-extracted
+        # NSIS folder is recreated), so trying again is cheap.
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if npx tauri build; then exit 0; fi
+            echo "::warning::tauri build failed (attempt $attempt of 6), retrying"
+            sleep $((attempt * 20))
+          done
+          exit 1
       - name: Build portable zip
         working-directory: desktop
         run: npm run build-portable-zip
