@@ -14,6 +14,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (2, "chat_receipts", CHAT_RECEIPTS),
     (3, "room_host_absence", ROOM_HOST_ABSENCE),
     (4, "user_e2e_keys", USER_E2E_KEYS),
+    (5, "recovery_codes", RECOVERY_CODES),
 ];
 
 /// Arbitrary constant identifying Warlay's migration lock.
@@ -202,6 +203,19 @@ CREATE TABLE IF NOT EXISTS chat_reads (
 const ROOM_HOST_ABSENCE: &str = r#"
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS host_away_since TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS rooms_host_away_idx ON rooms(host_away_since) WHERE host_away_since IS NOT NULL;
+"#;
+
+/// One-time codes that let a player set a new password without e-mail. Only
+/// SHA-256 hashes are stored.
+const RECOVERY_CODES: &str = r#"
+CREATE TABLE IF NOT EXISTS recovery_codes (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash   BYTEA NOT NULL UNIQUE CHECK (octet_length(code_hash) = 32),
+    used_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS recovery_codes_user ON recovery_codes (user_id);
 "#;
 
 /// Public keys for end-to-end encrypted direct messages. The server never
