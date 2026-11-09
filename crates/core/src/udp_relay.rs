@@ -17,6 +17,23 @@ struct End {
     addr: SocketAddr,
 }
 
+/// The channel id of a pair of players in a room. It is derived (keyed with the
+/// helper secret) instead of drawn at random, so a helper that restarts hands
+/// the same id back when the players bind again: the relayed QUIC session of a
+/// game in progress keeps using the id it already knows and carries on, instead
+/// of being cut for good. The id is only a label; datagrams are forwarded just
+/// from the addresses bound with a valid ticket.
+fn channel_id(secret: &[u8], (room, low, high): (Uuid, Uuid, Uuid)) -> u64 {
+    let mut payload = Vec::with_capacity(13 + 48);
+    payload.extend_from_slice(b"relay-channel");
+    payload.extend_from_slice(room.as_bytes());
+    payload.extend_from_slice(low.as_bytes());
+    payload.extend_from_slice(high.as_bytes());
+    let token = warlay_crypto::sign_token(secret, &payload);
+    let tag = &token[payload.len()..];
+    u64::from_le_bytes(tag[..8].try_into().expect("an HMAC tag is 32 bytes"))
+}
+
 #[derive(Debug)]
 struct Channel {
     ends: [Option<End>; 2],
@@ -147,7 +164,7 @@ impl UdpRelay {
             let channel = match state.by_pair.get(&key) {
                 Some(id) => *id,
                 None => {
-                    let id = Uuid::new_v4().as_u64_pair().0;
+                    let id = channel_id(&self.ticket_secret, key);
                     state.by_pair.insert(key, id);
                     state.channels.insert(
                         id,
@@ -231,6 +248,44 @@ mod tests {
             .expect("timed out")
             .unwrap();
         RelayControl::decode(&buf[..n]).expect("control frame")
+    }
+
+    #[test]
+    fn the_channel_id_of_a_pair_is_stable_and_specific() {
+        let (room, a, b) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let id = channel_id(b"secret", (room, a.min(b), a.max(b)));
+        // Same inputs, same id: it survives a restart of the helper.
+        assert_eq!(id, channel_id(b"secret", (room, a.min(b), a.max(b))));
+        // Another pair, room or secret gets another one.
+        assert_ne!(id, channel_id(b"secret", (room, a.min(b), Uuid::new_v4())));
+        assert_ne!(id, channel_id(b"secret", (Uuid::new_v4(), a.min(b), a.max(b))));
+        assert_ne!(id, channel_id(b"other-secret", (room, a.min(b), a.max(b))));
+    }
+
+    #[tokio::test]
+    async fn a_restarted_relay_gives_the_same_channel_back() {
+        let secret = b"helper-secret".to_vec();
+        let room = Uuid::new_v4();
+        let (a_id, b_id) = (Uuid::new_v4(), Uuid::new_v4());
+        let a = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+
+        let mut seen = Vec::new();
+        for _ in 0..2 {
+            // A fresh relay each time, with none of the previous one's state.
+            let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let server_addr = server.local_addr().unwrap();
+            Arc::new(UdpRelay::new(server, secret.clone())).spawn();
+            let bind = RelayControl::Bind {
+                ticket: ticket(&secret, room, a_id),
+                peer_id: b_id,
+            };
+            a.send_to(&bind.encode().unwrap(), server_addr).await.unwrap();
+            let RelayControl::Bound { channel, .. } = recv_control(&a).await else {
+                panic!("expected Bound");
+            };
+            seen.push(channel);
+        }
+        assert_eq!(seen[0], seen[1], "the id must not change across a restart");
     }
 
     #[tokio::test]
