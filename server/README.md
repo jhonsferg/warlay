@@ -184,6 +184,7 @@ docker run -d --name warlay-helper-1 --restart unless-stopped \
 | `WARLAY_REDIS_URL`              | main, edge   | `main.redis_url`, `helper.edge.redis_url`                             |
 | `WARLAY_HELPER_SECRET`          | main, helper | `main.helper_secret`, `helper.helper_secret`                          |
 | `WARLAY_CLIENT_IP_HEADER`       | main         | `main.client_ip_header` (e.g. `x-real-ip` behind nginx)               |
+| `WARLAY_WEB_BASE_URL`           | main         | `main.web_base_url` (public address of the website)                   |
 | `WARLAY_HELPER_NAME`            | helper       | `helper.name` (keep it stable: the helper's identity derives from it) |
 | `WARLAY_HELPER_REGION`          | helper       | `helper.region`                                                       |
 | `WARLAY_MAIN_URL`               | helper       | `helper.main_url`                                                     |
@@ -213,6 +214,17 @@ replaced while players are in a match:
   replacement does not wait for Docker's kill timeout.
 - Clients older than this change keep the old relay behavior: for them a helper
   restart still cuts a relayed game, so update the clients before relying on it.
+
+### The website
+
+The main server also serves the project's website (a Spanish and English landing
+page, the privacy policy and the terms, plus `robots.txt`, `sitemap.xml` and
+its static files) on the same port as the API, so it ships and updates with
+the server. Set `web_base_url` (or `WARLAY_WEB_BASE_URL`) to the public address,
+for example `https://warlay.example.com`: it goes into canonical links and the
+sitemap. Point a second host name at the same upstream and expose only these
+paths on it: `/`, `/privacy`, `/terms`, `/robots.txt`, `/sitemap.xml`,
+`/favicon.svg` and `/assets/`.
 
 ## TLS with a reverse proxy
 
