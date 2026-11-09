@@ -18,6 +18,7 @@ import WInput from "../ui/atoms/WInput.vue";
 import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import AdvancedSettingsSection from "../ui/organisms/AdvancedSettingsSection.vue";
+import GameArgsSwitches from "../ui/organisms/GameArgsSwitches.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import VoiceSettingsSection from "../ui/organisms/VoiceSettingsSection.vue";
 import AppShell from "../ui/templates/AppShell.vue";
@@ -216,9 +217,7 @@ onMounted(() => {
             >
           </div>
         </FormField>
-        <FormField label="Argumentos" for="args" hint="Por ejemplo: -window -opengl">
-          <WInput id="args" v-model="settings.gameArgs" placeholder="-window" />
-        </FormField>
+        <GameArgsSwitches v-model="settings.gameArgs" />
         <div class="settings__actions">
           <WButton @click="saveGame">Guardar</WButton>
         </div>
