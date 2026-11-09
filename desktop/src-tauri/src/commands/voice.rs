@@ -4,11 +4,12 @@
 
 use std::str::FromStr;
 
-use tauri::ipc::{InvokeBody, Request};
+use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody, Request};
 use tauri::{AppHandle, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::core::error::AppError;
+use crate::runtime::voice::{set_sink, FrameStream};
 use crate::state::AppState;
 
 /// Largest frame accepted: a QUIC datagram must stay under the path MTU, and
@@ -34,14 +35,29 @@ fn frame_from_body(body: &InvokeBody) -> Result<Vec<u8>, AppError> {
 /// Sends one encoded voice frame to the room. Returns how many members it
 /// reached (0 when alone or not linked yet -- not an error).
 #[tauri::command]
-pub async fn send_voice_frame(request: Request<'_>, state: State<'_, AppState>) -> Result<usize, AppError> {
+pub async fn send_voice_frame(request: Request<'_>) -> Result<usize, AppError> {
     let frame = frame_from_body(request.body())?;
-    let runtime_state = state.runtime_state.lock().unwrap().clone();
-    let Some(runtime_state) = runtime_state else {
-        return Ok(0);
-    };
-    let mesh = runtime_state.lock().await.peer_mesh.clone();
-    Ok(mesh.map(|mesh| mesh.broadcast_voice_frame(&frame)).unwrap_or(0))
+    Ok(crate::runtime::voice::send_voice_frame_now(&frame))
+}
+
+/// Opens the binary channel through which inbound frames reach the webview:
+/// `kind` is "voice" or "desktop". Each batch is one raw message (see
+/// `runtime::voice`). Registering again replaces the previous channel.
+#[tauri::command]
+pub fn register_frame_stream(kind: String, on_frames: Channel<InvokeResponseBody>) -> Result<(), AppError> {
+    let stream = FrameStream::parse(&kind)
+        .ok_or_else(|| AppError::InvalidInput(format!("flujo de frames desconocido: {kind}")))?;
+    set_sink(stream, Some(on_frames));
+    Ok(())
+}
+
+/// Stops sending that stream to the webview.
+#[tauri::command]
+pub fn unregister_frame_stream(kind: String) -> Result<(), AppError> {
+    let stream = FrameStream::parse(&kind)
+        .ok_or_else(|| AppError::InvalidInput(format!("flujo de frames desconocido: {kind}")))?;
+    set_sink(stream, None);
+    Ok(())
 }
 
 /// Starts sharing the PC's sound with the room (everything but Warlay's own
