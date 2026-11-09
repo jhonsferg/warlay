@@ -2,8 +2,8 @@
 
 # Warlay
 
-**Play Warcraft III LAN games with people who are not on your network**<br/>
-No third-party VPN, no port forwarding on the players' side.
+**Play Warcraft III LAN games over the internet with friends and communities**<br/>
+No third-party VPN, no port forwarding on the players' side. Free and open source.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/jhonsferg/warlay/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/jhonsferg/warlay/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jhonsferg/warlay?style=for-the-badge&logo=github&logoColor=white&label=Release)](https://github.com/jhonsferg/warlay/releases/latest)
@@ -26,8 +26,9 @@ No third-party VPN, no port forwarding on the players' side.
 
 </div>
 
-Warlay pairs a **main server** and one or more **helpers**, which you run on a
-VPS, with a Windows desktop client. Players create an account, find friends,
+Warlay is an open-source way to play **Warcraft III (WC3) LAN games online**. It
+pairs a **main server** and one or more **helpers**, which you run on a VPS,
+with a Windows desktop client. Players create an account, find friends,
 create or join rooms in real time, and Warlay makes the host's game show up in
 everyone's in-game _Local Area Network_ screen, then carries the real game
 session either directly between players (P2P over QUIC) or through a helper's
@@ -35,6 +36,7 @@ UDP relay as a fallback.
 
 ## Contents
 
+- [Why Warlay](#why-warlay)
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Downloads](#downloads)
@@ -46,8 +48,25 @@ UDP relay as a fallback.
 - [Operating the server](#operating-the-server)
 - [Testing](#testing)
 - [Releases](#releases)
+- [FAQ](#faq)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Why Warlay
+
+Warcraft III finds LAN games with UDP broadcasts on port 6112, so it only sees
+players on the same network. The usual workarounds (Hamachi, Radmin VPN,
+ZeroTier, port forwarding) need every player to install and configure a virtual
+network or open ports on their router. Warlay replaces that with one app:
+
+- **No VPN and no port forwarding.** Players sign in and join a room; the host's
+  game appears in everyone's _Local Area Network_ list by itself.
+- **Low latency.** Players connect directly over QUIC with NAT hole punching, and
+  fall back to a relay only when a direct link is not possible.
+- **More than a tunnel.** Accounts, friends, communities, rooms, text and voice
+  chat, game launching and automatic updates in one client.
+- **Yours to run.** The server is open source and self-hosted; you decide who
+  can join and where it runs.
 
 ## Features
 
@@ -1517,6 +1536,39 @@ which:
    `WARLAY_MAIN_URL` repository secret),
 3. pushes the server image to GHCR,
 4. tags the commit and publishes a GitHub Release with notes and checksums.
+
+## FAQ
+
+**How do I play Warcraft III LAN games over the internet?**
+Install the Warlay client, sign in to your community's server, and create or
+join a room. The host starts a game in _Local Area Network_ and it shows up for
+everyone in the room. See [Quick start](#quick-start).
+
+**Is Warlay an alternative to Hamachi, Radmin VPN or ZeroTier?**
+For Warcraft III LAN play, yes: it is purpose-built for that, so players do not
+need a virtual network adapter or router configuration.
+
+**Do I need to open ports or forward them on my router?**
+No. Players behind NAT connect directly through hole punching, or through a
+helper's relay when that is not possible. Only the server operator opens ports
+on the VPS.
+
+**Why does Warlay ask for administrator permission?**
+Capturing the host's real LAN broadcast needs raw socket access on Windows. The
+whole client runs elevated and exposes no local service to other programs; see
+[SECURITY.md](SECURITY.md).
+
+**Which platforms are supported?**
+The client is for Windows 10 and 11 (x64). The server runs on Linux, macOS and
+Windows, and ships as Docker images.
+
+**Can I run my own server for my community?**
+Yes. Follow [Deploying the server on a VPS](#deploying-the-server-on-a-vps), and
+build the client for your server's address (see
+[Desktop client](#desktop-client-windows)).
+
+**Is it free?**
+Yes. Warlay is released under the [MIT License](LICENSE).
 
 ## Contributing
 

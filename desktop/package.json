@@ -1,5 +1,26 @@
 {
   "name": "warlay-client",
+  "description": "Warlay desktop client: play Warcraft III LAN games over the internet, with friends, rooms and voice chat",
+  "keywords": [
+    "warcraft-3",
+    "wc3",
+    "lan",
+    "multiplayer",
+    "p2p",
+    "quic",
+    "voice-chat",
+    "tauri",
+    "vue"
+  ],
+  "homepage": "https://github.com/jhonsferg/warlay#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhonsferg/warlay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jhonsferg/warlay/issues"
+  },
+  "license": "MIT",
   "private": true,
   "version": "0.4.2",
   "type": "module",

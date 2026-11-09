@@ -34,6 +34,9 @@
     "active": true,
     "publisher": "Warlay",
     "copyright": "Warlay",
+    "category": "Game",
+    "shortDescription": "Play Warcraft III LAN games over the internet",
+    "longDescription": "Warlay lets you play Warcraft III LAN games online with friends: no VPN and no port forwarding. Peer-to-peer connections over QUIC with a relay fallback, rooms, friends, and voice and text chat.",
     "targets": ["nsis"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
     "windows": {

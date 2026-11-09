@@ -1,11 +1,12 @@
 [package]
 name = "desktop"
-description = "Warlay desktop client"
+description = "Warlay desktop client: play Warcraft III LAN games over the internet"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 [lib]
 name = "desktop_lib"
