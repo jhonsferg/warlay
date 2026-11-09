@@ -592,7 +592,7 @@ mod tests {
                     }
                     _ => None,
                 })
-                .last();
+                .next_back();
             assert!(last_members_msg.is_some());
             let members = last_members_msg.unwrap();
             assert_eq!(members.len(), 2);
@@ -616,7 +616,7 @@ mod tests {
                     }
                     _ => None,
                 })
-                .last();
+                .next_back();
             assert!(last_members_msg.is_some());
             let members = last_members_msg.unwrap();
             assert_eq!(members.len(), 1);
@@ -650,7 +650,7 @@ mod tests {
                     }
                     _ => None,
                 })
-                .last();
+                .next_back();
             assert!(last_members_msg.is_some());
             let members = last_members_msg.unwrap();
             assert_eq!(members.len(), 1);

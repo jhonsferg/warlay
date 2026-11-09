@@ -950,7 +950,7 @@ mod tests {
         let game = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let game_port = game.local_addr().unwrap().port();
         tokio::spawn(async move {
-            for n in 1_u8.. {
+            for n in (1_u8..=u8::MAX).cycle() {
                 let (mut socket, _) = game.accept().await.unwrap();
                 tokio::spawn(async move {
                     let mut buf = [0_u8; 4];
@@ -1114,28 +1114,26 @@ mod tests {
             let mut buf = [0_u8; 2048];
             loop {
                 if let Ok((len, src)) = mock_rv_socket.recv_from(&mut buf).await {
-                    if let Ok(msg) = warlay_protocol::RendezvousMessage::decode(&buf[..len]) {
-                        match msg {
-                            warlay_protocol::RendezvousMessage::Register { .. }
-                            | warlay_protocol::RendezvousMessage::Heartbeat { .. } => {
-                                let peer_host = warlay_protocol::PeerInfo {
-                                    client_id: host_id,
-                                    addr: "192.0.2.1:12345".parse().unwrap(),
-                                    is_host: true,
-                                };
-                                let peer_bridge = warlay_protocol::PeerInfo {
-                                    client_id: bridge_id,
-                                    addr: bridge_reg_addr,
-                                    is_host: false,
-                                };
-                                let reply = warlay_protocol::RendezvousMessage::PeerList {
-                                    peers: vec![peer_host, peer_bridge],
-                                };
-                                if let Ok(bytes) = reply.encode() {
-                                    let _ = mock_rv_socket.send_to(&bytes, src).await;
-                                }
-                            }
-                            _ => {}
+                    if let Ok(
+                        warlay_protocol::RendezvousMessage::Register { .. }
+                        | warlay_protocol::RendezvousMessage::Heartbeat { .. },
+                    ) = warlay_protocol::RendezvousMessage::decode(&buf[..len])
+                    {
+                        let peer_host = warlay_protocol::PeerInfo {
+                            client_id: host_id,
+                            addr: "192.0.2.1:12345".parse().unwrap(),
+                            is_host: true,
+                        };
+                        let peer_bridge = warlay_protocol::PeerInfo {
+                            client_id: bridge_id,
+                            addr: bridge_reg_addr,
+                            is_host: false,
+                        };
+                        let reply = warlay_protocol::RendezvousMessage::PeerList {
+                            peers: vec![peer_host, peer_bridge],
+                        };
+                        if let Ok(bytes) = reply.encode() {
+                            let _ = mock_rv_socket.send_to(&bytes, src).await;
                         }
                     }
                 }

@@ -49,7 +49,7 @@ pub fn snapshot(s: &RuntimeState) -> NetworkStatus {
 /// Whether `next` is worth telling the UI about: the very first status, or
 /// any change other than uptime.
 pub fn should_emit(last: Option<&NetworkStatus>, next: &NetworkStatus) -> bool {
-    last.map_or(true, |last| !last.same_state_as(next))
+    last.is_none_or(|last| !last.same_state_as(next))
 }
 
 /// Starts the watcher that emits [`STATUS_EVENT`] on every real change.

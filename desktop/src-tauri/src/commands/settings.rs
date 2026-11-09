@@ -3,7 +3,7 @@ use crate::core::AppError;
 use crate::log_cleanup;
 use crate::log_control::{self, LogTarget};
 use crate::state::AppState;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 #[tauri::command]
 pub fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError> {
@@ -11,7 +11,7 @@ pub fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, AppError
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> Result<(), AppError> {
+pub fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), AppError> {
     state.store.save_settings(&settings)?;
     Ok(())
 }

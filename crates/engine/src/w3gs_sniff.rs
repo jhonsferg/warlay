@@ -183,7 +183,7 @@ mod tests {
         );
         assert!(contains_game_state(&gameinfo));
         assert!(contains_game_state(&refresh));
-        assert!(contains_decreate_game(&refresh) == false);
+        assert!(!contains_decreate_game(&refresh));
     }
 
     #[test]
