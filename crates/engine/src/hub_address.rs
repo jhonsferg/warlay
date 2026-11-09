@@ -27,7 +27,7 @@ impl HubAddress {
             format!("ws://{address}")
         };
         let mut url = Url::parse(&with_scheme).map_err(|_| invalid())?;
-        if !matches!(url.scheme(), "ws" | "wss") || url.host_str().map_or(true, str::is_empty) {
+        if !matches!(url.scheme(), "ws" | "wss") || url.host_str().is_none_or(str::is_empty) {
             return Err(invalid());
         }
         if url.path().is_empty() || url.path() == "/" {
