@@ -174,6 +174,12 @@ pub struct PeerEntry {
     pub peer_wants_relay: bool,
     /// Attempts that failed since the last successful link.
     pub failures: u32,
+    /// A background attempt to replace a relayed link with a direct one is
+    /// running (the relayed link stays in use until it succeeds).
+    pub upgrading: bool,
+    /// When the last attempt for this peer ended; spaces out the background
+    /// retries of a relayed link.
+    pub upgrade_ended: Option<Instant>,
     pub is_host: bool,
     pub state: PeerLinkState,
 }
@@ -594,6 +600,8 @@ impl PeerEntry {
             peer_attempt: 0,
             peer_wants_relay: false,
             failures: 0,
+            upgrading: false,
+            upgrade_ended: None,
             is_host,
             state: PeerLinkState::NotAttempted,
         }
@@ -1078,8 +1086,75 @@ fn clear_sync_route(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>, peer_id
 fn mark_failed(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>, peer_id: Uuid) {
     let mut st = state.write().unwrap();
     if let Some(p) = st.peers.get_mut(&peer_id) {
+        p.upgrading = false;
+        p.upgrade_ended = Some(Instant::now());
+        // A failed background upgrade must not drop the link in use.
+        if matches!(p.state, PeerLinkState::Connected(_)) {
+            return;
+        }
         p.state = PeerLinkState::Failed;
         p.failures += 1;
+    }
+}
+
+/// How long a relayed link waits before the next background try at a direct
+/// one. A relayed link is only a fallback: the direct path usually has far
+/// less latency, and a failed punch is often transient.
+const UPGRADE_INTERVAL: Duration = Duration::from_secs(30);
+/// When the peer itself offers a direct link, answer sooner than that.
+const UPGRADE_RESPOND_COOLDOWN: Duration = Duration::from_secs(5);
+/// A replaced relayed link is closed once it carries no stream traffic for
+/// this long (game sessions already on it are never cut short).
+const RETIRE_IDLE: Duration = Duration::from_secs(300);
+const RETIRE_POLL: Duration = Duration::from_secs(30);
+
+/// Whether a relayed link should try for a direct one now.
+fn upgrade_due(relayed: bool, upgrading: bool, since_last_attempt: Option<Duration>, fresh_offer: bool) -> bool {
+    if !relayed || upgrading {
+        return false;
+    }
+    let wait = if fresh_offer {
+        UPGRADE_RESPOND_COOLDOWN
+    } else {
+        UPGRADE_INTERVAL
+    };
+    since_last_attempt.is_none_or(|elapsed| elapsed >= wait)
+}
+
+/// How long a link has been without stream traffic, given the stream-frame
+/// count at the previous and the current check.
+fn idle_after(previous_frames: u64, current_frames: u64, idle: Duration, step: Duration) -> Duration {
+    if current_frames == previous_frames {
+        idle + step
+    } else {
+        Duration::ZERO
+    }
+}
+
+fn stream_frames(handle: &P2pTunnelHandle) -> u64 {
+    let stats = handle.connection.stats();
+    stats.frame_tx.stream + stats.frame_rx.stream
+}
+
+/// Closes a link that a direct one replaced, once nothing uses it anymore.
+/// Games already running on it keep working: it is only closed after a long
+/// stretch with no stream traffic at all.
+async fn retire_when_idle(old: Arc<P2pTunnelHandle>) {
+    let mut frames = stream_frames(&old);
+    let mut idle = Duration::ZERO;
+    loop {
+        tokio::time::sleep(RETIRE_POLL).await;
+        if old.connection.close_reason().is_some() {
+            return;
+        }
+        let now = stream_frames(&old);
+        idle = idle_after(frames, now, idle, RETIRE_POLL);
+        frames = now;
+        if idle >= RETIRE_IDLE {
+            info!(remote = %old.connection.remote_address(), "closing the relayed link a direct one replaced");
+            old.connection.close(0u32.into(), b"replaced by a direct link");
+            return;
+        }
     }
 }
 
@@ -1098,6 +1173,26 @@ fn trigger_connection_attempts(
     {
         let mut st = state.write().unwrap();
         for peer in st.peers.values_mut() {
+            // A running background attempt owns this peer until it ends.
+            if peer.upgrading {
+                continue;
+            }
+            let relayed = matches!(&peer.state, PeerLinkState::Connected(h) if h.relayed);
+            if relayed {
+                let fresh = peer.offer_at.is_some_and(|at| at.elapsed() < OFFER_WINDOW);
+                let since = peer.upgrade_ended.map(|at| at.elapsed());
+                if upgrade_due(true, false, since, fresh) {
+                    // The relayed link stays up and in use meanwhile.
+                    peer.upgrading = true;
+                    if !fresh {
+                        peer.p2p_addr = None;
+                        peer.p2p_candidates.clear();
+                        peer.offer_at = None;
+                    }
+                    targets.push((peer.client_id, peer.addr, peer.is_host, true));
+                }
+                continue;
+            }
             match peer.state {
                 PeerLinkState::NotAttempted | PeerLinkState::Failed => {
                     peer.state = PeerLinkState::Connecting;
@@ -1110,7 +1205,7 @@ fn trigger_connection_attempts(
                         peer.p2p_candidates.clear();
                         peer.offer_at = None;
                     }
-                    targets.push((peer.client_id, peer.addr, peer.is_host));
+                    targets.push((peer.client_id, peer.addr, peer.is_host, false));
                 }
                 _ => {}
             }
@@ -1122,9 +1217,9 @@ fn trigger_connection_attempts(
     }
 
     // Prioritize peer with is_host == true first
-    targets.sort_by_key(|(_, _, peer_is_host)| !peer_is_host);
+    targets.sort_by_key(|(_, _, peer_is_host, _)| !peer_is_host);
 
-    for (peer_id, peer_reg_addr, peer_is_host) in targets {
+    for (peer_id, peer_reg_addr, peer_is_host, upgrade) in targets {
         let state_clone = state.clone();
         let reg_socket_clone = reg_socket.clone();
 
@@ -1152,7 +1247,8 @@ fn trigger_connection_attempts(
                 let st = state_clone.read().unwrap();
                 (st.relay.clone(), st.peers.get(&peer_id).map_or(0, |p| p.failures))
             };
-            let mut use_relay = relay_cfg.is_some() && own_failures >= RELAY_AFTER_FAILURES;
+            // A background upgrade is only worth it if it ends direct.
+            let mut use_relay = !upgrade && relay_cfg.is_some() && own_failures >= RELAY_AFTER_FAILURES;
 
             let public_addr = probe_public_addr(&local_socket, rendezvous_addr).await;
             let offer = LinkOffer {
@@ -1203,7 +1299,7 @@ fn trigger_connection_attempts(
                         if !peer.p2p_candidates.is_empty() {
                             target_candidates = peer.p2p_candidates.clone();
                             target_attempt = peer.peer_attempt;
-                            use_relay |= relay_cfg.is_some() && peer.peer_wants_relay;
+                            use_relay |= !upgrade && relay_cfg.is_some() && peer.peer_wants_relay;
                             break;
                         }
                     }
@@ -1290,10 +1386,22 @@ fn trigger_connection_attempts(
                     let remote = handle.connection.remote_address();
                     info!(%room_token, %peer_id, %remote, "successfully connected P2P link to peer");
                     let handle_arc = Arc::new(handle);
+                    let mut replaced = None;
                     if let Some(p) = st.peers.get_mut(&peer_id) {
+                        if upgrade {
+                            if let PeerLinkState::Connected(old) = &p.state {
+                                replaced = Some(old.clone());
+                            }
+                        }
                         p.state = PeerLinkState::Connected(handle_arc.clone());
                         p.failures = 0;
                         p.p2p_addr = Some(remote);
+                        p.upgrading = false;
+                        p.upgrade_ended = Some(Instant::now());
+                    }
+                    if let Some(old) = replaced {
+                        info!(%room_token, %peer_id, %remote, "relayed link replaced by a direct one; new game connections use it");
+                        tokio::spawn(retire_when_idle(old));
                     }
 
                     let watch_state = state_clone.clone();
@@ -1302,7 +1410,9 @@ fn trigger_connection_attempts(
                         watch_link(watch_state, peer_id, watch_handle).await;
                     });
 
-                    if st.datagram_peers.insert(peer_id) {
+                    // An upgrade brings a second connection to a peer that
+                    // already has listeners (on the relayed one).
+                    if st.datagram_peers.insert(peer_id) || upgrade {
                         let handle_task = handle_arc.clone();
                         let lan_tx = st.lan_tx.clone();
                         let inbound = Inbound {
@@ -1322,7 +1432,7 @@ fn trigger_connection_attempts(
                     // WC3, or transit it is carrying for someone else) is
                     // routed by tag here — on every link, host or not, since
                     // now any member can be joined in a game.
-                    if st.dispatcher_peers.insert(peer_id) {
+                    if st.dispatcher_peers.insert(peer_id) || upgrade {
                         let state_task = state_clone.clone();
                         let dispatcher_task = tokio::spawn(async move {
                             run_stream_dispatcher(state_task, peer_id, handle_arc).await;
@@ -1333,8 +1443,13 @@ fn trigger_connection_attempts(
                 _ => {
                     debug!(%room_token, %peer_id, ?target_candidates, "P2P connection attempt to peer failed or timed out");
                     if let Some(p) = st.peers.get_mut(&peer_id) {
-                        p.state = PeerLinkState::Failed;
-                        p.failures += 1;
+                        p.upgrading = false;
+                        p.upgrade_ended = Some(Instant::now());
+                        // A failed upgrade leaves the relayed link in use.
+                        if !upgrade {
+                            p.state = PeerLinkState::Failed;
+                            p.failures += 1;
+                        }
                     }
                 }
             }
@@ -1689,6 +1804,31 @@ mod tests {
         tokio::time::timeout(Duration::from_millis(200), inbound.wake.notified())
             .await
             .expect("the stored wake-up resolves at once");
+    }
+
+    #[test]
+    fn only_an_idle_relayed_link_tries_for_a_direct_one_and_not_too_often() {
+        let long = Some(UPGRADE_INTERVAL);
+        // Direct links and attempts already running are left alone.
+        assert!(!upgrade_due(false, false, long, false));
+        assert!(!upgrade_due(true, true, long, false));
+        // Retries are spaced out...
+        assert!(!upgrade_due(true, false, Some(Duration::from_secs(5)), false));
+        assert!(upgrade_due(true, false, long, false));
+        assert!(upgrade_due(true, false, None, false));
+        // ...but a peer's fresh offer is answered after a short cooldown.
+        assert!(!upgrade_due(true, false, Some(Duration::from_secs(1)), true));
+        assert!(upgrade_due(true, false, Some(UPGRADE_RESPOND_COOLDOWN), true));
+    }
+
+    #[test]
+    fn a_replaced_link_is_idle_only_while_no_stream_frames_move() {
+        let step = Duration::from_secs(30);
+        let idle = idle_after(10, 10, Duration::ZERO, step);
+        assert_eq!(idle, step);
+        assert_eq!(idle_after(10, 10, idle, step), step * 2);
+        // Any stream traffic resets the count.
+        assert_eq!(idle_after(10, 11, step * 5, step), Duration::ZERO);
     }
 
     #[test]
