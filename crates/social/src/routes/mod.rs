@@ -5,5 +5,6 @@ pub mod friends;
 pub mod invites;
 pub mod keys;
 pub mod notifications;
+pub mod recovery;
 pub mod rooms;
 pub mod users;
