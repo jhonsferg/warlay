@@ -183,6 +183,7 @@ docker run -d --name warlay-helper-1 --restart unless-stopped \
 | `WARLAY_DATABASE_URL`           | main, edge   | `main.database_url`, `helper.edge.database_url`                       |
 | `WARLAY_REDIS_URL`              | main, edge   | `main.redis_url`, `helper.edge.redis_url`                             |
 | `WARLAY_HELPER_SECRET`          | main, helper | `main.helper_secret`, `helper.helper_secret`                          |
+| `WARLAY_CLIENT_IP_HEADER`       | main         | `main.client_ip_header` (e.g. `x-real-ip` behind nginx)               |
 | `WARLAY_HELPER_NAME`            | helper       | `helper.name` (keep it stable: the helper's identity derives from it) |
 | `WARLAY_HELPER_REGION`          | helper       | `helper.region`                                                       |
 | `WARLAY_MAIN_URL`               | helper       | `helper.main_url`                                                     |
