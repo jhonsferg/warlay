@@ -1155,6 +1155,14 @@ fn log_link_quality(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>) {
     }
 }
 
+/// Whether a failed punch should be followed by the relay attempt right away,
+/// instead of waiting for the next periodic round (up to three seconds). True
+/// when the failure that just happened is the one after which the relay is
+/// used (`RELAY_AFTER_FAILURES`) and a relay exists.
+fn retry_through_relay_now(relay_available: bool, was_upgrade: bool, failures: u32) -> bool {
+    relay_available && !was_upgrade && failures == RELAY_AFTER_FAILURES
+}
+
 /// Whether a relayed link should try for a direct one now.
 fn upgrade_due(relayed: bool, upgrading: bool, since_last_attempt: Option<Duration>, fresh_offer: bool) -> bool {
     if !relayed || upgrading {
@@ -1428,6 +1436,7 @@ fn trigger_connection_attempts(
             };
 
             let mut st = state_clone.write().unwrap();
+            let mut retry_now = false;
             match res {
                 Ok(Ok(handle)) => {
                     let remote = handle.connection.remote_address();
@@ -1497,8 +1506,14 @@ fn trigger_connection_attempts(
                             p.state = PeerLinkState::Failed;
                             p.failures += 1;
                         }
+                        retry_now = retry_through_relay_now(relay_cfg.is_some(), upgrade, p.failures);
                     }
                 }
+            }
+            drop(st);
+            if retry_now {
+                debug!(%room_token, %peer_id, "punch failed, linking through the relay right away");
+                trigger_connection_attempts(ctx, &state_clone, &reg_socket_clone);
             }
         });
     }
@@ -1866,6 +1881,16 @@ mod tests {
         // ...but a peer's fresh offer is answered after a short cooldown.
         assert!(!upgrade_due(true, false, Some(Duration::from_secs(1)), true));
         assert!(upgrade_due(true, false, Some(UPGRADE_RESPOND_COOLDOWN), true));
+    }
+
+    #[test]
+    fn the_relay_is_tried_at_once_only_on_the_failure_that_reaches_the_threshold() {
+        assert!(retry_through_relay_now(true, false, RELAY_AFTER_FAILURES));
+        // No relay, a background upgrade, or an earlier/later failure: wait for the next round.
+        assert!(!retry_through_relay_now(false, false, RELAY_AFTER_FAILURES));
+        assert!(!retry_through_relay_now(true, true, RELAY_AFTER_FAILURES));
+        assert!(!retry_through_relay_now(true, false, RELAY_AFTER_FAILURES - 1));
+        assert!(!retry_through_relay_now(true, false, RELAY_AFTER_FAILURES + 1));
     }
 
     #[test]
