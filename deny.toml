@@ -1,0 +1,22 @@
+# cargo-deny configuration: fails CI on known vulnerabilities in dependencies.
+# Every ignore below says why it is safe to ignore and when to remove it.
+
+[advisories]
+yanked = "deny"
+ignore = [
+    # SQLite bundled by libsqlite3-sys. The fix needs libsqlite3-sys >= 0.39
+    # (rusqlite 0.41), but every sqlx 0.8 / 0.9 release pins libsqlite3-sys
+    # below 0.38 and Cargo allows only one copy of the native library.
+    # SQLite only runs on local, trusted data (the client's settings and the
+    # legacy hub's identity). Remove when sqlx accepts libsqlite3-sys 0.39.
+    { id = "RUSTSEC-2026-0459", reason = "blocked by sqlx links = sqlite3; local trusted data only" },
+
+    # Unmaintained crates, no vulnerability reported. They arrive through
+    # Tauri / Opus / the wire format; revisit when a replacement is available.
+    { id = "RUSTSEC-2026-0150", reason = "audiopus_sys: unmaintained, Opus bindings" },
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1.x: unmaintained, pinned on purpose (3.0 is a tombstone)" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: unmaintained, build-time only" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant: unmaintained, comes from Tauri on Linux targets" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names: unmaintained, comes from Tauri on Linux targets" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: unmaintained, comes from Tauri on Linux targets" },
+]
