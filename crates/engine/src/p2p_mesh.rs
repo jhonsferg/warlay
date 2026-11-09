@@ -180,6 +180,8 @@ pub struct PeerEntry {
     /// When the last attempt for this peer ended; spaces out the background
     /// retries of a relayed link.
     pub upgrade_ended: Option<Instant>,
+    /// Background attempts made since the relayed link came up; the wait grows with them.
+    pub upgrade_tries: u32,
     pub is_host: bool,
     pub state: PeerLinkState,
 }
@@ -605,6 +607,7 @@ impl PeerEntry {
             failures: 0,
             upgrading: false,
             upgrade_ended: None,
+            upgrade_tries: 0,
             is_host,
             state: PeerLinkState::NotAttempted,
         }
@@ -1107,10 +1110,20 @@ fn mark_failed(state: &Arc<std::sync::RwLock<PeerMeshSharedState>>, peer_id: Uui
     }
 }
 
-/// How long a relayed link waits before the next background try at a direct
-/// one. A relayed link is only a fallback: the direct path usually has far
-/// less latency, and a failed punch is often transient.
-const UPGRADE_INTERVAL: Duration = Duration::from_secs(30);
+/// How long a relayed link waits before each background try at a direct one:
+/// the first soon (a failed punch is often transient, and a room usually waits
+/// in the lobby for a while), then less and less often. A relayed link is only
+/// a fallback: the direct path usually has far less latency.
+const UPGRADE_WAITS: [Duration; 3] = [
+    Duration::from_secs(10),
+    Duration::from_secs(20),
+    Duration::from_secs(30),
+];
+
+/// The wait before try number `tries` (0 for the first); the last step repeats.
+fn upgrade_wait(tries: u32) -> Duration {
+    UPGRADE_WAITS[(tries as usize).min(UPGRADE_WAITS.len() - 1)]
+}
 /// When the peer itself offers a direct link, answer sooner than that.
 const UPGRADE_RESPOND_COOLDOWN: Duration = Duration::from_secs(5);
 /// A replaced relayed link is closed once it carries no stream traffic for
@@ -1164,14 +1177,20 @@ fn retry_through_relay_now(relay_available: bool, was_upgrade: bool, failures: u
 }
 
 /// Whether a relayed link should try for a direct one now.
-fn upgrade_due(relayed: bool, upgrading: bool, since_last_attempt: Option<Duration>, fresh_offer: bool) -> bool {
+fn upgrade_due(
+    relayed: bool,
+    upgrading: bool,
+    tries: u32,
+    since_last_attempt: Option<Duration>,
+    fresh_offer: bool,
+) -> bool {
     if !relayed || upgrading {
         return false;
     }
     let wait = if fresh_offer {
         UPGRADE_RESPOND_COOLDOWN
     } else {
-        UPGRADE_INTERVAL
+        upgrade_wait(tries)
     };
     since_last_attempt.is_none_or(|elapsed| elapsed >= wait)
 }
@@ -1236,9 +1255,10 @@ fn trigger_connection_attempts(
             if relayed {
                 let fresh = peer.offer_at.is_some_and(|at| at.elapsed() < OFFER_WINDOW);
                 let since = peer.upgrade_ended.map(|at| at.elapsed());
-                if upgrade_due(true, false, since, fresh) {
+                if upgrade_due(true, false, peer.upgrade_tries, since, fresh) {
                     // The relayed link stays up and in use meanwhile.
                     peer.upgrading = true;
+                    peer.upgrade_tries = peer.upgrade_tries.saturating_add(1);
                     if !fresh {
                         peer.p2p_addr = None;
                         peer.p2p_candidates.clear();
@@ -1454,6 +1474,8 @@ fn trigger_connection_attempts(
                         p.p2p_addr = Some(remote);
                         p.upgrading = false;
                         p.upgrade_ended = Some(Instant::now());
+                        // A new relayed link starts its retries from the quick first one.
+                        p.upgrade_tries = 0;
                     }
                     if let Some(old) = replaced {
                         info!(%room_token, %peer_id, %remote, "relayed link replaced by a direct one; new game connections use it");
@@ -1870,17 +1892,30 @@ mod tests {
 
     #[test]
     fn only_an_idle_relayed_link_tries_for_a_direct_one_and_not_too_often() {
-        let long = Some(UPGRADE_INTERVAL);
+        let long = Some(Duration::from_secs(30));
         // Direct links and attempts already running are left alone.
-        assert!(!upgrade_due(false, false, long, false));
-        assert!(!upgrade_due(true, true, long, false));
+        assert!(!upgrade_due(false, false, 0, long, false));
+        assert!(!upgrade_due(true, true, 0, long, false));
         // Retries are spaced out...
-        assert!(!upgrade_due(true, false, Some(Duration::from_secs(5)), false));
-        assert!(upgrade_due(true, false, long, false));
-        assert!(upgrade_due(true, false, None, false));
+        assert!(!upgrade_due(true, false, 0, Some(Duration::from_secs(5)), false));
+        assert!(upgrade_due(true, false, 0, long, false));
+        assert!(upgrade_due(true, false, 0, None, false));
         // ...but a peer's fresh offer is answered after a short cooldown.
-        assert!(!upgrade_due(true, false, Some(Duration::from_secs(1)), true));
-        assert!(upgrade_due(true, false, Some(UPGRADE_RESPOND_COOLDOWN), true));
+        assert!(!upgrade_due(true, false, 0, Some(Duration::from_secs(1)), true));
+        assert!(upgrade_due(true, false, 0, Some(UPGRADE_RESPOND_COOLDOWN), true));
+    }
+
+    #[test]
+    fn the_wait_between_direct_link_retries_grows_and_then_holds() {
+        assert_eq!(upgrade_wait(0), Duration::from_secs(10));
+        assert_eq!(upgrade_wait(1), Duration::from_secs(20));
+        assert_eq!(upgrade_wait(2), Duration::from_secs(30));
+        assert_eq!(upgrade_wait(50), Duration::from_secs(30));
+        // The first retry comes much sooner than a later one.
+        let ten = Some(Duration::from_secs(10));
+        assert!(upgrade_due(true, false, 0, ten, false));
+        assert!(!upgrade_due(true, false, 1, ten, false));
+        assert!(!upgrade_due(true, false, 2, Some(Duration::from_secs(25)), false));
     }
 
     #[test]
