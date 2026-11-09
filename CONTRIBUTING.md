@@ -24,7 +24,7 @@ git clone https://github.com/jhonsferg/warlay.git
 cd warlay
 
 # server + shared crates
-cargo test -p server -p protocol -p crypto -p matchmaking -p core -p storage -p config -p transport
+cargo test -p server -p social -p protocol -p crypto -p matchmaking -p core -p storage -p config -p transport
 
 # desktop client (Windows)
 cd desktop
@@ -99,8 +99,8 @@ npx prettier@3.3.3 --write .       # TypeScript, Vue, SCSS, JSON, YAML, Markdown
 See [Repository layout](README.md#repository-layout) in the README. In short:
 shared logic lives in `crates/`, and `server/` and `desktop/src-tauri/` are
 binaries on top of it, consumed through the `warlay` facade crate. The
-network runtime (hub connections, tunnels, P2P mesh) lives inside the desktop
-backend (`desktop/src-tauri/src/runtime`), in the same process as the UI.
+network runtime (room sessions, LAN capture, P2P mesh, voice relay) lives
+inside the desktop backend (`desktop/src-tauri/src/runtime`), in the same process as the UI.
 
 ## Repository settings (maintainers)
 
