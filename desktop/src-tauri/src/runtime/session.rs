@@ -5,7 +5,6 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use base64::Engine;
 use tokio::sync::Mutex;
@@ -95,11 +94,10 @@ pub async fn start_room_session(
     let inbound_state = state.clone();
     let inbound_mesh = mesh.clone();
     let lan_inbound_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(20));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
-            interval.tick().await;
-            // Voice rides the same 20 ms tick: one batched event per tick.
+            // Woken the moment a peer's datagram arrives, so nothing waits
+            // for a timer; whatever piled up meanwhile goes out as one batch.
+            inbound_mesh.inbound_ready().await;
             super::voice::emit_voice_frames(inbound_mesh.poll_voice_frames());
             super::voice::emit_desktop_frames(inbound_mesh.poll_desktop_frames());
             let packets = inbound_mesh.poll_lan_packets();
