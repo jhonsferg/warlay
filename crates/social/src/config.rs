@@ -38,6 +38,10 @@ pub struct MainSettings {
     /// uses the socket's peer address, which behind a proxy is the proxy.
     /// Per-IP rate limits on sign-up, login and token refresh use this.
     pub client_ip_header: String,
+    /// Public address of the website (landing page and sign-in), without a
+    /// trailing slash. It goes into canonical links, the sitemap and the
+    /// sign-in redirects.
+    pub web_base_url: String,
 }
 
 impl Default for MainSettings {
@@ -56,6 +60,7 @@ impl Default for MainSettings {
             run_migrations: true,
             max_db_connections: 20,
             client_ip_header: String::new(),
+            web_base_url: "https://warlay.codesoftlabs.com".into(),
         }
     }
 }

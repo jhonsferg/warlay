@@ -1286,3 +1286,73 @@ async fn recovery_codes_reset_a_password_and_close_every_session() {
     let (status, _) = recover(&fresh[0], "new-password-3").await;
     assert_eq!(status, 200);
 }
+
+#[tokio::test]
+async fn the_website_serves_pages_in_both_languages_with_safe_headers() {
+    let Some(s) = start().await else { return };
+    let get = |path: &str, accept: Option<&str>| {
+        let mut request = s.client.get(format!("{}{path}", s.base));
+        if let Some(accept) = accept {
+            request = request.header("accept-language", accept);
+        }
+        request.send()
+    };
+
+    // Spanish is the default, and the browser's language is honoured.
+    let es = get("/", None).await.unwrap();
+    assert_eq!(es.status(), 200);
+    assert_eq!(es.headers()["content-language"], "es");
+    assert!(es.headers()["content-type"].to_str().unwrap().starts_with("text/html"));
+    let csp = es.headers()["content-security-policy"].to_str().unwrap().to_string();
+    assert!(
+        csp.contains("default-src 'none'") && csp.contains("frame-ancestors 'none'"),
+        "{csp}"
+    );
+    assert!(es
+        .text()
+        .await
+        .unwrap()
+        .contains("Juega Warcraft III en LAN por internet"));
+
+    let en = get("/", Some("en-US,en;q=0.9")).await.unwrap();
+    assert_eq!(en.headers()["content-language"], "en");
+    assert!(en
+        .text()
+        .await
+        .unwrap()
+        .contains("Play Warcraft III LAN games over the internet"));
+
+    // `?lang=` beats the browser.
+    let forced = get("/privacy?lang=es", Some("en")).await.unwrap();
+    assert_eq!(forced.headers()["content-language"], "es");
+    let privacy = forced.text().await.unwrap();
+    assert!(privacy.contains("Política de privacidad") && privacy.contains("Argon2id"));
+    assert_eq!(get("/terms", None).await.unwrap().status(), 200);
+
+    // For crawlers.
+    let robots = get("/robots.txt", None).await.unwrap().text().await.unwrap();
+    assert!(
+        robots.contains("Disallow: /auth/") && robots.contains("sitemap.xml"),
+        "{robots}"
+    );
+    let sitemap = get("/sitemap.xml", None).await.unwrap().text().await.unwrap();
+    assert!(
+        sitemap.contains("/privacy") && sitemap.contains("hreflang=\"en\""),
+        "{sitemap}"
+    );
+
+    // Static files carry their type and are cacheable.
+    let css = get("/assets/style.css", None).await.unwrap();
+    assert_eq!(css.headers()["content-type"], "text/css; charset=utf-8");
+    assert!(css.headers()["cache-control"].to_str().unwrap().contains("max-age"));
+    assert_eq!(
+        get("/favicon.svg", None).await.unwrap().headers()["content-type"],
+        "image/svg+xml"
+    );
+    let png = get("/assets/social-preview.png", None).await.unwrap();
+    assert_eq!(png.headers()["content-type"], "image/png");
+    assert_eq!(&png.bytes().await.unwrap()[..4], b"\x89PNG");
+
+    // The API did not move.
+    assert_eq!(get("/health", None).await.unwrap().status(), 200);
+}
