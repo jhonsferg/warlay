@@ -18,6 +18,7 @@ export const useSettings = defineStore("settings-v2", () => {
   const micDeviceId = ref("");
   const noiseSuppression = ref<NoiseLevel>("standard");
   const shareDesktopAudio = ref(false);
+  const lowLatencyVoice = ref(false);
 
   async function load() {
     const loadedSettings = (await native.loadSettings()) ?? { gameExecutablePath: "", gameArgs: "" };
@@ -30,6 +31,7 @@ export const useSettings = defineStore("settings-v2", () => {
     micDeviceId.value = String(loadedSettings.micDeviceId ?? "");
     noiseSuppression.value = normalizeNoiseLevel(loadedSettings.noiseSuppression);
     shareDesktopAudio.value = loadedSettings.shareDesktopAudio === true;
+    lowLatencyVoice.value = loadedSettings.lowLatencyVoice === true;
     loaded.value = true;
   }
 
@@ -63,6 +65,7 @@ export const useSettings = defineStore("settings-v2", () => {
     micDeviceId: string;
     noiseSuppression: NoiseLevel;
     shareDesktopAudio?: boolean;
+    lowLatencyVoice?: boolean;
   }) {
     const next = { ...raw.value, ...prefs };
     await native.saveSettings(next);
@@ -70,6 +73,7 @@ export const useSettings = defineStore("settings-v2", () => {
     micDeviceId.value = prefs.micDeviceId;
     noiseSuppression.value = prefs.noiseSuppression;
     if (prefs.shareDesktopAudio !== undefined) shareDesktopAudio.value = prefs.shareDesktopAudio;
+    if (prefs.lowLatencyVoice !== undefined) lowLatencyVoice.value = prefs.lowLatencyVoice;
   }
 
   async function setLogRetentionDays(days: number) {
@@ -88,6 +92,7 @@ export const useSettings = defineStore("settings-v2", () => {
     micDeviceId,
     noiseSuppression,
     shareDesktopAudio,
+    lowLatencyVoice,
     setMicConsent,
     setVoicePrefs,
     load,
