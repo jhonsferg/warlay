@@ -75,6 +75,12 @@ impl ServerCertVerifier for SkipServerVerification {
 /// mapping, so the link is dead by the time the game needs it.
 const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(4);
 const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
+/// A relayed link can lose its path for a while without anything being wrong
+/// with the players: the helper may be replaced (a few seconds to a quarter of
+/// a minute). QUIC backs its retransmissions off during such a gap, so the
+/// first probe after the helper returns can come several seconds later; the
+/// idle timeout has to outlast that or the game is cut anyway.
+const RELAYED_IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// Room for a burst of voice, desktop audio and LAN datagrams. The receive
 /// side used to hold a single datagram, so two arriving back to back lost the
@@ -103,7 +109,7 @@ fn wants_bbr(value: Option<&str>) -> bool {
     value.is_some_and(|v| v.trim().eq_ignore_ascii_case("bbr"))
 }
 
-fn transport_config() -> Arc<quinn::TransportConfig> {
+fn transport_config(relayed: bool) -> Arc<quinn::TransportConfig> {
     let mut transport = quinn::TransportConfig::default();
     transport.datagram_receive_buffer_size(Some(DATAGRAM_RECEIVE_BUFFER));
     transport.datagram_send_buffer_size(DATAGRAM_SEND_BUFFER);
@@ -121,29 +127,34 @@ fn transport_config() -> Arc<quinn::TransportConfig> {
     transport.ack_frequency_config(Some(ack_frequency));
     transport.keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
     transport.max_idle_timeout(Some(
-        quinn::IdleTimeout::try_from(MAX_IDLE_TIMEOUT).expect("idle timeout fits a QUIC varint"),
+        quinn::IdleTimeout::try_from(if relayed {
+            RELAYED_IDLE_TIMEOUT
+        } else {
+            MAX_IDLE_TIMEOUT
+        })
+        .expect("idle timeout fits a QUIC varint"),
     ));
     Arc::new(transport)
 }
 
-fn configure_quic_server() -> Result<ServerConfig> {
+fn configure_quic_server(relayed: bool) -> Result<ServerConfig> {
     let cert = rcgen::generate_simple_self_signed(vec!["warlay-p2p".to_string()])?;
     let cert_der = CertificateDer::from(cert.cert.der().to_vec());
     let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der()));
 
     let mut server_config = ServerConfig::with_single_cert(vec![cert_der], key_der)?;
-    server_config.transport_config(transport_config());
+    server_config.transport_config(transport_config(relayed));
     Ok(server_config)
 }
 
-fn configure_quic_client() -> Result<ClientConfig> {
+fn configure_quic_client(relayed: bool) -> Result<ClientConfig> {
     let crypto = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
         .with_no_client_auth();
 
     let mut client_config = ClientConfig::new(Arc::new(quinn::crypto::rustls::QuicClientConfig::try_from(crypto)?));
-    client_config.transport_config(transport_config());
+    client_config.transport_config(transport_config(relayed));
     Ok(client_config)
 }
 
@@ -230,7 +241,7 @@ async fn establish_quic(
 ) -> Result<P2pTunnelHandle> {
     let relayed = shim.is_some();
     if act_as_quic_server {
-        let server_config = configure_quic_server()?;
+        let server_config = configure_quic_server(relayed)?;
         let endpoint = Endpoint::new(
             EndpointConfig::default(),
             Some(server_config),
@@ -261,7 +272,7 @@ async fn establish_quic(
             _shim: shim,
         })
     } else {
-        let client_config = configure_quic_client()?;
+        let client_config = configure_quic_client(relayed)?;
         let endpoint = Endpoint::new(EndpointConfig::default(), None, std_socket, Arc::new(TokioRuntime))?;
 
         info!(%peer_addr, %room_token, relayed, "QUIC client connecting to peer endpoint");
@@ -297,7 +308,10 @@ impl Drop for RelayShim {
 
 /// How long to wait for the peer to bind its end of a relay channel.
 const RELAY_BIND_TIMEOUT: Duration = Duration::from_secs(10);
-const RELAY_REBIND_INTERVAL: Duration = Duration::from_secs(15);
+/// How often a relayed link repeats its bind. The helper forgets every channel
+/// when it restarts; the next bind puts the link back, so this is how long a
+/// restart can keep a relayed game stalled once the helper is up again.
+const RELAY_REBIND_INTERVAL: Duration = Duration::from_secs(3);
 
 /// Waits until both ends are bound on the helper; returns the channel id.
 async fn bind_relay_channel(relay_socket: &UdpSocket, relay_addr: SocketAddr, bind: &[u8]) -> Result<u64> {
@@ -355,6 +369,7 @@ pub async fn connect_via_relay(
     let shim_addr = shim_socket.local_addr()?;
 
     let forwarder = tokio::spawn(async move {
+        let mut channel = channel;
         let mut from_quic = vec![0_u8; 65_536];
         let mut from_relay = vec![0_u8; 65_536];
         let mut rebind = tokio::time::interval(RELAY_REBIND_INTERVAL);
@@ -376,6 +391,13 @@ pub async fn connect_via_relay(
                     if let Some((ch, payload)) = decode_relay_data(&from_relay[..len]) {
                         if ch == channel {
                             let _ = shim_socket.send_to(payload, quic_addr).await;
+                        }
+                    } else if let Some(RelayControl::Bound { channel: bound, .. }) = RelayControl::decode(&from_relay[..len]) {
+                        // After a helper restart the answer to our bind can carry
+                        // another id (older helpers draw one at random): follow it.
+                        if bound != channel {
+                            info!(old = channel, new = bound, "the relay moved this link to another channel");
+                            channel = bound;
                         }
                     }
                 }

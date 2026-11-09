@@ -162,6 +162,29 @@ docker run -d --name warlay-helper-1 --restart unless-stopped \
 | `WARLAY_PUBLIC_RELAY_ADDR`      | helper       | `helper.public_relay_addr`                                            |
 | `WARLAY_EDGE_PUBLIC_URL`        | helper       | `helper.edge.public_url` (turns the edge on)                          |
 
+## Replacing a container without cutting games
+
+The servers keep no state that a game depends on, so a container can be
+replaced while players are in a match:
+
+- **Main server** (REST + realtime): sessions, rooms and chat live in PostgreSQL
+  and Redis, which must keep running (and keep their volumes) across the
+  replacement. Clients reconnect their socket on their own; a player is only
+  removed from a room after `disconnect_grace_secs` (45 s) offline and a host
+  never is. A desktop client signs the user out only when the server rejects
+  the refresh token, never because the server was unreachable or answered 5xx.
+- **Helper** (rendezvous + UDP relay): games between players with a direct link
+  do not touch the helper and are not affected at all. Relayed games stall while
+  the helper is down and carry on when it is back (the relay channel ids are
+  derived from the room and the two players, so they survive a restart; clients
+  rebind every 3 s and relayed links tolerate 45 s of silence). Measured in the
+  lab: a 25 s helper outage paused a relayed game for as long and the match went
+  on without a reconnect.
+- Both servers stop on `SIGTERM` (what `docker stop` and a recreate send), so a
+  replacement does not wait for Docker's kill timeout.
+- Clients older than this change keep the old relay behavior: for them a helper
+  restart still cuts a relayed game, so update the clients before relying on it.
+
 ## TLS with a reverse proxy
 
 The hub itself speaks plain TCP; terminate TLS in front of it so players can

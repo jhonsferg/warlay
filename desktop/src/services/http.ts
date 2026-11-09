@@ -1,3 +1,4 @@
+import { refreshVerdict } from "./outage";
 import { resolveServerUrl } from "./serverUrl";
 import type { ApiErrorBody, Tokens } from "./types";
 
@@ -65,10 +66,15 @@ export function refreshTokens(): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken: tokens?.refreshToken }),
       });
-      if (!res.ok) {
+      const verdict = refreshVerdict(res.status);
+      if (verdict === "expired") {
+        // The server rejected the refresh token: the session is over.
         setTokens(null);
         return false;
       }
+      // A 5xx (a server being replaced, a proxy answering for it) leaves the
+      // session alone; the next call tries again.
+      if (verdict === "retry") return false;
       setTokens((await res.json()) as Tokens);
       return true;
     } catch {

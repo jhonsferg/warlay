@@ -300,7 +300,7 @@ pub async fn run(config: HelperConfigFile) -> Result<()> {
     });
 
     tokio::select! {
-        _ = tokio::signal::ctrl_c() => info!("shutdown signal received, stopping helper"),
+        _ = crate::shutdown::signal() => info!("shutdown signal received, stopping helper"),
         _ = tasks.rendezvous.task => warn!("rendezvous task ended"),
         _ = tasks.relay.task => warn!("relay task ended"),
     }
