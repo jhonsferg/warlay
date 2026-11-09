@@ -206,10 +206,19 @@ jobs:
           if-no-files-found: error
 
   docker:
-    name: Server image (GHCR)
+    name: Server image (${{ matrix.target }})
     needs: version
     if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One image per Dockerfile stage. `warlay-server` keeps the legacy
+          # all-in-one hub under its original name.
+          - { target: main, image: warlay-main }
+          - { target: helper, image: warlay-helper }
+          - { target: hub, image: warlay-server }
     permissions:
       contents: read
       packages: write
@@ -229,7 +238,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/warlay-server
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=raw,value=${{ env.VERSION }}
             type=raw,value=latest
@@ -239,11 +248,12 @@ jobs:
         with:
           context: .
           file: server/Dockerfile
+          target: ${{ matrix.target }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
 
   release:
     name: Publish release
@@ -281,9 +291,9 @@ jobs:
           OUTPUT: CHANGES.md
       - name: Compose release notes
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/warlay-server
+          IMAGE_OWNER: ghcr.io/${{ github.repository_owner }}
         run: |
-          image=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          owner=$(echo "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')
           {
             echo "## Downloads"
             echo
@@ -295,7 +305,9 @@ jobs:
             echo "| Server | macOS Intel / Apple Silicon | \`warlay-server-v${VERSION}-{x86_64,aarch64}-apple-darwin.tar.gz\` |"
             echo "| Server | Windows x64 | \`warlay-server-v${VERSION}-x86_64-pc-windows-msvc.zip\` |"
             echo
-            echo "Docker: \`docker pull ${image}:${VERSION}\`"
+            echo "Docker: \`docker pull ${owner}/warlay-main:${VERSION}\` (main server),"
+            echo "\`docker pull ${owner}/warlay-helper:${VERSION}\` (helper) and"
+            echo "\`docker pull ${owner}/warlay-server:${VERSION}\` (legacy hub)."
             echo
             echo "Verify downloads with \`SHA256SUMS.txt\`."
             echo
