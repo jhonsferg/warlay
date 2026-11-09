@@ -91,7 +91,9 @@ async fn a_tone_played_on_this_pc_reaches_the_other_member_intact() {
     }
     drop(share);
     let _ = game.kill();
+    let _ = game.wait();
     let _ = webview.kill();
+    let _ = webview.wait();
 
     assert!(
         packets.len() > 50,
