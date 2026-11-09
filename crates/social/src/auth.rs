@@ -6,6 +6,7 @@ use base64::Engine;
 use redis::AsyncCommands;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use uuid::Uuid;
@@ -262,6 +263,37 @@ impl FromRequestParts<AppState> for AuthUser {
     }
 }
 
+/// The address a request really comes from, for per-IP rate limits. `None`
+/// when it cannot be told (no connection info), in which case callers skip
+/// the per-IP limit and keep the per-account one.
+#[derive(Debug, Clone, Copy)]
+pub struct ClientIp(pub Option<IpAddr>);
+
+/// Reads an address out of a proxy header. For a list (`x-forwarded-for`)
+/// the last entry is the one the nearest trusted proxy appended; earlier ones
+/// are whatever the client claimed.
+fn ip_from_header(value: &str) -> Option<IpAddr> {
+    value.rsplit(',').next()?.trim().parse().ok()
+}
+
+impl FromRequestParts<AppState> for ClientIp {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let header = state.settings.client_ip_header.trim();
+        let from_header = (!header.is_empty())
+            .then(|| parts.headers.get(header))
+            .flatten()
+            .and_then(|v| v.to_str().ok())
+            .and_then(ip_from_header);
+        let peer = parts
+            .extensions
+            .get::<axum::extract::ConnectInfo<SocketAddr>>()
+            .map(|info| info.0.ip());
+        Ok(Self(from_header.or(peer)))
+    }
+}
+
 /// Fixed-window rate limit in Redis: at most `max` hits per `window_secs`.
 pub async fn rate_limit(state: &AppState, key: &str, max: u64, window_secs: i64) -> ApiResult<()> {
     let mut redis = state.redis.clone();
@@ -290,6 +322,19 @@ pub async fn rate_limit(state: &AppState, key: &str, max: u64, window_secs: i64)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_last_forwarded_address_is_the_proxys_and_garbage_is_ignored() {
+        assert_eq!(ip_from_header("203.0.113.9"), "203.0.113.9".parse().ok());
+        assert_eq!(
+            ip_from_header("6.6.6.6, 198.51.100.4"),
+            "198.51.100.4".parse().ok(),
+            "what the client claims first must not win"
+        );
+        assert_eq!(ip_from_header("2001:db8::1"), "2001:db8::1".parse().ok());
+        assert_eq!(ip_from_header("not an ip"), None);
+        assert_eq!(ip_from_header(""), None);
+    }
 
     #[test]
     fn passwords_hash_and_verify() {
