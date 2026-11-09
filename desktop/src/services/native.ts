@@ -2,6 +2,7 @@
 // that does the actual networking. In a plain browser (vite dev, Playwright) there is
 // no shell: every call is recorded and answered by a harmless stand-in, so
 // the whole UI can be exercised and screenshotted without Windows.
+import { decodeFrameBatch, type InboundFrame } from "./frameBatch";
 import type { NetworkStatus } from "./networkStatus";
 import type { HelperInfo, RoomSession } from "./types";
 import type { AppInfo } from "./about";
@@ -62,6 +63,21 @@ async function invoke<T>(command: string, args: Record<string, unknown> = {}): P
     localStorage.setItem("warlay.browserSettings", JSON.stringify(args.settings));
   }
   return undefined as T;
+}
+
+/**
+ * Inbound voice or desktop-audio frames, delivered as binary batches over a
+ * Tauri channel (no JSON, no base64). Resolves to a function that stops them.
+ */
+async function frameStream(kind: "voice" | "desktop", handler: (frames: InboundFrame[]) => void): Promise<Unlisten> {
+  if (!isDesktop) return () => {};
+  const { Channel, invoke } = await import("@tauri-apps/api/core");
+  const channel = new Channel<ArrayBuffer>();
+  channel.onmessage = (message) => handler(decodeFrameBatch(message));
+  await invoke("register_frame_stream", { kind, onFrames: channel });
+  return () => {
+    void invoke("unregister_frame_stream", { kind });
+  };
 }
 
 async function listen<T>(event: string, handler: (payload: T) => void): Promise<Unlisten> {
@@ -131,16 +147,14 @@ export const native = {
   /** One encoded Opus frame of our microphone, sent to the room over the mesh. */
   sendVoiceFrame: (frame: Uint8Array) =>
     invoke<number>("send_voice_frame", frame as unknown as Record<string, unknown>),
-  onVoiceFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
-    listen<{ from: string; data: string }[]>("voice://frames", handler),
+  onVoiceFrames: (handler: (frames: InboundFrame[]) => void) => frameStream("voice", handler),
   setMicConsent: (granted: boolean) => invoke<void>("set_mic_consent", { granted }),
   openMicPrivacySettings: () => invoke<void>("open_mic_privacy_settings"),
   /** Starts sharing this PC's sound with the room (Warlay's own audio excluded). */
   startDesktopAudio: () => invoke<void>("start_desktop_audio"),
   stopDesktopAudio: () => invoke<void>("stop_desktop_audio"),
   /** Other members' shared desktop audio (stereo), separate from their voice. */
-  onDesktopFrames: (handler: (frames: { from: string; data: string }[]) => void) =>
-    listen<{ from: string; data: string }[]>("voice://desktop-frames", handler),
+  onDesktopFrames: (handler: (frames: InboundFrame[]) => void) => frameStream("desktop", handler),
   registerVoiceShortcut: (accelerator?: string) => invoke<string>("register_voice_shortcut", { accelerator }),
   unregisterVoiceShortcut: () => invoke<void>("unregister_voice_shortcut"),
   /** The global mute shortcut was pressed (works while the game has focus). */
