@@ -138,7 +138,9 @@ fn audio_from_another_process_is_captured() {
     let mut player = play(&wav);
     let pcm = capture(other.id(), Duration::from_secs(5));
     let _ = player.kill();
+    let _ = player.wait();
     let _ = other.kill();
+    let _ = other.wait();
     let tone = loudest_tone(&pcm, 440.0);
     println!("440 Hz amplitude (excluding an unrelated process): {tone:.0}");
     assert!(
@@ -154,6 +156,7 @@ fn audio_from_the_excluded_process_is_not_captured() {
     let mut player = play(&wav);
     let pcm = capture(player.id(), Duration::from_secs(5));
     let _ = player.kill();
+    let _ = player.wait();
     let tone = loudest_tone(&pcm, 440.0);
     println!("440 Hz amplitude (excluding the player): {tone:.0}");
     assert!(
@@ -175,7 +178,9 @@ fn excluding_a_process_excludes_its_children_but_not_its_siblings() {
     let mut game_player = play(&game);
     let pcm = capture(webview.id(), Duration::from_secs(5));
     let _ = game_player.kill();
+    let _ = game_player.wait();
     let _ = webview.kill();
+    let _ = webview.wait();
     let (voice_tone, game_tone) = (loudest_tone(&pcm, 440.0), loudest_tone(&pcm, 880.0));
     println!("excluded subtree 440 Hz: {voice_tone:.0}; sibling 880 Hz: {game_tone:.0}");
     assert!(
@@ -195,6 +200,7 @@ fn the_room_has_no_pure_440_hz_without_a_player() {
     let mut other = bystander();
     let pcm = capture(other.id(), Duration::from_secs(3));
     let _ = other.kill();
+    let _ = other.wait();
     let tone = loudest_tone(&pcm, 440.0);
     println!("baseline 440 Hz amplitude with nothing of ours playing: {tone:.0}");
     assert!(
