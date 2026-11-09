@@ -85,6 +85,11 @@ const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 const DATAGRAM_RECEIVE_BUFFER: usize = 64 * 1024;
 const DATAGRAM_SEND_BUFFER: usize = 8 * 1024;
 const INITIAL_RTT: Duration = Duration::from_millis(100);
+/// How long the peer may hold an acknowledgement back. QUIC's default is 25 ms,
+/// which is added to every loss-detection timeout: with sparse traffic (a voice
+/// frame every 20 ms) a lost packet is noticed that much later. Both ends are
+/// Warlay, so the ACK_FREQUENCY extension can ask for a much shorter delay.
+const MAX_ACK_DELAY: Duration = Duration::from_millis(5);
 
 /// Environment variable that switches the congestion controller, to compare
 /// them on a real link: `WARLAY_CONGESTION=bbr`. Anything else keeps quinn's
@@ -111,6 +116,9 @@ fn transport_config() -> Arc<quinn::TransportConfig> {
         info!("QUIC links use the BBR congestion controller");
         transport.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
     }
+    let mut ack_frequency = quinn::AckFrequencyConfig::default();
+    ack_frequency.max_ack_delay(Some(MAX_ACK_DELAY));
+    transport.ack_frequency_config(Some(ack_frequency));
     transport.keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
     transport.max_idle_timeout(Some(
         quinn::IdleTimeout::try_from(MAX_IDLE_TIMEOUT).expect("idle timeout fits a QUIC varint"),
