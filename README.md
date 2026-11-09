@@ -162,7 +162,9 @@ Every release on the [Releases page](https://github.com/jhonsferg/warlay/release
 | `warlay-desktop-vX.Y.Z-windows-x64-setup.exe`    | Windows installer (one executable)                                            |
 | `warlay-desktop-vX.Y.Z-windows-x64-portable.zip` | Portable client                                                               |
 | `warlay-server-vX.Y.Z-<target>.tar.gz` / `.zip`  | Server for Linux (static x64/ARM64), macOS (Intel/Apple Silicon), Windows x64 |
-| `ghcr.io/jhonsferg/warlay-server:X.Y.Z`          | Server Docker image (legacy `hub`; `main` and `helper` build from source)     |
+| `ghcr.io/jhonsferg/warlay-main:X.Y.Z`            | Main server Docker image                                                      |
+| `ghcr.io/jhonsferg/warlay-helper:X.Y.Z`          | Helper Docker image                                                           |
+| `ghcr.io/jhonsferg/warlay-server:X.Y.Z`          | Legacy all-in-one `hub` Docker image                                          |
 | `SHA256SUMS.txt`                                 | Checksums for every file                                                      |
 
 ## Quick start
@@ -178,12 +180,11 @@ docker run -d --name postgres --network warlay -e POSTGRES_USER=warlay \
   -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=warlay postgres:18-alpine
 docker run -d --name redis --network warlay redis:8-alpine
 
-docker build --target main -t warlay-main -f server/Dockerfile .
 docker run -d --name warlay-main --network warlay -p 8080:8080 \
   -e WARLAY_DATABASE_URL=postgres://warlay:secret@postgres:5432/warlay \
   -e WARLAY_REDIS_URL=redis://redis:6379 \
   -e WARLAY_HELPER_SECRET=$(openssl rand -hex 32) \
-  warlay-main
+  ghcr.io/jhonsferg/warlay-main:latest
 ```
 
 That gives accounts, friends, rooms and chat. Direct P2P links and the relay
@@ -192,12 +193,6 @@ single-server deployment with an embedded helper, and
 [server/README.md](server/README.md#main-server-and-helpers-as-separate-containers)
 shows how to run helpers as separate containers. Then build the client for your
 server (see [Desktop client](#desktop-client-windows)).
-
-> [!NOTE]
-> The `ghcr.io/jhonsferg/warlay-server` image published with each release is
-> built from the last stage of `server/Dockerfile`, the legacy `hub`. The
-> `main` and `helper` images are built from source with `--target main` and
-> `--target helper`.
 
 ### Play
 
@@ -360,8 +355,9 @@ cross build --release -p server --target aarch64-unknown-linux-musl   # ARM64 se
 
 ### Server container image
 
-The image is built from the repository root, because the server depends on
-the workspace crates:
+Every release publishes ready-made images (`warlay-main`, `warlay-helper` and
+the legacy `warlay-server` hub) to GHCR. To build one yourself, do it from the
+repository root, because the server depends on the workspace crates:
 
 ```sh
 docker build --target main -t warlay-main -f server/Dockerfile .
@@ -378,8 +374,9 @@ machine and transfer the image:
 docker save warlay-main | gzip | ssh user@your-vps 'gunzip | docker load'
 ```
 
-Every release also publishes the legacy `hub` image as
-`ghcr.io/jhonsferg/warlay-server:<version>` and `:latest`.
+The published images are `ghcr.io/jhonsferg/warlay-main`,
+`ghcr.io/jhonsferg/warlay-helper` and the legacy `ghcr.io/jhonsferg/warlay-server`,
+each tagged `<version>` and `latest`.
 
 ## Installing the desktop client
 
@@ -436,8 +433,8 @@ flowchart LR
 
 - A VPS with a public IPv4 address running **Debian 12** or **Ubuntu 22.04+**
   (other distributions work with equivalent commands).
-- 1 vCPU and 1 GiB of RAM are enough for a small community. Building the image
-  needs more, so build elsewhere and transfer it (see
+- 1 vCPU and 1 GiB of RAM are enough for a small community, using the
+  published image. Building the image yourself needs more memory (see
   [Server container image](#server-container-image)).
 - A domain name whose DNS you control.
 - Root or `sudo` access over SSH.
@@ -536,13 +533,10 @@ and `warlay.example.com:7780` (what players' clients will reach), and your
 per-address rate limits see the real player behind nginx (step 9 sets that
 header). The database, Redis and the secret come from the environment, so
 they stay out of the file. See
-[server/README.md](server/README.md#configuration) for every option. Build
-the image (on a machine with enough memory, then transfer it) and start the
-container:
+[server/README.md](server/README.md#configuration) for every option. Start
+the container from the published image:
 
 ```sh
-docker build --target main -t warlay-main -f server/Dockerfile .
-
 docker run -d --name warlay-main --network warlay --restart unless-stopped \
   -p 127.0.0.1:8080:8080/tcp \
   -p 7779:7779/udp \
@@ -551,7 +545,7 @@ docker run -d --name warlay-main --network warlay --restart unless-stopped \
   -e WARLAY_REDIS_URL=redis://redis:6379 \
   -e WARLAY_HELPER_SECRET=<the value from openssl rand -hex 32> \
   -v /opt/warlay/main.toml:/app/config/main.toml:ro \
-  warlay-main
+  ghcr.io/jhonsferg/warlay-main:latest
 
 docker logs warlay-main   # "main server listening"
 ```
@@ -677,7 +671,7 @@ docker run -d --name warlay-main --network warlay --restart unless-stopped \
   -e WARLAY_REDIS_URL=redis://redis:6379 \
   -e WARLAY_HELPER_SECRET=<secret> \
   -v /opt/warlay/main.toml:/app/config/main.toml:ro \
-  warlay-main
+  ghcr.io/jhonsferg/warlay-main:latest
 ```
 
 ### Alternative: without Docker (systemd)
@@ -1453,11 +1447,11 @@ is the same edit in reverse.
 
 ## Operating the server
 
-**Update to a new release:** build the new `warlay-main` image (or load the
-one you transferred) and recreate the container with the same `docker run`
-command from step 6:
+**Update to a new release:** pull the new image and recreate the container
+with the same `docker run` command from step 6:
 
 ```sh
+docker pull ghcr.io/jhonsferg/warlay-main:latest
 docker rm -f warlay-main
 # re-run the same `docker run` command from step 6
 ```

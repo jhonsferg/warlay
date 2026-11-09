@@ -115,8 +115,11 @@ Run `warlay-server <mode> --help` for the command-line flags.
 
 ## Deploying with Docker
 
-The image is built from the **repository root** (the server depends on the
-workspace crates), with one stage per role:
+Every release publishes one image per role to GHCR:
+`ghcr.io/jhonsferg/warlay-main`, `ghcr.io/jhonsferg/warlay-helper` and the
+legacy `ghcr.io/jhonsferg/warlay-server` (the `hub`), each tagged with the
+version and `latest`. To build them yourself, run from the **repository root**
+(the server depends on the workspace crates), with one stage per role:
 
 ```sh
 docker build --target main   -t warlay-main   -f server/Dockerfile .
@@ -126,8 +129,7 @@ docker build --target helper -t warlay-helper -f server/Dockerfile .
 The [`Dockerfile`](Dockerfile) uses `cargo-chef` to cache dependency builds
 and a distroless, non-root runtime image that contains only the stripped
 binary and the default config. A plain `docker build` without `--target`
-produces the legacy `hub`, the last stage; that is also what the
-`ghcr.io/jhonsferg/warlay-server` image published with each release contains.
+produces the legacy `hub`, the last stage.
 
 To ship a locally built image to a server without a registry:
 
@@ -154,7 +156,7 @@ docker run -d --name warlay-main --restart unless-stopped -p 8080:8080 \
   -e WARLAY_DATABASE_URL=postgres://warlay:secret@db:5432/warlay \
   -e WARLAY_REDIS_URL=redis://redis:6379 \
   -e WARLAY_HELPER_SECRET=<openssl rand -hex 32> \
-  warlay-main
+  ghcr.io/jhonsferg/warlay-main:latest
 ```
 
 A helper is configured entirely through the environment, so one image
@@ -173,7 +175,7 @@ docker run -d --name warlay-helper-1 --restart unless-stopped \
   -e WARLAY_EDGE_PUBLIC_URL=https://helper1.example.com \
   -e WARLAY_DATABASE_URL=postgres://warlay:secret@db:5432/warlay \
   -e WARLAY_REDIS_URL=redis://redis:6379 \
-  warlay-helper
+  ghcr.io/jhonsferg/warlay-helper:latest
 ```
 
 | Variable                        | Role         | Overrides                                                             |
