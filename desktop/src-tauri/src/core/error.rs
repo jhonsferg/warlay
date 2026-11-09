@@ -19,8 +19,6 @@ pub enum AppError {
     Network(#[from] crate::network::NetworkError),
     #[error("Invalid input: {0}")]
     InvalidInput(String),
-    #[error("Not implemented")]
-    NotImplemented,
 }
 
 impl Serialize for AppError {
