@@ -2,6 +2,7 @@ mod cli;
 mod helper;
 mod logging;
 mod main_server;
+mod shutdown;
 mod udp;
 mod ws_server;
 
@@ -144,7 +145,7 @@ async fn run_hub(args: HubArgs) -> Result<()> {
     });
 
     tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
+        _ = shutdown::signal() => {
             info!("shutdown signal received, stopping warlay-server (hub mode)");
         }
         result = relay_handle.data_task => {
@@ -241,7 +242,7 @@ async fn run_lan_mesh(args: LanMeshArgs) -> Result<()> {
     let control_task = control_responder.spawn();
 
     tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
+        _ = shutdown::signal() => {
             info!("shutdown signal received, stopping warlay-server (lan-mesh mode)");
         }
         result = relay_handle.data_task => {
