@@ -87,7 +87,7 @@ pub async fn run(config: MainConfigFile) -> Result<()> {
     info!(addr = %config.main.http_addr, embedded_helper = embedded_task.is_some(), "main server listening");
 
     tokio::select! {
-        result = axum::serve(listener, app) => {
+        result = axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()) => {
             if let Err(error) = result {
                 error!(%error, "HTTP server terminated");
             }
