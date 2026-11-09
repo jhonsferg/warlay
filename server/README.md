@@ -324,6 +324,13 @@ Linux caps them at `net.core.rmem_max` and `net.core.wmem_max`; raise both to
   `access_token_ttl_secs` and are sent as `Authorization: Bearer`. A client
   signs the user out only when the server rejects the refresh token, never
   because the server was unreachable or answered 5xx.
+- **Account recovery.** There is no e-mail: a new account gets 8 one-time
+  **recovery codes** (shown once, stored only as SHA-256 hashes). With one,
+  `POST /auth/recover` sets a new password, closes every session of the
+  account (refresh tokens and live access tokens) and spends the code; a weak
+  password does not spend it, and a wrong account and a wrong code get the same
+  answer. `POST /me/recovery-codes` (with the password) replaces the set;
+  `GET /me/recovery-codes` says how many are left.
 - **Private chat.** Direct messages are end-to-end encrypted between clients
   (X25519 + ChaCha20-Poly1305, identity keys published at `/me/e2e-key`); the
   server stores and relays ciphertext only.
