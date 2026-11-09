@@ -27,6 +27,9 @@ pub struct Tokens {
 pub struct AuthResponse {
     pub user: Me,
     pub tokens: Tokens,
+    /// Recovery codes, only in the answer to sign-up and shown only once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_codes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,7 +92,7 @@ fn validate_email(email: &str) -> ApiResult<()> {
     Ok(())
 }
 
-fn validate_password(password: &str) -> ApiResult<()> {
+pub(crate) fn validate_password(password: &str) -> ApiResult<()> {
     if password.chars().count() < 8 || password.len() > 128 {
         return Err(ApiError::bad_request(
             "weak_password",
@@ -143,6 +146,7 @@ async fn start_session(state: &AppState, user: UserRow, headers: &HeaderMap) -> 
             refresh_token,
             expires_in: state.settings.access_token_ttl_secs,
         },
+        recovery_codes: None,
     })
 }
 
@@ -193,7 +197,11 @@ pub async fn register(
     let user = load_user(&state, id)
         .await?
         .ok_or_else(|| ApiError::internal("user vanished"))?;
-    Ok(Json(start_session(&state, user, &headers).await?))
+    let mut response = start_session(&state, user, &headers).await?;
+    // A new account starts with recovery codes; this is the only time they are
+    // shown without asking for the password.
+    response.recovery_codes = Some(super::recovery::create_set(&state, id).await?);
+    Ok(Json(response))
 }
 
 pub async fn login(

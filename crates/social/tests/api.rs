@@ -1164,3 +1164,125 @@ async fn deleting_a_community_removes_it_and_its_pending_invites_for_everyone() 
         "the pending invite to a deleted community must disappear"
     );
 }
+
+#[tokio::test]
+async fn recovery_codes_reset_a_password_and_close_every_session() {
+    let Some(s) = start().await else { return };
+    let username = unique("rec");
+    let (status, signup) = s
+        .call(
+            "POST",
+            "/auth/register",
+            None,
+            Some(json!({ "username": username, "email": format!("{username}@test.dev"), "password": "supersecret" })),
+        )
+        .await;
+    assert_eq!(status, 200, "{signup}");
+    let codes: Vec<String> = signup["recoveryCodes"]
+        .as_array()
+        .expect("sign-up returns the codes")
+        .iter()
+        .map(|c| c.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(codes.len(), 8);
+    let user = User {
+        id: signup["user"]["id"].as_str().unwrap().parse().unwrap(),
+        username: username.clone(),
+        token: signup["tokens"]["accessToken"].as_str().unwrap().into(),
+        refresh: signup["tokens"]["refreshToken"].as_str().unwrap().into(),
+    };
+    assert_eq!(s.ok("GET", "/me/recovery-codes", &user, None).await["remaining"], 8);
+
+    let recover = |code: &str, password: &str| {
+        s.call(
+            "POST",
+            "/auth/recover",
+            None,
+            Some(json!({ "login": username.to_uppercase(), "code": code, "newPassword": password })),
+        )
+    };
+
+    // A weak password is refused without spending the code.
+    let (status, value) = recover(&codes[0], "short").await;
+    assert_eq!((status, value["error"].as_str()), (400, Some("weak_password")));
+    // A wrong code and a wrong account look the same.
+    let (status, value) = recover("ZZZZZ-ZZZZZ", "new-password-1").await;
+    assert_eq!((status, value["error"].as_str()), (400, Some("invalid_recovery")));
+    assert_eq!(s.ok("GET", "/me/recovery-codes", &user, None).await["remaining"], 8);
+
+    // The code works (typed in lower case and without the dash), once.
+    let typed = codes[0].replace('-', "").to_lowercase();
+    let (status, value) = recover(&typed, "new-password-1").await;
+    assert_eq!((status, value["remaining"].as_i64()), (200, Some(7)), "{value}");
+    let (status, value) = recover(&codes[0], "new-password-2").await;
+    assert_eq!(
+        (status, value["error"].as_str()),
+        (400, Some("invalid_recovery")),
+        "a code is single use"
+    );
+
+    // Every session is closed: the old access token, the old refresh token.
+    let (status, _) = s.call("GET", "/me", Some(&user.token), None).await;
+    assert_eq!(status, 401, "the old access token must stop working at once");
+    let (status, _) = s
+        .call(
+            "POST",
+            "/auth/refresh",
+            None,
+            Some(json!({ "refreshToken": user.refresh })),
+        )
+        .await;
+    assert_eq!(status, 401);
+    // The old password is gone and the new one works.
+    let login = |password: &str| {
+        s.call(
+            "POST",
+            "/auth/login",
+            None,
+            Some(json!({ "login": username, "password": password })),
+        )
+    };
+    assert_eq!(login("supersecret").await.0, 401);
+    let (status, session) = login("new-password-1").await;
+    assert_eq!(status, 200, "{session}");
+    let user = User {
+        token: session["tokens"]["accessToken"].as_str().unwrap().into(),
+        refresh: session["tokens"]["refreshToken"].as_str().unwrap().into(),
+        ..user
+    };
+
+    // New codes need the password and replace the old set.
+    let (status, value) = s
+        .call(
+            "POST",
+            "/me/recovery-codes",
+            Some(&user.token),
+            Some(json!({ "password": "wrong-password" })),
+        )
+        .await;
+    assert_eq!((status, value["error"].as_str()), (400, Some("invalid_credentials")));
+    let fresh = s
+        .ok(
+            "POST",
+            "/me/recovery-codes",
+            &user,
+            Some(json!({ "password": "new-password-1" })),
+        )
+        .await;
+    let fresh: Vec<String> = fresh["codes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap().into())
+        .collect();
+    assert_eq!(fresh.len(), 8);
+    assert_eq!(s.ok("GET", "/me/recovery-codes", &user, None).await["remaining"], 8);
+    let (status, value) = recover(&codes[1], "new-password-3").await;
+    assert_eq!(
+        (status, value["error"].as_str()),
+        (400, Some("invalid_recovery")),
+        "the old set is gone"
+    );
+    let (status, _) = recover(&fresh[0], "new-password-3").await;
+    assert_eq!(status, 200);
+}

@@ -36,6 +36,10 @@ Knowing what Warlay does and does not protect against helps triage reports:
   the server certificate is verified against the public Web PKI. A plain
   `http://` address is supported for private tests and offers no protection
   against an eavesdropper or an active man-in-the-middle.
+- **Account recovery**: without e-mail, through one-time recovery codes
+  (8 per set, 50 bits each, only their hashes are stored). Using one sets a
+  new password and signs the account out everywhere; the endpoint is rate
+  limited per address and per account.
 - **Private chat**: direct messages are end-to-end encrypted between clients
   (X25519 key agreement, HKDF-SHA256 and ChaCha20-Poly1305); the server
   stores and relays ciphertext. Safety numbers let users verify each other's

@@ -16,6 +16,7 @@ pub mod helpers;
 mod models;
 pub mod realtime;
 mod receipts;
+mod recovery;
 mod routes;
 mod schema;
 mod state;
@@ -35,7 +36,8 @@ pub use error::ApiError;
 pub use state::AppState;
 
 use routes::{
-    auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications, rooms, users,
+    auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications,
+    recovery as recovery_routes, rooms, users,
 };
 
 /// Connects to Postgres (running migrations) and Redis, and starts the
@@ -97,8 +99,13 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(auth_routes::login))
         .route("/auth/refresh", post(auth_routes::refresh))
         .route("/auth/logout", post(auth_routes::logout))
+        .route("/auth/recover", post(recovery_routes::recover))
         .route("/me", get(auth_routes::me).patch(auth_routes::update_me))
         .route("/me/password", post(auth_routes::change_password))
+        .route(
+            "/me/recovery-codes",
+            get(recovery_routes::status).post(recovery_routes::regenerate),
+        )
         .route("/me/e2e-key", put(keys::publish))
         .route("/users/{id}/e2e-key", get(keys::get))
         .route("/users/search", get(users::search))
