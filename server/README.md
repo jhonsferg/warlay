@@ -74,6 +74,7 @@ access_token_ttl_secs = 900
 refresh_token_ttl_days = 30
 room_ticket_ttl_secs = 43200
 cors_origins = []                 # empty: any origin (the desktop webview)
+# client_ip_header = "x-real-ip"  # real client address behind a proxy (per-IP limits)
 disconnect_grace_secs = 45        # a player offline this long leaves the room
 host_absence_close_secs = 86400   # a room whose host never returns is closed
 
@@ -312,7 +313,9 @@ Linux caps them at `net.core.rmem_max` and `net.core.wmem_max`; raise both to
   pool; an unknown account takes as long to refuse as a known one, and when
   the pool is saturated login is refused with 503 instead of queueing without
   bound. Logins and other sensitive calls are rate limited per window in
-  Redis.
+  Redis, per account and per client address. Behind a reverse proxy set
+  `client_ip_header` (for example `x-real-ip`) or every player will share the
+  proxy's address; leave it empty when clients connect directly.
 - **Sessions.** Access and refresh tokens are 32 random bytes (URL-safe
   base64), stored only as their SHA-256; access tokens live in Redis for
   `access_token_ttl_secs` and are sent as `Authorization: Bearer`. A client

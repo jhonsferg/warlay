@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::auth::{
     ensure_hashing_capacity, hash_password, issue_access_token, random_token, rate_limit, revoke_access_token,
-    token_hash, verify_password, AuthUser,
+    token_hash, verify_password, AuthUser, ClientIp,
 };
 use crate::error::{ApiError, ApiResult};
 use crate::models::{load_user, pick_color, Me, UserRow};
@@ -148,6 +148,7 @@ async fn start_session(state: &AppState, user: UserRow, headers: &HeaderMap) -> 
 
 pub async fn register(
     State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
     headers: HeaderMap,
     Json(req): Json<RegisterRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
@@ -158,6 +159,9 @@ pub async fn register(
     validate_password(&req.password)?;
     let display_name = validate_display_name(req.display_name.as_deref().unwrap_or(&username))?;
     ensure_hashing_capacity()?;
+    if let Some(ip) = ip {
+        rate_limit(&state, &format!("register-ip:{ip}"), 10, 3600).await?;
+    }
     rate_limit(&state, &format!("register:{}", email), 5, 3600).await?;
 
     let id = Uuid::new_v4();
@@ -194,11 +198,17 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
     headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
     let login = req.login.trim().to_lowercase();
     ensure_hashing_capacity()?;
+    // Per account (guessing one password) and per address (trying one
+    // password against many accounts).
+    if let Some(ip) = ip {
+        rate_limit(&state, &format!("login-ip:{ip}"), 30, 300).await?;
+    }
     rate_limit(&state, &format!("login:{login}"), 10, 300).await?;
     let user = sqlx::query_as::<_, UserRow>(
         "SELECT id, username::text AS username, email::text AS email, password_hash, display_name, avatar_color, bio, created_at
@@ -223,7 +233,14 @@ pub async fn login(
 }
 
 /// Rotates the refresh token and issues a fresh access token.
-pub async fn refresh(State(state): State<AppState>, Json(req): Json<RefreshRequest>) -> ApiResult<Json<Tokens>> {
+pub async fn refresh(
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    Json(req): Json<RefreshRequest>,
+) -> ApiResult<Json<Tokens>> {
+    if let Some(ip) = ip {
+        rate_limit(&state, &format!("refresh-ip:{ip}"), 120, 300).await?;
+    }
     let row: Option<(Uuid, Uuid)> = sqlx::query_as(
         "SELECT id, user_id FROM sessions
          WHERE refresh_token_hash = $1 AND revoked_at IS NULL AND expires_at > now()",

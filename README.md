@@ -532,7 +532,9 @@ openssl rand -hex 32     # the helper secret, used below
 Edit `/opt/warlay/main.toml`: uncomment the `[embedded_helper]` block and set
 `public_rendezvous_addr` and `public_relay_addr` to `warlay.example.com:7779`
 and `warlay.example.com:7780` (what players' clients will reach), and your
-`region`. The database, Redis and the secret come from the environment, so
+`region`. Also uncomment `client_ip_header = "x-real-ip"` in `[main]`, so the
+per-address rate limits see the real player behind nginx (step 9 sets that
+header). The database, Redis and the secret come from the environment, so
 they stay out of the file. See
 [server/README.md](server/README.md#configuration) for every option. Build
 the image (on a machine with enough memory, then transfer it) and start the
