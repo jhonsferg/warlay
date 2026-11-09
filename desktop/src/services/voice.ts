@@ -1,8 +1,12 @@
 import { chooseCaptureTrack, type CaptureChoice } from "./captureChain";
 import { createRnnoiseFilter } from "./noiseSuppression";
-import { audioConstraints, type MicPrefs } from "./voicePrefs";
+import { audioConstraints, opusFrameMicros, type MicPrefs } from "./voicePrefs";
 import { rms, VoiceGate } from "./voiceActivity";
 import { PlaybackClock } from "./voiceJitter";
+import playbackWorkletUrl from "./voicePlayback.worklet.ts?worker&url";
+
+/** The processor registered by `voicePlayback.worklet.ts`. */
+const PLAYBACK_PROCESSOR = "warlay-playback";
 
 /**
  * In-room voice: the microphone is captured and Opus-encoded here in the
@@ -47,6 +51,13 @@ export interface VoiceTransport {
   onLevel?(from: string | null, level: number): void;
 }
 
+interface Peer {
+  decoder: any;
+  clock: PlaybackClock;
+  node: AudioWorkletNode | null;
+  ts: number;
+}
+
 export class VoiceEngine {
   private stream: MediaStream | null = null;
   private encoder: any = null;
@@ -55,9 +66,13 @@ export class VoiceEngine {
   private capture: CaptureChoice<MediaStreamTrack> | null = null;
   /** Why the strong noise filter is not active, when it was asked for. */
   noiseFallbackReason: string | undefined;
-  private readonly peers = new Map<string, { decoder: any; clock: PlaybackClock; ts: number }>();
+  /** `node` plays through an AudioWorklet's jitter buffer; without one (the worklet could not load) the
+   * chunks are scheduled one by one with `clock`. */
+  private readonly peers = new Map<string, Peer>();
   /** Shared desktop audio of each member: stereo, independent of their voice. */
-  private readonly desktopPeers = new Map<string, { decoder: any; clock: PlaybackClock; ts: number }>();
+  private readonly desktopPeers = new Map<string, Peer>();
+  /** Whether the playback worklet is loaded in the current AudioContext. */
+  private playbackWorklet = false;
   private muted = true;
   private running = false;
   private readonly gate = new VoiceGate();
@@ -75,6 +90,13 @@ export class VoiceEngine {
 
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(prefs) });
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: "interactive" });
+    this.playbackWorklet = await this.ctx.audioWorklet.addModule(playbackWorkletUrl).then(
+      () => true,
+      (error: unknown) => {
+        console.warn("playback worklet unavailable, scheduling chunks from the page instead:", error);
+        return false;
+      },
+    );
 
     const Encoder = g.AudioEncoder as AnyCtor;
     this.encoder = new Encoder({
@@ -91,7 +113,7 @@ export class VoiceEngine {
       sampleRate: SAMPLE_RATE,
       numberOfChannels: CHANNELS,
       bitrate: BITRATE,
-      opus: { frameDuration: 20000, application: "voip", signal: "voice" },
+      opus: { frameDuration: opusFrameMicros(prefs.lowLatency), application: "voip", signal: "voice" },
     });
 
     const [rawTrack] = this.stream.getAudioTracks();
@@ -161,7 +183,7 @@ export class VoiceEngine {
         error: (e: unknown) => console.error("voice decoder error", e),
       });
       decoder.configure({ codec: "opus", sampleRate: SAMPLE_RATE, numberOfChannels: CHANNELS });
-      peer = { decoder, clock: new PlaybackClock(), ts: 0 };
+      peer = { decoder, clock: new PlaybackClock(), node: this.playbackNode(1), ts: 0 };
       this.peers.set(from, peer);
     }
     if (peer.decoder.state !== "configured") return;
@@ -181,13 +203,32 @@ export class VoiceEngine {
         error: (e: unknown) => console.error("desktop audio decoder error", e),
       });
       decoder.configure({ codec: "opus", sampleRate: SAMPLE_RATE, numberOfChannels: 2 });
-      peer = { decoder, clock: new PlaybackClock(), ts: 0 };
+      peer = { decoder, clock: new PlaybackClock(), node: this.playbackNode(2), ts: 0 };
       this.desktopPeers.set(from, peer);
     }
     if (peer.decoder.state !== "configured") return;
     const Chunk = g.EncodedAudioChunk as AnyCtor;
     peer.decoder.decode(new Chunk({ type: "key", timestamp: peer.ts, data: frame }));
     peer.ts += 20000;
+  }
+
+  /** A speaker's playback node: it keeps its own jitter buffer on the audio thread. */
+  private playbackNode(channels: number): AudioWorkletNode | null {
+    const ctx = this.ctx;
+    if (!ctx || !this.playbackWorklet) return null;
+    try {
+      const node = new AudioWorkletNode(ctx, PLAYBACK_PROCESSOR, {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [channels],
+        processorOptions: { channels },
+      });
+      node.connect(ctx.destination);
+      return node;
+    } catch (error) {
+      console.warn("could not create a playback node:", error);
+      return null;
+    }
   }
 
   private playDesktop(from: string, data: any) {
@@ -204,6 +245,10 @@ export class VoiceEngine {
     data.copyTo(right, { planeIndex: Math.min(1, data.numberOfChannels - 1), format: "f32-planar" });
     const duration = frames / data.sampleRate;
     data.close();
+    if (peer.node) {
+      peer.node.port.postMessage([left, right], [left.buffer, right.buffer]);
+      return;
+    }
     const start = peer.clock.schedule(ctx.currentTime, duration);
     if (start === null) return;
     const buffer = ctx.createBuffer(2, frames, SAMPLE_RATE);
@@ -227,6 +272,10 @@ export class VoiceEngine {
     const duration = data.numberOfFrames / data.sampleRate;
     data.close();
     this.transport.onLevel?.(from, rms(samples));
+    if (peer.node) {
+      peer.node.port.postMessage([samples], [samples.buffer]);
+      return;
+    }
     const start = peer.clock.schedule(ctx.currentTime, duration);
     if (start === null) return;
     const buffer = ctx.createBuffer(CHANNELS, samples.length, SAMPLE_RATE);
@@ -238,7 +287,9 @@ export class VoiceEngine {
   }
 
   forget(from: string) {
-    this.peers.get(from)?.decoder.close();
+    const peer = this.peers.get(from);
+    peer?.decoder.close();
+    peer?.node?.disconnect();
     this.peers.delete(from);
   }
 
@@ -261,7 +312,10 @@ export class VoiceEngine {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     for (const id of [...this.peers.keys()]) this.forget(id);
-    for (const peer of this.desktopPeers.values()) peer.decoder.close();
+    for (const peer of this.desktopPeers.values()) {
+      peer.decoder.close();
+      peer.node?.disconnect();
+    }
     this.desktopPeers.clear();
     await this.ctx?.close().catch(() => {});
     this.ctx = null;
