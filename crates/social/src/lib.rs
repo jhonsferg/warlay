@@ -20,6 +20,7 @@ mod recovery;
 mod routes;
 mod schema;
 mod state;
+mod web;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -167,6 +168,8 @@ pub fn router(state: AppState) -> Router {
         .nest("/api/v1", api)
         .route("/internal/helpers/heartbeat", post(helpers::heartbeat_handler))
         .route("/health", get(|| async { "ok" }))
+        // The website: landing page, privacy, terms.
+        .merge(web::router())
         .layer(cors(&state.settings))
         .with_state(state)
 }
