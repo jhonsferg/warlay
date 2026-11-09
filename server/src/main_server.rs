@@ -92,7 +92,7 @@ pub async fn run(config: MainConfigFile) -> Result<()> {
                 error!(%error, "HTTP server terminated");
             }
         }
-        _ = tokio::signal::ctrl_c() => info!("shutdown signal received, stopping main server"),
+        _ = crate::shutdown::signal() => info!("shutdown signal received, stopping main server"),
     }
     if let Some(task) = embedded_task {
         task.abort();
