@@ -2,8 +2,8 @@
 //! sign-in pages (see `auth`). It is served by the main server itself, so it
 //! ships and updates together with the API and needs no other infrastructure.
 
-mod i18n;
-mod pages;
+pub(crate) mod i18n;
+pub(crate) mod pages;
 
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
@@ -23,6 +23,11 @@ const SOCIAL_PREVIEW: &[u8] = include_bytes!("assets/social-preview.png");
 /// site cannot be framed.
 const CSP: &str =
     "default-src 'none'; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
+/// The page with the sign-in form may also send the browser on to the app's
+/// loopback listener: browsers apply `form-action` to the redirect that follows
+/// a form post, too.
+const CSP_SIGN_IN_FORM: &str = "default-src 'none'; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self' http://127.0.0.1:*; frame-ancestors 'none'";
 
 #[derive(Debug, Deserialize)]
 struct LangQuery {
@@ -49,12 +54,21 @@ fn lang_of(query: &LangQuery, headers: &HeaderMap) -> Lang {
     )
 }
 
-fn html(body: String, lang: Lang) -> Response {
+pub(crate) fn html(body: String, lang: Lang) -> Response {
+    html_with_csp(body, lang, CSP)
+}
+
+/// A page whose form posts to the server and ends at the app's loopback address.
+pub(crate) fn html_sign_in_form(body: String, lang: Lang) -> Response {
+    html_with_csp(body, lang, CSP_SIGN_IN_FORM)
+}
+
+fn html_with_csp(body: String, lang: Lang, csp: &'static str) -> Response {
     (
         [
             (header::CONTENT_TYPE, "text/html; charset=utf-8"),
             (header::CACHE_CONTROL, "public, max-age=300"),
-            (header::CONTENT_SECURITY_POLICY, CSP),
+            (header::CONTENT_SECURITY_POLICY, csp),
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (header::REFERRER_POLICY, "strict-origin-when-cross-origin"),
             // Which language was served depends on the request.
@@ -66,7 +80,7 @@ fn html(body: String, lang: Lang) -> Response {
         .into_response()
 }
 
-fn base(state: &AppState) -> &str {
+pub(crate) fn base(state: &AppState) -> &str {
     state.settings.web_base_url.trim_end_matches('/')
 }
 
