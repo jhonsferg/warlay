@@ -39,10 +39,12 @@ async function invite(userId: string) {
   <aside class="activity" :aria-label="t('Amigos')">
     <header class="activity__head">
       <h3>{{ t("Amigos") }}</h3>
-      <span class="activity__online">{{ t('{n} en línea', { n: social.onlineCount }) }}</span>
+      <span class="activity__online">{{ t("{n} en línea", { n: social.onlineCount }) }}</span>
     </header>
     <div class="activity__body">
-      <p v-if="social.friends.length === 0" class="activity__empty">{{ t("Agrega amigos para ver aquí qué están jugando.") }}</p>
+      <p v-if="social.friends.length === 0" class="activity__empty">
+        {{ t("Agrega amigos para ver aquí qué están jugando.") }}
+      </p>
       <section v-for="g in groups" :key="g.status" class="activity__group">
         <p class="activity__eyebrow" :class="`activity__eyebrow--${g.status}`">
           {{ g.label }} — {{ g.friends.length }}
