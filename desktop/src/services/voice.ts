@@ -4,6 +4,7 @@ import { audioConstraints, opusFrameMicros, type MicPrefs } from "./voicePrefs";
 import { rms, VoiceGate } from "./voiceActivity";
 import { PlaybackClock } from "./voiceJitter";
 import playbackWorkletUrl from "./voicePlayback.worklet.ts?worker&url";
+import { t } from "./i18n.ts";
 
 /** The processor registered by `voicePlayback.worklet.ts`. */
 const PLAYBACK_PROCESSOR = "warlay-playback";
@@ -86,7 +87,7 @@ export class VoiceEngine {
   /** Opens the microphone and starts encoding. Starts muted-state per `muted`. */
   async start(prefs: MicPrefs = { deviceId: "", noise: "standard" }): Promise<void> {
     if (this.running) return;
-    if (!voiceSupported()) throw new Error("Este entorno no soporta WebCodecs/Opus para voz.");
+    if (!voiceSupported()) throw new Error(t("Este entorno no soporta WebCodecs/Opus para voz."));
 
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(prefs) });
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: "interactive" });
