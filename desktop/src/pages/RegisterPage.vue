@@ -94,7 +94,12 @@ async function submit() {
         <p class="auth-form__eyebrow">{{ t("Únete a Warlay") }}</p>
         <h2>{{ t("Crear cuenta") }}</h2>
       </header>
-      <FormField :label="t('Usuario')" for="username" :error="errors.username" :hint="t('Así te encontrarán tus amigos.')">
+      <FormField
+        :label="t('Usuario')"
+        for="username"
+        :error="errors.username"
+        :hint="t('Así te encontrarán tus amigos.')"
+      >
         <WInput
           id="username"
           v-model="username"
@@ -108,7 +113,13 @@ async function submit() {
         </WInput>
       </FormField>
       <FormField :label="t('Nombre visible (opcional)')" for="display-name">
-        <WInput id="display-name" v-model="displayName" size="lg" :placeholder="t('Thrall, Hijo de Durotan')" :maxlength="32">
+        <WInput
+          id="display-name"
+          v-model="displayName"
+          size="lg"
+          :placeholder="t('Thrall, Hijo de Durotan')"
+          :maxlength="32"
+        >
           <template #icon><User /></template>
         </WInput>
       </FormField>
@@ -145,7 +156,9 @@ async function submit() {
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
       <WButton type="submit" size="lg" block :loading="busy" :disabled="!valid">{{ t("Crear cuenta") }}</WButton>
       <GoogleSignIn @signed-in="router.replace('/')" />
-      <p class="auth-form__switch">{{ t("¿Ya tienes cuenta?") }} <RouterLink to="/login">{{ t("Inicia sesión") }}</RouterLink></p>
+      <p class="auth-form__switch">
+        {{ t("¿Ya tienes cuenta?") }} <RouterLink to="/login">{{ t("Inicia sesión") }}</RouterLink>
+      </p>
     </form>
   </AuthLayout>
 </template>
