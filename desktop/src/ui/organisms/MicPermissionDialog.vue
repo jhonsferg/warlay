@@ -3,6 +3,7 @@ import { Mic, ShieldAlert } from "@lucide/vue";
 import { native } from "../../services/native";
 import WButton from "../atoms/WButton.vue";
 import WModal from "./WModal.vue";
+import { t } from "../../services/i18n";
 
 /**
  * Warlay's own microphone request, shown the first time instead of the
@@ -16,46 +17,46 @@ const emit = defineEmits<{ allow: []; deny: []; close: [] }>();
 <template>
   <WModal
     v-if="mode === 'ask'"
-    title="Usar tu micrófono"
-    subtitle="Para hablar con los jugadores de la sala."
+    :title="t('Usar tu micrófono')"
+    :subtitle="t('Para hablar con los jugadores de la sala.')"
     :width="440"
     @close="emit('deny')"
   >
     <div class="mic-dialog" data-testid="mic-consent-dialog">
       <Mic class="mic-dialog__icon" :size="28" />
       <ul>
-        <li>Warlay solo escucha mientras estés unido a la voz y no lo hayas silenciado.</li>
-        <li>El audio va directo a los jugadores de tu sala, sin pasar por ningún servidor.</li>
-        <li>Puedes silenciarte o salir de la voz cuando quieras, también con el atajo global.</li>
+        <li>{{ t("Warlay solo escucha mientras estés unido a la voz y no lo hayas silenciado.") }}</li>
+        <li>{{ t("El audio va directo a los jugadores de tu sala, sin pasar por ningún servidor.") }}</li>
+        <li>{{ t("Puedes silenciarte o salir de la voz cuando quieras, también con el atajo global.") }}</li>
       </ul>
     </div>
     <template #footer>
-      <WButton variant="ghost" data-testid="mic-consent-deny" @click="emit('deny')">Ahora no</WButton>
+      <WButton variant="ghost" data-testid="mic-consent-deny" @click="emit('deny')">{{ t("Ahora no") }}</WButton>
       <WButton data-testid="mic-consent-allow" @click="emit('allow')">
-        <template #icon><Mic /></template>Permitir micrófono
+        <template #icon><Mic /></template>{{ t("Permitir micrófono") }}
       </WButton>
     </template>
   </WModal>
 
   <WModal
     v-else
-    title="Windows bloquea el micrófono"
-    subtitle="Ya diste permiso a Warlay, pero el sistema no lo deja pasar."
+    :title="t('Windows bloquea el micrófono')"
+    :subtitle="t('Ya diste permiso a Warlay, pero el sistema no lo deja pasar.')"
     :width="440"
     @close="emit('close')"
   >
     <div class="mic-dialog" data-testid="mic-blocked-dialog">
       <ShieldAlert class="mic-dialog__icon mic-dialog__icon--warn" :size="28" />
       <ul>
-        <li>Abre Configuración > Privacidad y seguridad > Micrófono.</li>
-        <li>Activa "Acceso al micrófono" y "Permitir que las aplicaciones de escritorio accedan a tu micrófono".</li>
-        <li>Vuelve aquí y pulsa de nuevo el botón del micrófono.</li>
+        <li>Abre Configuración > Privacidad y seguridad > {{ t("Micrófono.") }}</li>
+        <li>{{ t("Activa \"Acceso al micrófono\" y \"Permitir que las aplicaciones de escritorio accedan a tu micrófono\".") }}</li>
+        <li>{{ t("Vuelve aquí y pulsa de nuevo el botón del micrófono.") }}</li>
       </ul>
     </div>
     <template #footer>
-      <WButton variant="ghost" @click="emit('close')">Cerrar</WButton>
+      <WButton variant="ghost" @click="emit('close')">{{ t("Cerrar") }}</WButton>
       <WButton data-testid="mic-open-settings" @click="native.openMicPrivacySettings()">
-        Abrir configuración de Windows
+        {{ t("Abrir configuración de Windows") }}
       </WButton>
     </template>
   </WModal>
