@@ -7,6 +7,7 @@ import { useToasts } from "../../stores/toasts";
 import { useVoice } from "../../stores/voice";
 import WSwitch from "../atoms/WSwitch.vue";
 import FormField from "../molecules/FormField.vue";
+import { t, tx } from "../../services/i18n";
 
 /** Input device and noise level for the in-room voice. Applies on its own. */
 const settings = useSettings();
@@ -28,23 +29,23 @@ async function refreshDevices() {
       (d) => d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications",
     );
     namesHidden.value = mics.length > 0 && mics.every((d) => !d.label);
-    inputs.value = mics.map((d, i) => ({ id: d.deviceId, label: d.label || `Micrófono ${i + 1}` }));
+    inputs.value = mics.map((d, i) => ({ id: d.deviceId, label: d.label || t("Micrófono {n}", { n: i + 1 }) }));
   } catch {
     inputs.value = [];
   }
 }
 
 const NOISE_LEVELS: { value: NoiseLevel; label: string }[] = [
-  { value: "off", label: "Desactivada" },
-  { value: "standard", label: "Estándar (del navegador)" },
-  { value: "strong", label: "Fuerte (RNNoise)" },
+  { value: "off", label: tx("Desactivada") },
+  { value: "standard", label: tx("Estándar (del navegador)") },
+  { value: "strong", label: tx("Fuerte (RNNoise)") },
 ];
 
 const HINTS: Record<NoiseLevel, string> = {
-  off: "Tu micrófono se envía tal cual, solo con cancelación de eco.",
-  standard: "Quita ruido de fondo sencillo, como el siseo constante.",
+  off: tx("Tu micrófono se envía tal cual, solo con cancelación de eco."),
+  standard: tx("Quita ruido de fondo sencillo, como el siseo constante."),
   strong:
-    "Usa una red neuronal (RNNoise) para quitar teclado, ventilador y ruidos de fondo. No elimina a otra persona hablando cerca.",
+    tx("Usa una red neuronal (RNNoise) para quitar teclado, ventilador y ruidos de fondo. No elimina a otra persona hablando cerca."),
 };
 
 async function save(patch: {
@@ -65,9 +66,9 @@ async function save(patch: {
       await voice.syncDesktopShare(settings.shareDesktopAudio);
       return;
     }
-    if (voice.active) toasts.info("Ajuste guardado", "Se aplicará la próxima vez que te unas a la voz.");
+    if (voice.active) toasts.info(t("Ajuste guardado"), t("Se aplicará la próxima vez que te unas a la voz."));
   } catch {
-    toasts.error("No se pudo guardar el ajuste de voz");
+    toasts.error(t("No se pudo guardar el ajuste de voz"));
   }
 }
 
@@ -80,9 +81,9 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
 
 <template>
   <section class="voice-settings" data-testid="voice-settings">
-    <h3><Mic /> Voz</h3>
+    <h3><Mic /> {{ t("Voz") }}</h3>
 
-    <FormField label="Micrófono" for="mic-device">
+    <FormField :label="t('Micrófono')" for="mic-device">
       <select
         id="mic-device"
         class="voice-settings__select"
@@ -90,18 +91,18 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
         :value="settings.micDeviceId"
         @change="save({ micDeviceId: ($event.target as HTMLSelectElement).value })"
       >
-        <option value="">Predeterminado del sistema</option>
+        <option value="">{{ t("Predeterminado del sistema") }}</option>
         <option v-for="d in inputs" :key="d.id" :value="d.id">{{ d.label }}</option>
       </select>
     </FormField>
     <p v-if="namesHidden" class="voice-settings__note" data-testid="mic-names-hidden">
-      Los nombres de los dispositivos aparecen después de usar el micrófono una vez.
+      {{ t("Los nombres de los dispositivos aparecen después de usar el micrófono una vez.") }}
     </p>
 
     <FormField
-      label="Supresión de ruido"
+      :label="t('Supresión de ruido')"
       for="noise-level"
-      :hint="HINTS[normalizeNoiseLevel(settings.noiseSuppression)]"
+      :hint="t(HINTS[normalizeNoiseLevel(settings.noiseSuppression)])"
     >
       <select
         id="noise-level"
@@ -110,22 +111,20 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
         :value="settings.noiseSuppression"
         @change="save({ noiseSuppression: normalizeNoiseLevel(($event.target as HTMLSelectElement).value) })"
       >
-        <option v-for="l in NOISE_LEVELS" :key="l.value" :value="l.value">{{ l.label }}</option>
+        <option v-for="l in NOISE_LEVELS" :key="l.value" :value="l.value">{{ t(l.label) }}</option>
       </select>
     </FormField>
 
     <div class="voice-settings__share">
       <div>
-        <strong>Latencia mínima de voz</strong>
+        <strong>{{ t("Latencia mínima de voz") }}</strong>
         <p class="voice-settings__note" data-testid="low-latency-hint">
-          Envía tu voz en paquetes de 10 ms en lugar de 20 ms: unos 10 ms menos de retraso, pero casi el doble de
-          paquetes por segundo (más datos de subida, sobre todo en salas grandes). Se aplica la próxima vez que te unas
-          a la voz.
+          {{ t("Envía tu voz en paquetes de 10 ms en lugar de 20 ms: unos 10 ms menos de retraso, pero casi el doble de paquetes por segundo (más datos de subida, sobre todo en salas grandes). Se aplica la próxima vez que te unas a la voz.") }}
         </p>
       </div>
       <WSwitch
         :model-value="settings.lowLatencyVoice"
-        label="Latencia mínima de voz"
+        :label="t('Latencia mínima de voz')"
         data-testid="low-latency-voice"
         @update:model-value="save({ lowLatencyVoice: $event })"
       />
@@ -133,15 +132,14 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
 
     <div class="voice-settings__share">
       <div>
-        <strong>Compartir el audio del escritorio</strong>
+        <strong>{{ t("Compartir el audio del escritorio") }}</strong>
         <p class="voice-settings__note" data-testid="share-hint">
-          Los jugadores de la sala oirán el sonido de tu PC (tu juego, música, un vídeo) mientras estés en la voz. El
-          audio de Warlay, es decir sus voces, nunca se reenvía. Requiere Windows 11.
+          {{ t("Los jugadores de la sala oirán el sonido de tu PC (tu juego, música, un vídeo) mientras estés en la voz. El audio de Warlay, es decir sus voces, nunca se reenvía. Requiere Windows 11.") }}
         </p>
       </div>
       <WSwitch
         :model-value="settings.shareDesktopAudio"
-        label="Compartir el audio del escritorio"
+        :label="t('Compartir el audio del escritorio')"
         data-testid="share-desktop-audio"
         @update:model-value="save({ shareDesktopAudio: $event })"
       />
