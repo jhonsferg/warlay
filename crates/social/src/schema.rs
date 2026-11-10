@@ -18,6 +18,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (6, "external_identities", EXTERNAL_IDENTITIES),
     (7, "user_totp", USER_TOTP),
     (8, "blocks_and_reports", BLOCKS_AND_REPORTS),
+    (9, "session_details", SESSION_DETAILS),
 ];
 
 /// Arbitrary constant identifying Warlay's migration lock.
@@ -276,6 +277,13 @@ CREATE TABLE IF NOT EXISTS user_reports (
 );
 CREATE INDEX IF NOT EXISTS user_reports_open ON user_reports (created_at DESC) WHERE status = 'open';
 CREATE INDEX IF NOT EXISTS user_reports_reported ON user_reports (reported_id);
+"#;
+
+/// What the list of devices shows: how each session signed in and when it was
+/// last used (renewed).
+const SESSION_DETAILS: &str = r#"
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'password';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ NOT NULL DEFAULT now();
 "#;
 
 /// Public keys for end-to-end encrypted direct messages. The server never
