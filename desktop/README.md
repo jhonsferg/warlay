@@ -32,8 +32,10 @@ executable does everything.
   it is neither) and Settings > Cuenta > Idioma changes it on the spot. Texts
   are written in Spanish inside `t("...")` and English lives in a dictionary
   keyed by that Spanish text (`src/i18n/en.ts`); a unit test fails if a text has
-  no English or the dictionary holds one that is no longer used. Messages that
-  come from the server (for example a rejected password) are still in Spanish.
+  no English or the dictionary holds one that is no longer used. The messages
+  the server puts in its errors (a rejected password...) are written in Spanish
+  there and translated by the client (`src/i18n/enServer.ts`); a test reads the
+  server's source and fails if one has no English.
 - **Rooms** - create, list and join rooms, with a live roster that shows each
   player's **ping**, whether their **microphone is muted**, and who is
   **talking** (a ring around the avatar that follows their volume, plus
