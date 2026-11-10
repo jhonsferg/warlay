@@ -49,7 +49,11 @@ const emit = defineEmits<{ allow: []; deny: []; close: [] }>();
       <ShieldAlert class="mic-dialog__icon mic-dialog__icon--warn" :size="28" />
       <ul>
         <li>Abre Configuración > Privacidad y seguridad > {{ t("Micrófono.") }}</li>
-        <li>{{ t("Activa \"Acceso al micrófono\" y \"Permitir que las aplicaciones de escritorio accedan a tu micrófono\".") }}</li>
+        <li>
+          {{
+            t('Activa "Acceso al micrófono" y "Permitir que las aplicaciones de escritorio accedan a tu micrófono".')
+          }}
+        </li>
         <li>{{ t("Vuelve aquí y pulsa de nuevo el botón del micrófono.") }}</li>
       </ul>
     </div>
