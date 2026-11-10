@@ -24,7 +24,11 @@ async function copy() {
   <div class="recovery-codes">
     <p class="recovery-codes__warning" role="note">
       <ShieldAlert :size="16" />
-      {{ t("Guarda estos códigos ahora: no volverán a mostrarse. Cada uno sirve una sola vez para poner una contraseña nueva si olvidas la tuya.") }}
+      {{
+        t(
+          "Guarda estos códigos ahora: no volverán a mostrarse. Cada uno sirve una sola vez para poner una contraseña nueva si olvidas la tuya.",
+        )
+      }}
     </p>
     <ol class="recovery-codes__list" data-testid="recovery-codes">
       <li v-for="code in codes" :key="code">
