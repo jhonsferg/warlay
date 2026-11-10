@@ -51,6 +51,11 @@ export interface Profile extends UserWithPresence {
   isFriend: boolean;
 }
 
+/** A player the signed-in user blocked. */
+export interface BlockedUser extends UserSummary {
+  blockedAt: string;
+}
+
 export interface Tokens {
   accessToken: string;
   refreshToken: string;
