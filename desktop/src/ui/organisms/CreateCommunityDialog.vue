@@ -41,7 +41,11 @@ async function submit() {
 </script>
 
 <template>
-  <WModal :title="t('Crear comunidad')" :subtitle="t('Un lugar para tu clan: chat, salas y miembros.')" @close="emit('close')">
+  <WModal
+    :title="t('Crear comunidad')"
+    :subtitle="t('Un lugar para tu clan: chat, salas y miembros.')"
+    @close="emit('close')"
+  >
     <form id="create-community" class="create-community" @submit.prevent="submit">
       <div class="create-community__preview">
         <WAvatar :name="name || t('Nueva comunidad')" color="#7b61ff" size="xl" shape="squircle" />
@@ -87,9 +91,9 @@ async function submit() {
     </form>
     <template #footer>
       <WButton variant="ghost" @click="emit('close')">{{ t("Cancelar") }}</WButton>
-      <WButton type="submit" form="create-community" :loading="busy" :disabled="name.trim().length < 3"
-        >{{ t("Crear comunidad") }}</WButton
-      >
+      <WButton type="submit" form="create-community" :loading="busy" :disabled="name.trim().length < 3">{{
+        t("Crear comunidad")
+      }}</WButton>
     </template>
   </WModal>
 </template>
