@@ -13,7 +13,12 @@ const password = ref("");
 </script>
 
 <template>
-  <WModal :title="roomName" :subtitle="t('Esta sala está protegida con contraseña.')" :width="400" @close="emit('close')">
+  <WModal
+    :title="roomName"
+    :subtitle="t('Esta sala está protegida con contraseña.')"
+    :width="400"
+    @close="emit('close')"
+  >
     <form id="room-password-form" @submit.prevent="emit('submit', password)">
       <FormField :label="t('Contraseña')" for="join-password" :error="error">
         <WInput id="join-password" v-model="password" type="password" :invalid="!!error">
