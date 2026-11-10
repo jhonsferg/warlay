@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { t, tx } from "../../services/i18n";
 
 const emit = defineEmits<{ pick: [emoji: string] }>();
 
 const GROUPS: { name: string; icon: string; emojis: string[] }[] = [
   {
-    name: "Caras",
+    name: tx("Caras"),
     icon: "😀",
     emojis:
       "😀 😁 😂 🤣 😊 😍 😘 😎 🤩 🥳 😏 😅 😉 🙂 🙃 😋 😛 🤔 🤨 😐 😑 😴 😮 😱 😭 😢 😤 😡 🤯 🥶 🥵 🤢 😇 🤠 🤗 🫡".split(
@@ -13,17 +14,17 @@ const GROUPS: { name: string; icon: string; emojis: string[] }[] = [
       ),
   },
   {
-    name: "Gestos",
+    name: tx("Gestos"),
     icon: "👍",
     emojis: "👍 👎 👌 ✌️ 🤞 🤝 👏 🙌 🙏 💪 👊 ✊ 🤙 👋 🫶 🤘 ☝️ 👀 🧠 🫠".split(" "),
   },
   {
-    name: "Juego",
+    name: tx("Juego"),
     icon: "🎮",
     emojis: "🎮 🕹️ ⚔️ 🛡️ 🏹 🗡️ 💣 🔥 ⚡ 💥 ❄️ 🏆 🥇 🥈 🥉 💀 👑 💎 🎯 🎲 🧙 🧟 🐉 🐺 🦅".split(" "),
   },
   {
-    name: "Símbolos",
+    name: tx("Símbolos"),
     icon: "❤️",
     emojis: "❤️ 🧡 💛 💚 💙 💜 🖤 💔 ✨ 🎉 🎊 ✅ ❌ ❗ ❓ 💯 🔔 ⭐ 🌟 🚀".split(" "),
   },
@@ -33,7 +34,7 @@ const active = ref(0);
 </script>
 
 <template>
-  <div class="emoji-picker" role="dialog" aria-label="Emojis">
+  <div class="emoji-picker" role="dialog" :aria-label="t('Emojis')">
     <nav class="emoji-picker__tabs">
       <button
         v-for="(group, i) in GROUPS"
@@ -41,8 +42,8 @@ const active = ref(0);
         type="button"
         class="emoji-picker__tab"
         :class="{ 'emoji-picker__tab--active': i === active }"
-        :aria-label="group.name"
-        :title="group.name"
+        :aria-label="t(group.name)"
+        :title="t(group.name)"
         @click="active = i"
       >
         {{ group.icon }}
