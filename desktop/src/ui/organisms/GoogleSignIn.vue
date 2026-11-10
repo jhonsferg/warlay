@@ -8,6 +8,7 @@ import type { AuthProviders } from "../../services/types";
 import { useSession } from "../../stores/session";
 import WButton from "../atoms/WButton.vue";
 import WInput from "../atoms/WInput.vue";
+import { t } from "../../services/i18n";
 
 const emit = defineEmits<{ signedIn: [] }>();
 const session = useSession();
@@ -81,19 +82,19 @@ function cancel() {
 
 <template>
   <div v-if="providers" class="google-signin" data-testid="google-signin">
-    <p class="google-signin__divider"><span>o</span></p>
+    <p class="google-signin__divider"><span>{{ t("o") }}</span></p>
     <form v-if="grant && !waiting" class="google-signin__totp" @submit.prevent="finish">
-      <label for="google-totp">Código de verificación</label>
+      <label for="google-totp">{{ t("Código de verificación") }}</label>
       <WInput id="google-totp" v-model="totpCode" size="lg" autocomplete="one-time-code" placeholder="123456" />
-      <p class="google-signin__hint">El de tu aplicación de autenticación, o un código de recuperación.</p>
+      <p class="google-signin__hint">{{ t("El de tu aplicación de autenticación, o un código de recuperación.") }}</p>
       <WButton type="submit" size="lg" block :disabled="!totpCode.trim()" data-testid="google-totp-submit">
-        Continuar
+        {{ t("Continuar") }}
       </WButton>
-      <WButton variant="ghost" @click="giveUp">Cancelar</WButton>
+      <WButton variant="ghost" @click="giveUp">{{ t("Cancelar") }}</WButton>
     </form>
     <div v-else-if="waiting" class="google-signin__waiting" role="status">
-      <p>Termina el inicio de sesión en tu navegador. Warlay sigue aquí esperando.</p>
-      <WButton variant="ghost" data-testid="google-cancel" @click="cancel">Cancelar</WButton>
+      <p>{{ t("Termina el inicio de sesión en tu navegador. Warlay sigue aquí esperando.") }}</p>
+      <WButton variant="ghost" data-testid="google-cancel" @click="cancel">{{ t("Cancelar") }}</WButton>
     </div>
     <WButton v-else variant="secondary" size="lg" block data-testid="google-button" @click="start">
       <template #icon>
@@ -116,7 +117,7 @@ function cancel() {
           />
         </svg>
       </template>
-      Continuar con Google
+      {{ t("Continuar con Google") }}
     </WButton>
     <p v-if="error" class="google-signin__error" role="alert">{{ error }}</p>
   </div>
