@@ -144,16 +144,7 @@ pub fn open_release_page(url: String) -> Result<(), AppError> {
     if !url.starts_with(&format!("https://github.com/{}/releases", release::REPO)) {
         return Err(AppError::InvalidInput("dirección no permitida".to_string()));
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        // `explorer` takes the URL as a single argument: no shell parsing.
-        std::process::Command::new("explorer")
-            .arg(&url)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()?;
-    }
+    super::browser::open_url(&url).map_err(AppError::InvalidInput)?;
     Ok(())
 }
 
