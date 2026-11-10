@@ -78,6 +78,9 @@ async fn create_invite(
     if inviter == invitee {
         return Err(ApiError::bad_request("self_invite", "no puedes invitarte a ti mismo"));
     }
+    if super::blocks::blocked_between(state, inviter, invitee).await? {
+        return Err(ApiError::forbidden("no puedes invitar a ese usuario"));
+    }
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM invites WHERE kind = $1 AND target_id = $2 AND invitee_id = $3 AND status = 'pending'",
     )
