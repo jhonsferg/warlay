@@ -20,6 +20,7 @@ import ChatPanel from "../ui/organisms/ChatPanel.vue";
 import CommunitySidebar from "../ui/organisms/CommunitySidebar.vue";
 import InviteFriendsDialog from "../ui/organisms/InviteFriendsDialog.vue";
 import AppShell from "../ui/templates/AppShell.vue";
+import { t } from "../services/i18n";
 
 const route = useRoute();
 const router = useRouter();
@@ -48,14 +49,14 @@ watch(
   { immediate: true },
 );
 
-const roleLabel = (m: CommunityMember) => (m.role === "owner" ? "Dueño" : m.role === "admin" ? "Admin" : null);
+const roleLabel = (m: CommunityMember) => (m.role === "owner" ? t("Dueño") : m.role === "admin" ? t("Admin") : null);
 
 async function joinRoom(room: RoomView) {
   try {
     await rooms.join(room.id);
     void router.push(`/room/${room.id}`);
   } catch (e) {
-    toasts.error("No se pudo entrar a la sala", errorMessage(e));
+    toasts.error(t("No se pudo entrar a la sala"), errorMessage(e));
   }
 }
 
@@ -64,24 +65,24 @@ async function leave() {
     await communities.leave(id.value);
     void router.push("/");
   } catch (e) {
-    toasts.error("No se pudo salir", errorMessage(e));
+    toasts.error(t("No se pudo salir"), errorMessage(e));
   }
 }
 
 async function remove() {
-  const name = community.value?.name ?? "esta comunidad";
+  const name = community.value?.name ?? t("esta comunidad");
   const members = community.value?.memberCount ?? 0;
   const accepted = await dialogs.confirm({
-    title: `Eliminar «${name}»`,
-    message: "Esta acción es permanente y no se puede deshacer.",
+    title: t("Eliminar «{name}»", { name }),
+    message: t("Esta acción es permanente y no se puede deshacer."),
     bullets: [
-      "No podrás recuperar la comunidad, sus salas ni el historial de su chat.",
+      t("No podrás recuperar la comunidad, sus salas ni el historial de su chat."),
       members > 1
-        ? `Sus ${members} miembros la perderán al instante y no podrás recuperarlos como grupo.`
-        : "No quedará ningún miembro en ella.",
-      "Las invitaciones pendientes a esta comunidad dejarán de funcionar.",
+        ? t("Sus {members} miembros la perderán al instante y no podrás recuperarlos como grupo.", { members })
+        : t("No quedará ningún miembro en ella."),
+      t("Las invitaciones pendientes a esta comunidad dejarán de funcionar."),
     ],
-    confirmLabel: "Eliminar comunidad",
+    confirmLabel: t("Eliminar comunidad"),
     tone: "danger",
   });
   if (!accepted) return;
@@ -89,7 +90,7 @@ async function remove() {
     await communities.remove(id.value);
     void router.push("/");
   } catch (e) {
-    toasts.error("No se pudo eliminar", errorMessage(e));
+    toasts.error(t("No se pudo eliminar"), errorMessage(e));
   }
 }
 
@@ -99,7 +100,7 @@ const inviteToCommunity = (userId: string) => communitiesApi.invite(id.value, us
 
 <template>
   <AppShell
-    :title="view === 'chat' ? 'general' : view === 'rooms' ? 'salas' : 'miembros'"
+    :title="view === 'chat' ? t('general') : view === 'rooms' ? t('salas') : t('miembros')"
     :subtitle="community?.description || community?.name"
     :flush="view === 'chat'"
   >
@@ -121,26 +122,26 @@ const inviteToCommunity = (userId: string) => communitiesApi.invite(id.value, us
     </template>
     <template #actions>
       <WButton v-if="community?.myRole && view === 'rooms'" size="sm" @click="dialogs.openCreateRoom(id)"
-        ><template #icon><Plus /></template>Crear sala</WButton
+        ><template #icon><Plus /></template>{{ t("Crear sala") }}</WButton
       >
     </template>
 
-    <EmptyState v-if="error" title="No puedes ver esta comunidad" :text="error" />
+    <EmptyState v-if="error" :title="t('No puedes ver esta comunidad')" :text="error" />
     <template v-else-if="community">
       <template v-if="view === 'chat'">
         <ChatPanel
           v-if="community.myRole"
           kind="community"
           :target-id="community.id"
-          :placeholder="`Mensaje en #general de ${community.name}`"
+          :placeholder="t('Mensaje en #general de {name}', { name: community.name })"
         />
-        <EmptyState v-else title="Únete para participar" text="El chat es solo para miembros.">
-          <WButton @click="communities.join(community.id)">Unirme</WButton>
+        <EmptyState v-else :title="t('Únete para participar')" :text="t('El chat es solo para miembros.')">
+          <WButton @click="communities.join(community.id)">{{ t("Unirme") }}</WButton>
         </EmptyState>
       </template>
 
       <template v-else-if="view === 'rooms'">
-        <SectionHeader title="Salas de la comunidad" :count="community.rooms.length" />
+        <SectionHeader :title="t('Salas de la comunidad')" :count="community.rooms.length" />
         <div v-if="community.rooms.length" class="community__grid">
           <RoomCard
             v-for="room in community.rooms"
@@ -151,21 +152,21 @@ const inviteToCommunity = (userId: string) => communitiesApi.invite(id.value, us
             @open="router.push(`/room/${room.id}`)"
           />
         </div>
-        <EmptyState v-else title="No hay salas activas" text="Crea una sala solo para los miembros de esta comunidad.">
+        <EmptyState v-else :title="t('No hay salas activas')" :text="t('Crea una sala solo para los miembros de esta comunidad.')">
           <template #icon><Swords /></template>
           <WButton v-if="community.myRole" @click="dialogs.openCreateRoom(id)"
-            ><template #icon><Plus /></template>Crear sala</WButton
+            ><template #icon><Plus /></template>{{ t("Crear sala") }}</WButton
           >
         </EmptyState>
       </template>
 
       <template v-else>
-        <SectionHeader title="Miembros" :count="community.members.length" />
+        <SectionHeader :title="t('Miembros')" :count="community.members.length" />
         <div class="community__members">
           <FriendRow v-for="m in community.members" :key="m.id" :friend="m">
             <template #actions>
               <WBadge v-if="roleLabel(m)" tone="warning">{{ roleLabel(m) }}</WBadge>
-              <WBadge v-if="m.id === session.me?.id" tone="accent">Tú</WBadge>
+              <WBadge v-if="m.id === session.me?.id" tone="accent">{{ t("Tú") }}</WBadge>
             </template>
           </FriendRow>
         </div>
@@ -174,7 +175,7 @@ const inviteToCommunity = (userId: string) => communitiesApi.invite(id.value, us
 
     <InviteFriendsDialog
       v-if="inviting && community"
-      :title="`Invitar a ${community.name}`"
+      :title="t('Invitar a {name}', { name: community.name })"
       :exclude="community.members.map((m) => m.id)"
       :invite="inviteToCommunity"
       @close="inviting = false"
