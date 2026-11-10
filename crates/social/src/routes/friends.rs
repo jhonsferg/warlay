@@ -8,6 +8,7 @@ use crate::auth::AuthUser;
 use crate::error::{ApiError, ApiResult};
 use crate::models::{are_friends, friend_ids, load_summaries, load_user, UserSummary, UserWithPresence};
 use crate::realtime::{with_presence, Event};
+use crate::routes::blocks;
 use crate::routes::notifications::notify;
 use crate::state::AppState;
 
@@ -106,6 +107,16 @@ pub async fn send_request(
     load_user(&state, target).await?.ok_or_else(not_found)?;
     if are_friends(&state, auth.user_id, target).await? {
         return Err(ApiError::conflict("already_friends", "ya son amigos"));
+    }
+    // To someone who blocked the caller the other player simply does not exist.
+    if blocks::has_blocked(&state, target, auth.user_id).await? {
+        return Err(not_found());
+    }
+    if blocks::has_blocked(&state, auth.user_id, target).await? {
+        return Err(ApiError::conflict(
+            "blocked_by_you",
+            "bloqueaste a ese usuario: desbloquéalo para enviarle una solicitud",
+        ));
     }
 
     // If they already asked us, asking back means accepting.
