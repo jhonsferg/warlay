@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod blocks;
 pub mod chat;
 pub mod communities;
 pub mod friends;
