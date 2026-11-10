@@ -10,6 +10,7 @@ import WInput from "../ui/atoms/WInput.vue";
 import FormField from "../ui/molecules/FormField.vue";
 import GoogleSignIn from "../ui/organisms/GoogleSignIn.vue";
 import AuthLayout from "../ui/templates/AuthLayout.vue";
+import { t } from "../services/i18n";
 
 const session = useSession();
 const router = useRouter();
@@ -29,9 +30,9 @@ const saved = ref(false);
 const errors = computed(() => {
   const e: Record<string, string> = {};
   if (username.value && !/^[A-Za-z0-9_]{3,20}$/.test(username.value))
-    e.username = "3 a 20 caracteres: letras, números o _";
-  if (email.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value)) e.email = "Correo no válido";
-  if (password.value && password.value.length < 8) e.password = "Al menos 8 caracteres";
+    e.username = t("3 a 20 caracteres: letras, números o _");
+  if (email.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value)) e.email = t("Correo no válido");
+  if (password.value && password.value.length < 8) e.password = t("Al menos 8 caracteres");
   return { ...e, ...fieldError.value };
 });
 const strength = computed(() => {
@@ -78,61 +79,61 @@ async function submit() {
   <AuthLayout>
     <div v-if="recoveryCodes.length" class="auth-form">
       <header>
-        <p class="auth-form__eyebrow">Cuenta creada</p>
-        <h2>Tus códigos de recuperación</h2>
+        <p class="auth-form__eyebrow">{{ t("Cuenta creada") }}</p>
+        <h2>{{ t("Tus códigos de recuperación") }}</h2>
       </header>
       <RecoveryCodesPanel :username="username.trim()" :codes="recoveryCodes" />
       <label class="auth-form__confirm">
         <input v-model="saved" type="checkbox" data-testid="codes-saved" />
-        Ya guardé mis códigos en un lugar seguro
+        {{ t("Ya guardé mis códigos en un lugar seguro") }}
       </label>
-      <WButton size="lg" block :disabled="!saved" @click="router.replace('/')">Continuar</WButton>
+      <WButton size="lg" block :disabled="!saved" @click="router.replace('/')">{{ t("Continuar") }}</WButton>
     </div>
     <form v-else class="auth-form" @submit.prevent="submit">
       <header>
-        <p class="auth-form__eyebrow">Únete a Warlay</p>
-        <h2>Crear cuenta</h2>
+        <p class="auth-form__eyebrow">{{ t("Únete a Warlay") }}</p>
+        <h2>{{ t("Crear cuenta") }}</h2>
       </header>
-      <FormField label="Usuario" for="username" :error="errors.username" hint="Así te encontrarán tus amigos.">
+      <FormField :label="t('Usuario')" for="username" :error="errors.username" :hint="t('Así te encontrarán tus amigos.')">
         <WInput
           id="username"
           v-model="username"
           size="lg"
           autocomplete="username"
-          placeholder="thrall"
+          :placeholder="t('thrall')"
           :invalid="!!errors.username"
           @input="fieldError = {}"
         >
           <template #icon><AtSign /></template>
         </WInput>
       </FormField>
-      <FormField label="Nombre visible (opcional)" for="display-name">
-        <WInput id="display-name" v-model="displayName" size="lg" placeholder="Thrall, Hijo de Durotan" :maxlength="32">
+      <FormField :label="t('Nombre visible (opcional)')" for="display-name">
+        <WInput id="display-name" v-model="displayName" size="lg" :placeholder="t('Thrall, Hijo de Durotan')" :maxlength="32">
           <template #icon><User /></template>
         </WInput>
       </FormField>
-      <FormField label="Correo" for="email" :error="errors.email">
+      <FormField :label="t('Correo')" for="email" :error="errors.email">
         <WInput
           id="email"
           v-model="email"
           type="email"
           size="lg"
           autocomplete="email"
-          placeholder="thrall@horda.gg"
+          :placeholder="t('thrall@horda.gg')"
           :invalid="!!errors.email"
           @input="fieldError = {}"
         >
           <template #icon><Mail /></template>
         </WInput>
       </FormField>
-      <FormField label="Contraseña" for="new-password" :error="errors.password">
+      <FormField :label="t('Contraseña')" for="new-password" :error="errors.password">
         <WInput
           id="new-password"
           v-model="password"
           type="password"
           size="lg"
           autocomplete="new-password"
-          placeholder="Mínimo 8 caracteres"
+          :placeholder="t('Mínimo 8 caracteres')"
           :invalid="!!errors.password"
         >
           <template #icon><KeyRound /></template>
@@ -142,9 +143,9 @@ async function submit() {
         </div>
       </FormField>
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
-      <WButton type="submit" size="lg" block :loading="busy" :disabled="!valid">Crear cuenta</WButton>
+      <WButton type="submit" size="lg" block :loading="busy" :disabled="!valid">{{ t("Crear cuenta") }}</WButton>
       <GoogleSignIn @signed-in="router.replace('/')" />
-      <p class="auth-form__switch">¿Ya tienes cuenta? <RouterLink to="/login">Inicia sesión</RouterLink></p>
+      <p class="auth-form__switch">{{ t("¿Ya tienes cuenta?") }} <RouterLink to="/login">{{ t("Inicia sesión") }}</RouterLink></p>
     </form>
   </AuthLayout>
 </template>
