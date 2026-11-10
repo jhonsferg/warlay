@@ -248,6 +248,18 @@ pub async fn revoke_user_access_tokens(state: &AppState, user_id: Uuid) -> ApiRe
     Ok(())
 }
 
+/// Invalidates, right now, every access token of one session.
+pub async fn revoke_session_access_tokens(state: &AppState, session_id: Uuid) -> ApiResult<()> {
+    let mut redis = state.redis.clone();
+    let index = session_index_key(session_id);
+    let keys: Vec<String> = redis.smembers(&index).await?;
+    if !keys.is_empty() {
+        let _: () = redis.del(keys).await?;
+    }
+    let _: () = redis.del(index).await?;
+    Ok(())
+}
+
 pub async fn revoke_access_token(state: &AppState, token: &str) -> ApiResult<()> {
     let mut redis = state.redis.clone();
     let _: () = redis.del(access_key(token)).await?;
