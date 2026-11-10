@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { native } from "../services/native";
 import { createUpdater, initialUpdateState, readLastCheck, saveLastCheck } from "../services/updates";
+import { useSession } from "./session";
 import { useToasts } from "./toasts";
 
 /** The browser's storage, when there is one (plain Node tests have none). */
@@ -44,6 +45,8 @@ export async function announceUpdateOnStart(goToUpdates: () => unknown): Promise
   await updates.check();
   const status = updates.state.status;
   if (updates.state.phase !== "available" || !status) return;
+  // The player may have signed out while the check ran: notices are for a session.
+  if (useSession().status !== "signedIn") return;
   useToasts().action(
     `Hay una nueva versión: ${status.latest}`,
     "Para poder actualizarla haz clic aquí.",
