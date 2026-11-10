@@ -746,7 +746,7 @@ pub async fn exchange(
     // Spent here, so two requests cannot both get a session from one code.
     let record: CodeRecord = take(&state, &code_key(&req.code)).await?.ok_or_else(invalid)?;
     let user = load_user(&state, record.user_id).await?.ok_or_else(invalid)?;
-    Ok(Json(start_session(&state, user, &headers).await?))
+    Ok(Json(start_session(&state, user, &headers, "google").await?))
 }
 
 #[cfg(test)]
