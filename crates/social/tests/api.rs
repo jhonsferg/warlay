@@ -1002,10 +1002,13 @@ async fn offline_friends_report_when_they_were_last_seen() {
 
     drop(ws_b);
     let friends = eventually(&s, &a, "/friends", |v| {
-        v.as_array()
-            .unwrap()
-            .iter()
-            .any(|f| f["id"] == b.id.to_string() && f["presence"]["status"] == "offline")
+        v.as_array().unwrap().iter().any(|f| {
+            // The status flips to offline a moment before the last-seen time is
+            // written, so wait for both.
+            f["id"] == b.id.to_string()
+                && f["presence"]["status"] == "offline"
+                && !f["presence"]["lastSeenAt"].is_null()
+        })
     })
     .await;
     let offline = find(&friends, b.id);
