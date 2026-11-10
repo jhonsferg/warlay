@@ -9,6 +9,7 @@ import { useToasts } from "../../stores/toasts";
 import WIconButton from "../atoms/WIconButton.vue";
 import FriendRow from "../molecules/FriendRow.vue";
 import { PRESENCE_ORDER, presenceLabel } from "../presence";
+import { t } from "../../services/i18n";
 
 const social = useSocial();
 const rooms = useRooms();
@@ -27,21 +28,21 @@ const groups = computed(() =>
 async function invite(userId: string) {
   try {
     await rooms.invite(userId);
-    toasts.success("Invitación enviada");
+    toasts.success(t("Invitación enviada"));
   } catch (e) {
-    toasts.error("No se pudo invitar", e instanceof Error ? e.message : String(e));
+    toasts.error(t("No se pudo invitar"), e instanceof Error ? e.message : String(e));
   }
 }
 </script>
 
 <template>
-  <aside class="activity" aria-label="Amigos">
+  <aside class="activity" :aria-label="t('Amigos')">
     <header class="activity__head">
-      <h3>Amigos</h3>
-      <span class="activity__online">{{ social.onlineCount }} en línea</span>
+      <h3>{{ t("Amigos") }}</h3>
+      <span class="activity__online">{{ t('{n} en línea', { n: social.onlineCount }) }}</span>
     </header>
     <div class="activity__body">
-      <p v-if="social.friends.length === 0" class="activity__empty">Agrega amigos para ver aquí qué están jugando.</p>
+      <p v-if="social.friends.length === 0" class="activity__empty">{{ t("Agrega amigos para ver aquí qué están jugando.") }}</p>
       <section v-for="g in groups" :key="g.status" class="activity__group">
         <p class="activity__eyebrow" :class="`activity__eyebrow--${g.status}`">
           {{ g.label }} — {{ g.friends.length }}
@@ -55,14 +56,14 @@ async function invite(userId: string) {
           @click="router.push(`/friends/${f.id}`)"
         >
           <template #actions>
-            <WIconButton label="Mensaje" size="sm" @click.stop="router.push(`/friends/${f.id}`)"
+            <WIconButton :label="t('Mensaje')" size="sm" @click.stop="router.push(`/friends/${f.id}`)"
               ><MessageCircle
             /></WIconButton>
             <WIconButton
               v-if="
                 rooms.current && f.presence.status !== 'offline' && !rooms.current.members.some((m) => m.id === f.id)
               "
-              label="Invitar a mi sala"
+              :label="t('Invitar a mi sala')"
               size="sm"
               @click.stop="invite(f.id)"
               ><UserPlus
