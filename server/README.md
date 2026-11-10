@@ -370,6 +370,18 @@ Linux caps them at `net.core.rmem_max` and `net.core.wmem_max`; raise both to
   password does not spend it, and a wrong account and a wrong code get the same
   answer. `POST /me/recovery-codes` (with the password) replaces the set;
   `GET /me/recovery-codes` says how many are left.
+- **Two-step sign-in (TOTP).** Players can add an authenticator app (RFC 6238:
+  SHA-1, 6 digits, 30 s). `POST /me/totp/setup` (with the password, if the
+  account has one) returns a secret and an `otpauth://` URI for the QR code and
+  does nothing until `POST /me/totp/enable` receives a valid code;
+  `POST /me/totp/disable` needs the password and a code. Once on, `POST
+/auth/login` and `POST /api/v1/auth/google/exchange` answer `403
+totp_required` until `totpCode` is sent (a code from the app, accepted once,
+  or one of the recovery codes). Secrets are stored sealed with
+  ChaCha20-Poly1305, bound to the account, under a key derived from
+  `helper_secret`: **changing `helper_secret` makes stored TOTP secrets
+  unreadable** (those accounts could no longer sign in). Wrong codes are
+  limited to 10 per account per 5 minutes.
 - **Deleting an account.** `DELETE /me` removes the account and what hangs from
   it (friendships, messages, memberships, notifications, keys, sessions and
   the Google link) after the player types their username and, if the account
