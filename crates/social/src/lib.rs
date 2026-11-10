@@ -14,6 +14,7 @@ pub mod config;
 mod error;
 pub mod helpers;
 mod models;
+mod oauth;
 pub mod realtime;
 mod receipts;
 mod recovery;
@@ -101,7 +102,14 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/refresh", post(auth_routes::refresh))
         .route("/auth/logout", post(auth_routes::logout))
         .route("/auth/recover", post(recovery_routes::recover))
-        .route("/me", get(auth_routes::me).patch(auth_routes::update_me))
+        .route("/auth/providers", get(oauth::providers))
+        .route("/auth/google/exchange", post(oauth::exchange))
+        .route(
+            "/me",
+            get(auth_routes::me)
+                .patch(auth_routes::update_me)
+                .delete(auth_routes::delete_me),
+        )
         .route("/me/password", post(auth_routes::change_password))
         .route(
             "/me/recovery-codes",
@@ -168,6 +176,10 @@ pub fn router(state: AppState) -> Router {
         .nest("/api/v1", api)
         .route("/internal/helpers/heartbeat", post(helpers::heartbeat_handler))
         .route("/health", get(|| async { "ok" }))
+        // Google sign-in, the browser half (the app's half is under /api/v1).
+        .route("/auth/google/start", get(oauth::start))
+        .route("/auth/google/callback", get(oauth::callback))
+        .route("/auth/google/link", post(oauth::link))
         // The website: landing page, privacy, terms.
         .merge(web::router())
         .layer(cors(&state.settings))
