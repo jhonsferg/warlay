@@ -382,6 +382,12 @@ totp_required` until `totpCode` is sent (a code from the app, accepted once,
   `helper_secret`: **changing `helper_secret` makes stored TOTP secrets
   unreadable** (those accounts could no longer sign in). Wrong codes are
   limited to 10 per account per 5 minutes.
+- **Active sessions.** `GET /me/sessions` lists the devices signed in (how each
+  introduced itself, how it signed in, when it was last renewed, and which one
+  is asking); `DELETE /me/sessions/{id}` ends one and `DELETE /me/sessions` all
+  but the current one. An ended session's refresh token stops working and its
+  access tokens are cut at once, so its next request is refused; a realtime
+  connection it already had open stays until it drops. No IP addresses are kept.
 - **Blocking and reporting.** `PUT /blocks/{id}` blocks a player (`DELETE`
   undoes it, `GET /blocks` lists them). Blocking ends the friendship and removes
   pending requests and invitations between the two, and from then on neither can
