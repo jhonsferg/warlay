@@ -16,6 +16,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (4, "user_e2e_keys", USER_E2E_KEYS),
     (5, "recovery_codes", RECOVERY_CODES),
     (6, "external_identities", EXTERNAL_IDENTITIES),
+    (7, "user_totp", USER_TOTP),
 ];
 
 /// Arbitrary constant identifying Warlay's migration lock.
@@ -235,6 +236,19 @@ CREATE TABLE IF NOT EXISTS external_identities (
     PRIMARY KEY (provider, subject)
 );
 CREATE INDEX IF NOT EXISTS external_identities_user ON external_identities (user_id);
+"#;
+
+/// Authenticator-app secrets. `secret` is sealed (nonce + ChaCha20-Poly1305
+/// bound to the account); `enabled_at` stays NULL until the player confirms a
+/// code; `last_step` is the newest 30-second step already used.
+const USER_TOTP: &str = r#"
+CREATE TABLE IF NOT EXISTS user_totp (
+    user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    secret      BYTEA NOT NULL,
+    enabled_at  TIMESTAMPTZ,
+    last_step   BIGINT NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 "#;
 
 /// Public keys for end-to-end encrypted direct messages. The server never
