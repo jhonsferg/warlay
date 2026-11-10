@@ -1,6 +1,8 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { auth } from "../services/api";
+import { googleFailureMessage } from "../services/googleSignIn";
+import { native } from "../services/native";
 import { ApiError, hasSession, onSessionChange, setTokens } from "../services/http";
 import { isServerUnavailable, RESTORE_RETRY_MS } from "../services/outage";
 import type { Me } from "../services/types";
@@ -54,6 +56,29 @@ export const useSession = defineStore("session", () => {
     status.value = "signedIn";
   }
 
+  /**
+   * Signs in with Google: the system browser does the sign-in while the app
+   * waits, then the server turns the one-time code it returns into a session.
+   * Throws an Error with a message fit for the player.
+   */
+  async function loginWithGoogle(webUrl: string) {
+    let grant;
+    try {
+      grant = await native.googleSignIn(webUrl, navigator.language);
+    } catch (e) {
+      throw new Error(googleFailureMessage(e));
+    }
+    if (!grant) throw new Error(googleFailureMessage("desktop_only"));
+    try {
+      const res = await auth.googleExchange(grant.code, grant.verifier);
+      setTokens(res.tokens);
+      me.value = res.user;
+      status.value = "signedIn";
+    } catch {
+      throw new Error(googleFailureMessage("server_error"));
+    }
+  }
+
   /** Creates the account and signs in. Returns the recovery codes, to show once. */
   async function register(body: { username: string; email: string; password: string; displayName?: string }) {
     const res = await auth.register(body);
@@ -76,5 +101,5 @@ export const useSession = defineStore("session", () => {
     me.value = await auth.updateMe(body);
   }
 
-  return { me, status, restore, login, register, logout, update };
+  return { me, status, restore, login, loginWithGoogle, register, logout, update };
 });
