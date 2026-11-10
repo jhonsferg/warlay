@@ -2,6 +2,7 @@
 import { X } from "@lucide/vue";
 import { onMounted, onUnmounted } from "vue";
 import WIconButton from "../atoms/WIconButton.vue";
+import { t } from "../../services/i18n";
 
 defineProps<{ title: string; subtitle?: string; width?: number }>();
 const emit = defineEmits<{ close: [] }>();
@@ -28,7 +29,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
             <h2>{{ title }}</h2>
             <p v-if="subtitle">{{ subtitle }}</p>
           </div>
-          <WIconButton label="Cerrar" size="sm" @click="emit('close')"><X /></WIconButton>
+          <WIconButton :label="t('Cerrar')" size="sm" @click="emit('close')"><X /></WIconButton>
         </header>
         <div class="w-modal__body"><slot /></div>
         <footer v-if="$slots.footer" class="w-modal__foot"><slot name="footer" /></footer>
