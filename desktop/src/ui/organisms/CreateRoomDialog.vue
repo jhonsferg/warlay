@@ -57,7 +57,11 @@ async function submit() {
 </script>
 
 <template>
-  <WModal :title="t('Crear sala')" :subtitle="t('Tus amigos se conectarán directamente a tu partida.')" @close="emit('close')">
+  <WModal
+    :title="t('Crear sala')"
+    :subtitle="t('Tus amigos se conectarán directamente a tu partida.')"
+    @close="emit('close')"
+  >
     <form id="create-room" class="create-room" @submit.prevent="submit">
       <FormField :label="t('Nombre de la sala')" for="room-name" :error="nameError">
         <WInput id="room-name" v-model="name" :invalid="!!nameError" :maxlength="48" />
@@ -95,9 +99,9 @@ async function submit() {
     </form>
     <template #footer>
       <WButton variant="ghost" @click="emit('close')">{{ t("Cancelar") }}</WButton>
-      <WButton type="submit" form="create-room" :loading="busy" :disabled="!name.trim() || !!nameError"
-        >{{ t("Crear sala") }}</WButton
-      >
+      <WButton type="submit" form="create-room" :loading="busy" :disabled="!name.trim() || !!nameError">{{
+        t("Crear sala")
+      }}</WButton>
     </template>
   </WModal>
 </template>
