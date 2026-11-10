@@ -1,5 +1,6 @@
 mod commands;
 mod core;
+mod crash;
 mod desktop_audio;
 pub use warlay::crypto;
 mod launcher;
@@ -244,13 +245,15 @@ fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
         let message = info.to_string();
         tracing::error!(%message, "panic, about to abort");
+        // Kept on this machine for the player to send, or not, next time.
+        crash::write_panic(info, env!("CARGO_PKG_VERSION"));
         unsafe {
             use windows::core::HSTRING;
             use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
             let _ = MessageBoxW(
                 None,
                 &HSTRING::from(format!(
-                    "Warlay encontró un error inesperado y debe cerrarse:\n\n{message}"
+                    "Warlay encontró un error inesperado y debe cerrarse:\n\n{message}\n\nSe guardó un informe: al abrir Warlay de nuevo podrás revisarlo y enviarlo."
                 )),
                 &HSTRING::from("Warlay"),
                 MB_OK | MB_ICONERROR,
@@ -274,6 +277,7 @@ pub fn run() {
     // wins over this default.
 
     install_panic_hook();
+    crash::sweep_default();
 
     // Opened here, before the subscriber, rather than in `.setup()` (which
     // is where it lived before log levels became configurable) — the
@@ -509,6 +513,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
+            commands::crash::list_crash_reports,
+            commands::crash::read_crash_report,
+            commands::crash::delete_crash_report,
+            commands::crash::report_crash_on_github,
+            commands::crash::record_ui_error,
             commands::google::google_sign_in,
             commands::google::google_sign_in_cancel,
             commands::updater::get_app_info,
