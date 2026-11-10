@@ -27,6 +27,15 @@ export interface Me extends UserSummary {
   createdAt: string;
   /** False for an account created with Google that has not set a password. */
   passwordSet: boolean;
+  /** Sign-in also asks for a code from an authenticator app. */
+  totpEnabled: boolean;
+}
+
+export interface TotpSetup {
+  /** The secret as text, for apps that cannot scan. */
+  secret: string;
+  /** What the QR code holds. */
+  otpauthUri: string;
 }
 
 /** The sign-in methods besides the password that the server offers. */

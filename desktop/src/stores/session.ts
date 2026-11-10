@@ -49,19 +49,19 @@ export const useSession = defineStore("session", () => {
     }
   }
 
-  async function login(login: string, password: string) {
-    const res = await auth.login(login, password);
+  async function login(login: string, password: string, totpCode?: string) {
+    const res = await auth.login(login, password, totpCode);
     setTokens(res.tokens);
     me.value = res.user;
     status.value = "signedIn";
   }
 
   /**
-   * Signs in with Google: the system browser does the sign-in while the app
-   * waits, then the server turns the one-time code it returns into a session.
-   * Throws an Error with a message fit for the player.
+   * Signs in with Google, first half: the system browser does the sign-in
+   * while the app waits, and returns a one-time grant. Throws an Error with a
+   * message fit for the player.
    */
-  async function loginWithGoogle(webUrl: string) {
+  async function googleBrowser(webUrl: string) {
     let grant;
     try {
       grant = await native.googleSignIn(webUrl, navigator.language);
@@ -69,14 +69,19 @@ export const useSession = defineStore("session", () => {
       throw new Error(googleFailureMessage(e));
     }
     if (!grant) throw new Error(googleFailureMessage("desktop_only"));
-    try {
-      const res = await auth.googleExchange(grant.code, grant.verifier);
-      setTokens(res.tokens);
-      me.value = res.user;
-      status.value = "signedIn";
-    } catch {
-      throw new Error(googleFailureMessage("server_error"));
-    }
+    return grant;
+  }
+
+  /**
+   * Second half: the server turns the grant into a session. It answers
+   * `totp_required` (an ApiError) for accounts with an authenticator app; call
+   * again with the same grant and the code.
+   */
+  async function googleExchange(grant: { code: string; verifier: string }, totpCode?: string) {
+    const res = await auth.googleExchange(grant.code, grant.verifier, totpCode);
+    setTokens(res.tokens);
+    me.value = res.user;
+    status.value = "signedIn";
   }
 
   /** Creates the account and signs in. Returns the recovery codes, to show once. */
@@ -101,5 +106,5 @@ export const useSession = defineStore("session", () => {
     me.value = await auth.updateMe(body);
   }
 
-  return { me, status, restore, login, loginWithGoogle, register, logout, update };
+  return { me, status, restore, login, googleBrowser, googleExchange, register, logout, update };
 });

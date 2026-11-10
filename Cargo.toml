@@ -48,6 +48,7 @@ rcgen = "0.13"
 x25519-dalek = { version = "3", features = ["static_secrets"] }
 chacha20poly1305 = "0.10"
 hkdf = "0.12"
+sha1 = "0.10"
 sha2 = "0.10"
 hmac = "0.12"
 getrandom = "0.4"

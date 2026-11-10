@@ -52,6 +52,8 @@ pub struct UserRow {
     pub password_hash: String,
     /// False for accounts created with Google that never chose a password.
     pub password_set: bool,
+    /// Whether sign-in also asks for a code from an authenticator app.
+    pub totp_enabled: bool,
     pub display_name: String,
     pub avatar_color: String,
     pub bio: String,
@@ -82,6 +84,8 @@ pub struct Me {
     pub created_at: DateTime<Utc>,
     /// Whether the account has a password it can sign in with.
     pub password_set: bool,
+    /// Whether sign-in asks for a code from an authenticator app.
+    pub totp_enabled: bool,
 }
 
 impl From<UserRow> for Me {
@@ -95,6 +99,7 @@ impl From<UserRow> for Me {
             bio: u.bio,
             created_at: u.created_at,
             password_set: u.password_set,
+            totp_enabled: u.totp_enabled,
         }
     }
 }
@@ -131,7 +136,9 @@ pub const SUMMARY_COLUMNS: &str = "u.id, u.username::text AS username, u.display
 
 pub async fn load_user(state: &AppState, id: Uuid) -> ApiResult<Option<UserRow>> {
     Ok(sqlx::query_as::<_, UserRow>(
-        "SELECT id, username::text AS username, email::text AS email, password_hash, password_set, display_name, avatar_color, bio, created_at
+        "SELECT id, username::text AS username, email::text AS email, password_hash, password_set,
+                EXISTS (SELECT 1 FROM user_totp t WHERE t.user_id = users.id AND t.enabled_at IS NOT NULL) AS totp_enabled,
+                display_name, avatar_color, bio, created_at
          FROM users WHERE id = $1",
     )
     .bind(id)

@@ -21,6 +21,7 @@ mod recovery;
 mod routes;
 mod schema;
 mod state;
+mod totp;
 mod web;
 
 use std::sync::Arc;
@@ -39,7 +40,7 @@ pub use state::AppState;
 
 use routes::{
     auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications,
-    recovery as recovery_routes, rooms, users,
+    recovery as recovery_routes, rooms, totp as totp_routes, users,
 };
 
 /// Connects to Postgres (running migrations) and Redis, and starts the
@@ -115,6 +116,10 @@ pub fn router(state: AppState) -> Router {
             "/me/recovery-codes",
             get(recovery_routes::status).post(recovery_routes::regenerate),
         )
+        .route("/me/totp", get(totp_routes::status))
+        .route("/me/totp/setup", post(totp_routes::setup))
+        .route("/me/totp/enable", post(totp_routes::enable))
+        .route("/me/totp/disable", post(totp_routes::disable))
         .route("/me/e2e-key", put(keys::publish))
         .route("/users/{id}/e2e-key", get(keys::get))
         .route("/users/search", get(users::search))
