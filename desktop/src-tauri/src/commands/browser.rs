@@ -5,7 +5,7 @@
 /// schemes, a program path) is ever handed to the shell.
 pub fn is_openable(url: &str) -> bool {
     let starts = |prefix: &str| url.len() > prefix.len() && url[..prefix.len()].eq_ignore_ascii_case(prefix);
-    // `http://127.0.0.1.evil.example` must not pass for the local machine.
+    // `http://127.0.0.1.example.com` must not pass for the local machine.
     let local = |host: &str| {
         starts(&format!("http://{host}"))
             && matches!(url.as_bytes().get(7 + host.len()), None | Some(b'/' | b':' | b'?'))
@@ -58,14 +58,14 @@ mod tests {
     #[test]
     fn only_web_addresses_are_openable() {
         assert!(is_openable(
-            "https://warlay.codesoftlabs.com/auth/google/start?port=51234&state=abc&challenge=x_y-z"
+            "https://warlay.example.com/auth/google/start?port=51234&state=abc&challenge=x_y-z"
         ));
         assert!(is_openable("HTTPS://github.com/jhonsferg/warlay/releases"));
         assert!(is_openable("http://127.0.0.1:1420/"));
         assert!(is_openable("http://localhost:8080/auth"));
         assert!(!is_openable("http://evil.example/"));
-        assert!(!is_openable("http://127.0.0.1.evil.example/"));
-        assert!(!is_openable("http://localhost.evil.example/"));
+        assert!(!is_openable("http://127.0.0.1.example.com/"));
+        assert!(!is_openable("http://localhost.example.com/"));
         assert!(!is_openable("file:///C:/Windows/System32/calc.exe"));
         assert!(!is_openable("javascript:alert(1)"));
         assert!(!is_openable("C:\\Windows\\System32\\calc.exe"));
