@@ -89,7 +89,7 @@ export function parseGameArgs(args: string): ParsedGameArgs {
   const extra: string[] = [];
   // Longest options first, so "-graphicsapi OpenGL2" wins over a lone flag.
   const byLength = [...GAME_ARGS].sort((a, b) => b.tokens.length - a.tokens.length);
-  for (let i = 0; i < tokens.length;) {
+  for (let i = 0; i < tokens.length; ) {
     const match = byLength.find((arg) => arg.tokens.every((t, k) => tokens[i + k]?.toLowerCase() === t.toLowerCase()));
     if (match) {
       enabled.add(match.id);
