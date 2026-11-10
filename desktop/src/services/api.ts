@@ -4,6 +4,7 @@ import { api, ApiError } from "./http";
 import { realtime } from "./realtime";
 import type {
   AppNotification,
+  AuthProviders,
   AuthResponse,
   ChannelKind,
   ChatMessage,
@@ -31,8 +32,15 @@ export const auth = {
   logout: () => api<void>("POST", "/auth/logout"),
   me: () => api<Me>("GET", "/me"),
   updateMe: (body: { displayName?: string; bio?: string; avatarColor?: string }) => api<Me>("PATCH", "/me", body),
-  changePassword: (currentPassword: string, newPassword: string) =>
+  /** The current password is not asked of an account that has none yet. */
+  changePassword: (currentPassword: string | undefined, newPassword: string) =>
     api<void>("POST", "/me/password", { currentPassword, newPassword }),
+  /** Deletes the account for good. The password is asked only if it has one. */
+  deleteAccount: (confirm: string, password?: string) => api<void>("DELETE", "/me", { confirm, password }),
+  providers: () => api<AuthProviders>("GET", "/auth/providers"),
+  /** Trades the one-time code the browser returned for a session. */
+  googleExchange: (code: string, verifier: string) =>
+    api<AuthResponse>("POST", "/auth/google/exchange", { code, verifier }),
   /** Sets a new password with a recovery code; every session is closed. */
   recover: (login: string, code: string, newPassword: string) =>
     api<RecoveryStatus>("POST", "/auth/recover", { login, code, newPassword }),
