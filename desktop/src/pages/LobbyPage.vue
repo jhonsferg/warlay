@@ -20,6 +20,7 @@ import TabBar from "../ui/molecules/TabBar.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import PasswordDialog from "../ui/organisms/PasswordDialog.vue";
 import AppShell from "../ui/templates/AppShell.vue";
+import { t } from "../services/i18n";
 
 const rooms = useRooms();
 const social = useSocial();
@@ -68,7 +69,7 @@ async function join(room: RoomView, password?: string) {
     void router.push(`/room/${room.id}`);
   } catch (e) {
     if (e instanceof ApiError && e.code === "wrong_password") passwordError.value = e.message;
-    else toasts.error("No se pudo entrar a la sala", errorMessage(e));
+    else toasts.error(t("No se pudo entrar a la sala"), errorMessage(e));
   } finally {
     joining.value = null;
   }
@@ -89,55 +90,59 @@ onMounted(() => void rooms.loadList(query.value).catch(() => {}));
 </script>
 
 <template>
-  <AppShell title="Salas" subtitle="Encuentra una partida o crea la tuya">
+  <AppShell :title="t('Salas')" :subtitle="t('Encuentra una partida o crea la tuya')">
     <template #sidebar><HomeSidebar /></template>
     <template #title-icon><Swords :size="20" /></template>
 
     <section class="hero" :class="{ 'hero--in-room': rooms.current }">
       <div class="hero__copy">
-        <p class="hero__eyebrow"><Radio :size="14" /> Conexión directa entre jugadores</p>
+        <p class="hero__eyebrow"><Radio :size="14" /> {{ t("Conexión directa entre jugadores") }}</p>
         <template v-if="rooms.current">
           <h2>
-            Estás en <span>{{ rooms.current.name }}</span>
+            {{ t("Estás en") }} <span>{{ rooms.current.name }}</span>
           </h2>
           <p>
-            {{ rooms.current.members.length }} de {{ rooms.current.maxPlayers }} jugadores. Lanza el juego cuando estén
-            todos.
+            {{
+              t('{n} de {max} jugadores. Lanza el juego cuando estén todos.', {
+                n: rooms.current.members.length,
+                max: rooms.current.maxPlayers,
+              })
+            }}
           </p>
         </template>
         <template v-else>
-          <h2>Hola, {{ session.me?.displayName }}</h2>
-          <p>Crea una sala y tus amigos se conectarán directamente a tu partida, sin servidores en medio.</p>
+          <h2>{{ t('Hola, {name}', { name: session.me?.displayName ?? '' }) }}</h2>
+          <p>{{ t("Crea una sala y tus amigos se conectarán directamente a tu partida, sin servidores en medio.") }}</p>
         </template>
         <div class="hero__actions">
           <WButton v-if="rooms.current" size="lg" @click="router.push(`/room/${rooms.current.id}`)">
-            <template #icon><Gamepad2 /></template>Ir a mi sala
+            <template #icon><Gamepad2 /></template>{{ t("Ir a mi sala") }}
           </WButton>
           <WButton v-else size="lg" data-testid="create-room" @click="dialogs.openCreateRoom()">
-            <template #icon><Plus /></template>Crear sala
+            <template #icon><Plus /></template>{{ t("Crear sala") }}
           </WButton>
           <WButton size="lg" variant="secondary" @click="dialogs.addFriend = true">
-            <template #icon><UserPlus /></template>Agregar amigos
+            <template #icon><UserPlus /></template>{{ t("Agregar amigos") }}
           </WButton>
         </div>
       </div>
       <div v-if="friendsPlaying.length" class="hero__friends">
-        <p class="hero__eyebrow">Amigos jugando</p>
+        <p class="hero__eyebrow">{{ t("Amigos jugando") }}</p>
         <AvatarStack :users="friendsPlaying" :max="6" />
       </div>
     </section>
 
-    <SectionHeader title="Salas activas" :count="visible.length">
-      <WInput v-model="query" placeholder="Buscar sala..." aria-label="Buscar sala" class="lobby__search">
+    <SectionHeader :title="t('Salas activas')" :count="visible.length">
+      <WInput v-model="query" :placeholder="t('Buscar sala...')" :aria-label="t('Buscar sala')" class="lobby__search">
         <template #icon><Search /></template>
       </WInput>
       <TabBar
         v-model="filter"
         :tabs="[
-          { id: 'all', label: 'Todas' },
-          { id: 'open', label: 'Abiertas' },
-          { id: 'friends', label: 'Con amigos' },
-          { id: 'communities', label: 'Mis comunidades' },
+          { id: 'all', label: t('Todas') },
+          { id: 'open', label: t('Abiertas') },
+          { id: 'friends', label: t('Con amigos') },
+          { id: 'communities', label: t('Mis comunidades') },
         ]"
       />
     </SectionHeader>
@@ -153,10 +158,10 @@ onMounted(() => void rooms.loadList(query.value).catch(() => {}));
         @open="router.push(`/room/${room.id}`)"
       />
     </div>
-    <EmptyState v-else title="No hay salas por aquí" text="Sé el primero: crea una sala e invita a tus amigos.">
+    <EmptyState v-else :title="t('No hay salas por aquí')" :text="t('Sé el primero: crea una sala e invita a tus amigos.')">
       <template #icon><Swords /></template>
       <WButton @click="dialogs.openCreateRoom()"
-        ><template #icon><Plus /></template>Crear sala</WButton
+        ><template #icon><Plus /></template>{{ t("Crear sala") }}</WButton
       >
     </EmptyState>
 
