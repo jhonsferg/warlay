@@ -1,6 +1,7 @@
 pub mod devtools;
 pub mod discovery;
 pub mod e2e;
+pub mod google;
 pub mod launcher;
 pub mod network;
 pub mod relay;

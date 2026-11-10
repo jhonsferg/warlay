@@ -42,6 +42,14 @@ pub struct MainSettings {
     /// trailing slash. It goes into canonical links, the sitemap and the
     /// sign-in redirects.
     pub web_base_url: String,
+    /// Google sign-in. Both empty (the default) turns it off. Create an OAuth
+    /// client of type "Web application" in Google Cloud and register
+    /// `{web_base_url}/auth/google/callback` as its redirect URI.
+    pub google_client_id: String,
+    pub google_client_secret: String,
+    /// Google's endpoints; only tests point these elsewhere.
+    pub google_auth_url: String,
+    pub google_token_url: String,
 }
 
 impl Default for MainSettings {
@@ -61,6 +69,10 @@ impl Default for MainSettings {
             max_db_connections: 20,
             client_ip_header: String::new(),
             web_base_url: "https://warlay.codesoftlabs.com".into(),
+            google_client_id: String::new(),
+            google_client_secret: String::new(),
+            google_auth_url: "https://accounts.google.com/o/oauth2/v2/auth".into(),
+            google_token_url: "https://oauth2.googleapis.com/token".into(),
         }
     }
 }

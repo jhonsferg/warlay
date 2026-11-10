@@ -15,6 +15,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (3, "room_host_absence", ROOM_HOST_ABSENCE),
     (4, "user_e2e_keys", USER_E2E_KEYS),
     (5, "recovery_codes", RECOVERY_CODES),
+    (6, "external_identities", EXTERNAL_IDENTITIES),
 ];
 
 /// Arbitrary constant identifying Warlay's migration lock.
@@ -216,6 +217,24 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS recovery_codes_user ON recovery_codes (user_id);
+"#;
+
+/// Sign-in with an outside identity provider (Google). An account keeps its
+/// password, or has none (`password_set = false`) when it was born with Google:
+/// then `password_hash` holds the hash of a random string nobody knows.
+const EXTERNAL_IDENTITIES: &str = r#"
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE TABLE IF NOT EXISTS external_identities (
+    provider       TEXT NOT NULL,
+    subject        TEXT NOT NULL,
+    user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email          TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_login_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (provider, subject)
+);
+CREATE INDEX IF NOT EXISTS external_identities_user ON external_identities (user_id);
 "#;
 
 /// Public keys for end-to-end encrypted direct messages. The server never

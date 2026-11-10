@@ -50,6 +50,8 @@ pub struct UserRow {
     pub username: String,
     pub email: String,
     pub password_hash: String,
+    /// False for accounts created with Google that never chose a password.
+    pub password_set: bool,
     pub display_name: String,
     pub avatar_color: String,
     pub bio: String,
@@ -78,6 +80,8 @@ pub struct Me {
     pub avatar_color: String,
     pub bio: String,
     pub created_at: DateTime<Utc>,
+    /// Whether the account has a password it can sign in with.
+    pub password_set: bool,
 }
 
 impl From<UserRow> for Me {
@@ -90,6 +94,7 @@ impl From<UserRow> for Me {
             avatar_color: u.avatar_color,
             bio: u.bio,
             created_at: u.created_at,
+            password_set: u.password_set,
         }
     }
 }
@@ -126,7 +131,7 @@ pub const SUMMARY_COLUMNS: &str = "u.id, u.username::text AS username, u.display
 
 pub async fn load_user(state: &AppState, id: Uuid) -> ApiResult<Option<UserRow>> {
     Ok(sqlx::query_as::<_, UserRow>(
-        "SELECT id, username::text AS username, email::text AS email, password_hash, display_name, avatar_color, bio, created_at
+        "SELECT id, username::text AS username, email::text AS email, password_hash, password_set, display_name, avatar_color, bio, created_at
          FROM users WHERE id = $1",
     )
     .bind(id)

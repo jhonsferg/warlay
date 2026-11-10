@@ -509,6 +509,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::devtools::open_devtools,
+            commands::google::google_sign_in,
+            commands::google::google_sign_in_cancel,
             commands::updater::get_app_info,
             commands::updater::check_for_update,
             commands::updater::install_update,

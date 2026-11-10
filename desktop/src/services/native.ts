@@ -90,6 +90,11 @@ export const native = {
   /** Developer tools: F12 / Ctrl+Shift+I, enabled in release builds too. */
   openDevtools: () => invoke<void>("open_devtools"),
 
+  /** Sign in with Google: opens the browser and waits for it (desktop only). */
+  googleSignIn: (webUrl: string, lang: string) =>
+    invoke<{ code: string; verifier: string } | undefined>("google_sign_in", { webUrl, lang }),
+  googleSignInCancel: () => invoke<void>("google_sign_in_cancel"),
+
   /** Version, build and dates of this installation (desktop only). */
   appInfo: () => invoke<AppInfo | undefined>("get_app_info"),
   /** Client updates from GitHub Releases (desktop only). */

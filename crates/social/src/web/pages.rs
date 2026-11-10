@@ -460,8 +460,8 @@ pub fn privacy(base: &str, lang: Lang) -> String {
             &[
                 tr(
                     lang,
-                    "Conservamos tus datos mientras tengas una cuenta. Puedes pedir que eliminemos tu cuenta y sus datos; por ahora esa solicitud se hace por el contacto indicado abajo. Un respaldo de la base de datos puede tardar un tiempo en desaparecer.",
-                    "We keep your data while you have an account. You can ask us to delete your account and its data; for now that request is made through the contact below. A database backup can take a while to disappear.",
+                    "Conservamos tus datos mientras tengas una cuenta. Puedes eliminar tu cuenta tú mismo en la aplicación (Ajustes, Cuenta, Eliminar cuenta): se borran de inmediato tu perfil, tus amigos, tus mensajes, tus notificaciones y el vínculo con Google. Si no puedes entrar, pídelo por el contacto indicado abajo. Un respaldo de la base de datos puede tardar un tiempo en desaparecer.",
+                    "We keep your data while you have an account. You can delete your account yourself in the app (Settings, Account, Delete account): your profile, friends, messages, notifications and Google link are erased immediately. If you cannot sign in, ask through the contact below. A database backup can take a while to disappear.",
                 ),
             ],
         ),
@@ -585,6 +585,91 @@ pub fn terms(base: &str, lang: Lang) -> String {
             "The conditions for using Warlay: account, conduct, content, trademarks and liability.",
         ),
         &sections,
+    )
+}
+
+/// A short page for the sign-in flow (a message, an error, a form). It is not
+/// for the search index.
+pub fn notice(base: &str, lang: Lang, title: &str, body: &str) -> String {
+    let body = format!(
+        "<div class=\"wrap\"><section class=\"doc auth\">
+<h1>{}</h1>
+{body}
+</section></div>",
+        escape(title)
+    );
+    render(
+        base,
+        &Page {
+            lang,
+            path: "/auth/",
+            title,
+            description: tr(lang, "Inicio de sesión en Warlay", "Sign in to Warlay"),
+            body,
+            json_ld: None,
+        },
+    )
+    .replace("content=\"index, follow\"", "content=\"noindex, nofollow\"")
+}
+
+/// The sign-in flow could not go on; says why in a sentence.
+pub fn auth_error(base: &str, lang: Lang, detail: &str) -> String {
+    let body = format!(
+        "<p>{}</p><p class=\"note\">{}</p>",
+        escape(detail),
+        tr(
+            lang,
+            "Vuelve a Warlay e inténtalo de nuevo desde allí.",
+            "Go back to Warlay and try again from there."
+        )
+    );
+    notice(
+        base,
+        lang,
+        tr(lang, "No se pudo iniciar sesión", "Could not sign in"),
+        &body,
+    )
+}
+
+/// Asks for the password of the existing account whose e-mail matches the
+/// Google account, before linking the two.
+pub fn link_account(base: &str, lang: Lang, email: &str, link_id: &str, error: Option<&str>) -> String {
+    let error = error
+        .map(|e| format!("<p class=\"error\" role=\"alert\">{}</p>", escape(e)))
+        .unwrap_or_default();
+    let intro = format!(
+        "{} <strong>{}</strong>. {}",
+        tr(lang, "Ya existe una cuenta de Warlay con el correo", "A Warlay account already exists for"),
+        escape(email),
+        tr(
+            lang,
+            "Escribe su contraseña para vincularla con tu cuenta de Google; después podrás entrar con cualquiera de las dos.",
+            "Enter its password to link it to your Google account; afterwards you can sign in with either."
+        )
+    );
+    let body = format!(
+        r##"<p>{intro}</p>
+{error}<form method="post" action="/auth/google/link" class="stack">
+<input type="hidden" name="link" value="{link}">
+<label for="password">{label}</label>
+<input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+<button class="btn btn-primary" type="submit">{button}</button>
+</form>
+<p class="note">{note}</p>"##,
+        link = escape(link_id),
+        label = tr(lang, "Contraseña de Warlay", "Warlay password"),
+        button = tr(lang, "Vincular y continuar", "Link and continue"),
+        note = tr(
+            lang,
+            "¿No es tu cuenta o no recuerdas la contraseña? Cierra esta página y usa los códigos de recuperación desde la aplicación.",
+            "Not your account, or you forgot the password? Close this page and use your recovery codes from the app."
+        ),
+    );
+    notice(
+        base,
+        lang,
+        tr(lang, "Vincular tu cuenta de Google", "Link your Google account"),
+        &body,
     )
 }
 

@@ -22,6 +22,10 @@ struct Server {
 }
 
 async fn start() -> Option<Server> {
+    start_with(|_| {}).await
+}
+
+async fn start_with(configure: impl FnOnce(&mut MainSettings)) -> Option<Server> {
     let (Ok(database_url), Ok(redis_url)) = (
         std::env::var("WARLAY_TEST_DATABASE_URL"),
         std::env::var("WARLAY_TEST_REDIS_URL"),
@@ -29,7 +33,7 @@ async fn start() -> Option<Server> {
         eprintln!("skipping: WARLAY_TEST_DATABASE_URL / WARLAY_TEST_REDIS_URL not set");
         return None;
     };
-    let settings = MainSettings {
+    let mut settings = MainSettings {
         database_url,
         redis_url,
         helper_secret: SECRET.into(),
@@ -37,6 +41,7 @@ async fn start() -> Option<Server> {
         host_absence_close_secs: 2,
         ..MainSettings::default()
     };
+    configure(&mut settings);
     let state = social::connect(settings).await.expect("connect");
     helpers::record_heartbeat(
         &state,
@@ -1355,4 +1360,441 @@ async fn the_website_serves_pages_in_both_languages_with_safe_headers() {
 
     // The API did not move.
     assert_eq!(get("/health", None).await.unwrap().status(), 200);
+}
+
+/// A stand-in for Google's token endpoint: the "code" it is given carries the
+/// identity it answers with, as `sub|email|verified|name`.
+async fn fake_google() -> String {
+    use axum::response::IntoResponse;
+    use axum::routing::post;
+    use std::collections::HashMap;
+
+    async fn token(
+        axum::extract::Form(form): axum::extract::Form<HashMap<String, String>>,
+    ) -> axum::response::Response {
+        let field = |name: &str| form.get(name).map(String::as_str).unwrap_or("");
+        let parts: Vec<&str> = field("code").split('|').collect();
+        let ok = field("client_id") == "test-client"
+            && field("client_secret") == "test-secret"
+            && field("grant_type") == "authorization_code"
+            && field("redirect_uri").ends_with("/auth/google/callback");
+        if !ok || parts.len() != 4 {
+            return (axum::http::StatusCode::BAD_REQUEST, "bad").into_response();
+        }
+        let enc = |v: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(v);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let claims = json!({
+            "iss": "https://accounts.google.com", "aud": "test-client", "sub": parts[0],
+            "exp": now + 600, "email": parts[1], "email_verified": parts[2] == "true", "name": parts[3],
+        });
+        let id_token = format!("{}.{}.sig", enc(b"{}"), enc(claims.to_string().as_bytes()));
+        axum::Json(json!({ "id_token": id_token })).into_response()
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = axum::Router::new().route("/token", post(token));
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    format!("http://{addr}")
+}
+
+/// A PKCE verifier and its challenge.
+fn pkce() -> (String, String) {
+    use sha2::{Digest, Sha256};
+    let verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Uuid::new_v4().as_bytes().repeat(2));
+    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    (verifier, challenge)
+}
+
+const APP_STATE: &str = "app-state-0123456789";
+
+/// The player's browser, which never follows redirects: the test plays the
+/// parts of Google and of the app's loopback listener itself.
+struct Browser<'a> {
+    s: &'a Server,
+    http: reqwest::Client,
+}
+
+impl<'a> Browser<'a> {
+    fn new(s: &'a Server) -> Self {
+        Self {
+            s,
+            http: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+        }
+    }
+
+    /// The app opens `/auth/google/start`; returns the cookie and the `state`
+    /// that goes to Google.
+    async fn start(&self, challenge: &str) -> (String, String) {
+        let res = self
+            .http
+            .get(format!(
+                "{}/auth/google/start?port=51234&state={APP_STATE}&challenge={challenge}",
+                self.s.base
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert!(res.status().is_redirection(), "{}", res.status());
+        let location = res.headers()["location"].to_str().unwrap().to_string();
+        assert!(location.contains("client_id=test-client") && location.contains("scope=openid+email+profile"));
+        let nonce = url::Url::parse(&location)
+            .unwrap()
+            .query_pairs()
+            .find(|(k, _)| k == "state")
+            .unwrap()
+            .1
+            .to_string();
+        let cookie = res.headers()["set-cookie"].to_str().unwrap();
+        assert!(
+            cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"),
+            "{cookie}"
+        );
+        (cookie.split(';').next().unwrap().to_string(), nonce)
+    }
+
+    /// Google sends the browser back; `code` is the identity, for the fake.
+    async fn callback(&self, cookie: &str, nonce: &str, code: &str) -> reqwest::Response {
+        self.http
+            .get(format!("{}/auth/google/callback", self.s.base))
+            .query(&[("code", code), ("state", nonce)])
+            .header("cookie", cookie)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    /// A whole sign-in as the given Google identity; returns the answer's redirect.
+    async fn sign_in(&self, challenge: &str, identity: &str) -> reqwest::Response {
+        let (cookie, nonce) = self.start(challenge).await;
+        self.callback(&cookie, &nonce, identity).await
+    }
+}
+
+/// Where the browser is sent: always the player's own machine.
+fn loopback(res: &reqwest::Response) -> url::Url {
+    assert!(res.status().is_redirection(), "{}", res.status());
+    let url = url::Url::parse(res.headers()["location"].to_str().unwrap()).unwrap();
+    assert_eq!(url.host_str(), Some("127.0.0.1"));
+    assert_eq!(url.port(), Some(51234));
+    url
+}
+
+fn param(url: &url::Url, name: &str) -> Option<String> {
+    url.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.to_string())
+}
+
+#[tokio::test]
+async fn google_sign_in_creates_an_account_and_returns_to_the_app() {
+    let google = fake_google().await;
+    let Some(s) = start_with(|settings| {
+        settings.google_client_id = "test-client".into();
+        settings.google_client_secret = "test-secret".into();
+        settings.google_token_url = format!("{google}/token");
+        settings.google_auth_url = format!("{google}/auth");
+    })
+    .await
+    else {
+        return;
+    };
+    let browser = Browser::new(&s);
+    let exchange = |code: String, verifier: String| {
+        s.call(
+            "POST",
+            "/auth/google/exchange",
+            None,
+            Some(json!({ "code": code, "verifier": verifier })),
+        )
+    };
+
+    let (status, providers) = s.call("GET", "/auth/providers", None, None).await;
+    assert_eq!((status, &providers["google"]), (200, &json!(true)));
+
+    // A brand-new Google user gets an account without a password.
+    let sub = unique("g");
+    let email = format!("{sub}@gmail.test");
+    let identity = format!("{sub}|{email}|true|Nuevo Jugador");
+    let (verifier, challenge) = pkce();
+    let back = loopback(&browser.sign_in(&challenge, &identity).await);
+    assert_eq!(param(&back, "state").as_deref(), Some(APP_STATE));
+    let code = param(&back, "code").expect("a one-time code");
+    // Without the right verifier the code is useless, and a wrong try burns it.
+    assert_eq!(exchange(code.clone(), pkce().0).await.0, 400);
+    assert_eq!(exchange(code, verifier).await.0, 400);
+
+    let (verifier, challenge) = pkce();
+    let code = param(&loopback(&browser.sign_in(&challenge, &identity).await), "code").unwrap();
+    let (status, session) = exchange(code.clone(), verifier.clone()).await;
+    assert_eq!(status, 200, "{session}");
+    assert_eq!(session["user"]["email"], json!(email));
+    assert_eq!(session["user"]["displayName"], "Nuevo Jugador");
+    assert_eq!(session["user"]["passwordSet"], false);
+    let google_user = session["user"]["id"].clone();
+    let token = session["tokens"]["accessToken"].as_str().unwrap().to_string();
+    assert_eq!(exchange(code, verifier).await.0, 400, "a code works once");
+
+    // Signing in again with the same Google account finds the same user.
+    let (verifier, challenge) = pkce();
+    let again = format!("{sub}|{email}|true|Otro Nombre");
+    let code = param(&loopback(&browser.sign_in(&challenge, &again).await), "code").unwrap();
+    assert_eq!(exchange(code, verifier).await.1["user"]["id"], google_user);
+
+    // No password yet, so password sign-in cannot work. One can be set without
+    // a current password, and then both ways work.
+    let login = |password: &'static str| {
+        s.call(
+            "POST",
+            "/auth/login",
+            None,
+            Some(json!({ "login": email, "password": password })),
+        )
+    };
+    assert_eq!(login("whatever-1").await.0, 401);
+    let (status, _) = s
+        .call(
+            "POST",
+            "/me/password",
+            Some(&token),
+            Some(json!({ "newPassword": "my-new-password" })),
+        )
+        .await;
+    assert_eq!(status, 200);
+    let (status, signed_in) = login("my-new-password").await;
+    assert_eq!((status, &signed_in["user"]["id"]), (200, &google_user));
+    assert_eq!(s.call("GET", "/me", Some(&token), None).await.1["passwordSet"], true);
+}
+
+#[tokio::test]
+async fn google_links_to_an_existing_account_only_after_its_password() {
+    let google = fake_google().await;
+    let Some(s) = start_with(|settings| {
+        settings.google_client_id = "test-client".into();
+        settings.google_client_secret = "test-secret".into();
+        settings.google_token_url = format!("{google}/token");
+    })
+    .await
+    else {
+        return;
+    };
+    let browser = Browser::new(&s);
+    let existing = s.register("viejo").await;
+    let email = format!("{}@test.dev", existing.username);
+    let sub = unique("g");
+    let identity = format!("{sub}|{email}|true|Viejo");
+
+    let (verifier, challenge) = pkce();
+    let (cookie, nonce) = browser.start(&challenge).await;
+    let res = browser.callback(&cookie, &nonce, &identity).await;
+    assert_eq!(res.status(), 200, "the e-mail is taken: ask for the password");
+    // The form may end at the app's loopback address; nothing else is widened.
+    let csp = res.headers()["content-security-policy"].to_str().unwrap().to_string();
+    assert!(
+        csp.contains("form-action 'self' http://127.0.0.1:*") && csp.contains("default-src 'none'"),
+        "{csp}"
+    );
+    let form = res.text().await.unwrap();
+    assert!(form.contains(&email) && form.contains("noindex"));
+    let link = form
+        .split("name=\"link\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    let submit = |password: &'static str, cookie: String| {
+        browser
+            .http
+            .post(format!("{}/auth/google/link", s.base))
+            .header("cookie", cookie)
+            .form(&[("link", link.clone()), ("password", password.to_string())])
+            .send()
+    };
+    assert_eq!(submit("wrong-password", cookie.clone()).await.unwrap().status(), 401);
+    // Another browser (no cookie) cannot finish it, right password or not.
+    assert_eq!(
+        submit("supersecret", "wl_oauth=other".into()).await.unwrap().status(),
+        400
+    );
+    let res = submit("supersecret", cookie.clone()).await.unwrap();
+    let code = param(&loopback(&res), "code").expect("linked");
+    let (_, linked) = s
+        .call(
+            "POST",
+            "/auth/google/exchange",
+            None,
+            Some(json!({ "code": code, "verifier": verifier })),
+        )
+        .await;
+    assert_eq!(linked["user"]["id"], json!(existing.id.to_string()));
+    assert_eq!(linked["user"]["passwordSet"], true);
+
+    // From now on Google alone gets in, and the form is spent.
+    let (verifier, challenge) = pkce();
+    let code = param(&loopback(&browser.sign_in(&challenge, &identity).await), "code").unwrap();
+    let (_, second) = s
+        .call(
+            "POST",
+            "/auth/google/exchange",
+            None,
+            Some(json!({ "code": code, "verifier": verifier })),
+        )
+        .await;
+    assert_eq!(second["user"]["id"], json!(existing.id.to_string()));
+    assert_eq!(submit("supersecret", cookie).await.unwrap().status(), 400);
+}
+
+#[tokio::test]
+async fn google_sign_in_refuses_what_it_should() {
+    let google = fake_google().await;
+    let Some(s) = start_with(|settings| {
+        settings.google_client_id = "test-client".into();
+        settings.google_client_secret = "test-secret".into();
+        settings.google_token_url = format!("{google}/token");
+    })
+    .await
+    else {
+        return;
+    };
+    let browser = Browser::new(&s);
+    let (_, challenge) = pkce();
+
+    // An e-mail Google has not verified is not proof of anything.
+    let unverified = format!("{}|nuevo@x.test|false|X", unique("g"));
+    let res = browser.sign_in(&challenge, &unverified).await;
+    assert_eq!(param(&loopback(&res), "error").as_deref(), Some("email_not_verified"));
+
+    // The player pressing "cancel" at Google.
+    let (cookie, nonce) = browser.start(&challenge).await;
+    let res = browser
+        .http
+        .get(format!(
+            "{}/auth/google/callback?error=access_denied&state={nonce}",
+            s.base
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(param(&loopback(&res), "error").as_deref(), Some("access_denied"));
+
+    // A callback that was not started in this browser.
+    let (_, nonce) = browser.start(&challenge).await;
+    assert_eq!(
+        browser
+            .callback("wl_oauth=forged", &nonce, "x|a@b.test|true|X")
+            .await
+            .status(),
+        400
+    );
+    assert_eq!(browser.callback("", &nonce, "x|a@b.test|true|X").await.status(), 400);
+
+    // Start parameters: a privileged port, a short state and nothing at all.
+    for query in [
+        format!("port=80&state={APP_STATE}"),
+        "port=51234&state=short".to_string(),
+        String::new(),
+    ] {
+        let res = browser
+            .http
+            .get(format!("{}/auth/google/start?{query}&challenge={challenge}", s.base))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 400, "{query}");
+    }
+}
+
+#[tokio::test]
+async fn google_sign_in_is_off_without_credentials() {
+    let Some(s) = start().await else { return };
+    let (_, providers) = s.call("GET", "/auth/providers", None, None).await;
+    assert_eq!(providers["google"], false);
+    let res = s
+        .client
+        .get(format!(
+            "{}/auth/google/start?port=51234&state={APP_STATE}&challenge={}",
+            s.base,
+            pkce().1
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn deleting_an_account_removes_it_and_what_hung_from_it() {
+    let Some(s) = start().await else { return };
+    let leaver = s.register("adios").await;
+    let friend = s.register("amigo").await;
+    s.befriend(&leaver, &friend).await;
+    let room = s.ok("POST", "/rooms", &leaver, Some(json!({ "name": "Se va" }))).await;
+    let room_id = room["room"]["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        s.ok("GET", "/friends", &friend, None).await.as_array().unwrap().len(),
+        1
+    );
+
+    let delete = |confirm: &str, password: Option<&str>| {
+        let body = match password {
+            Some(p) => json!({ "confirm": confirm, "password": p }),
+            None => json!({ "confirm": confirm }),
+        };
+        s.call("DELETE", "/me", Some(&leaver.token), Some(body))
+    };
+    // Typing the username and the password are both required.
+    assert_eq!(delete("otro", Some("supersecret")).await.0, 400);
+    assert_eq!(delete(&leaver.username, Some("wrong-password")).await.0, 400);
+    assert_eq!(delete(&leaver.username, None).await.0, 400);
+    assert_eq!(
+        s.call("GET", "/me", Some(&leaver.token), None).await.0,
+        200,
+        "still there"
+    );
+
+    let (status, body) = delete(&leaver.username.to_uppercase(), Some("supersecret")).await;
+    assert_eq!(status, 200, "{body}");
+
+    // The session, the login, the friendship and the room hosted are gone.
+    assert_eq!(s.call("GET", "/me", Some(&leaver.token), None).await.0, 401);
+    let (status, _) = s
+        .call(
+            "POST",
+            "/auth/login",
+            None,
+            Some(json!({ "login": leaver.username, "password": "supersecret" })),
+        )
+        .await;
+    assert_eq!(status, 401);
+    assert!(s
+        .ok("GET", "/friends", &friend, None)
+        .await
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let (status, _) = s
+        .call("GET", &format!("/rooms/{room_id}"), Some(&friend.token), None)
+        .await;
+    assert_eq!(status, 404);
+    let found = s
+        .ok("GET", &format!("/users/search?q={}", leaver.username), &friend, None)
+        .await;
+    assert!(found.as_array().unwrap().is_empty());
+    // The name and e-mail can be used again.
+    let (status, _) = s
+        .call(
+            "POST",
+            "/auth/register",
+            None,
+            Some(json!({ "username": leaver.username, "email": format!("{}@test.dev", leaver.username), "password": "supersecret" })),
+        )
+        .await;
+    assert_eq!(status, 200);
 }
