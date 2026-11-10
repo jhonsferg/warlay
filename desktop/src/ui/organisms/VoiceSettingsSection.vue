@@ -44,8 +44,9 @@ const NOISE_LEVELS: { value: NoiseLevel; label: string }[] = [
 const HINTS: Record<NoiseLevel, string> = {
   off: tx("Tu micrófono se envía tal cual, solo con cancelación de eco."),
   standard: tx("Quita ruido de fondo sencillo, como el siseo constante."),
-  strong:
-    tx("Usa una red neuronal (RNNoise) para quitar teclado, ventilador y ruidos de fondo. No elimina a otra persona hablando cerca."),
+  strong: tx(
+    "Usa una red neuronal (RNNoise) para quitar teclado, ventilador y ruidos de fondo. No elimina a otra persona hablando cerca.",
+  ),
 };
 
 async function save(patch: {
@@ -119,7 +120,11 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
       <div>
         <strong>{{ t("Latencia mínima de voz") }}</strong>
         <p class="voice-settings__note" data-testid="low-latency-hint">
-          {{ t("Envía tu voz en paquetes de 10 ms en lugar de 20 ms: unos 10 ms menos de retraso, pero casi el doble de paquetes por segundo (más datos de subida, sobre todo en salas grandes). Se aplica la próxima vez que te unas a la voz.") }}
+          {{
+            t(
+              "Envía tu voz en paquetes de 10 ms en lugar de 20 ms: unos 10 ms menos de retraso, pero casi el doble de paquetes por segundo (más datos de subida, sobre todo en salas grandes). Se aplica la próxima vez que te unas a la voz.",
+            )
+          }}
         </p>
       </div>
       <WSwitch
@@ -134,7 +139,11 @@ onUnmounted(() => navigator.mediaDevices?.removeEventListener?.("devicechange", 
       <div>
         <strong>{{ t("Compartir el audio del escritorio") }}</strong>
         <p class="voice-settings__note" data-testid="share-hint">
-          {{ t("Los jugadores de la sala oirán el sonido de tu PC (tu juego, música, un vídeo) mientras estés en la voz. El audio de Warlay, es decir sus voces, nunca se reenvía. Requiere Windows 11.") }}
+          {{
+            t(
+              "Los jugadores de la sala oirán el sonido de tu PC (tu juego, música, un vídeo) mientras estés en la voz. El audio de Warlay, es decir sus voces, nunca se reenvía. Requiere Windows 11.",
+            )
+          }}
         </p>
       </div>
       <WSwitch
