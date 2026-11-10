@@ -1,3 +1,5 @@
+import { localeTag, t } from "./i18n.ts";
+
 // How the list of open sessions reads: a device name worked out from the user
 // agent the session signed in with, and how long ago it was last used.
 
@@ -16,7 +18,7 @@ export interface SessionView {
 /** "Edge en Windows", "Chrome en Android"... from a user-agent string. */
 export function deviceName(userAgent: string): string {
   const ua = userAgent.trim();
-  if (!ua) return "Dispositivo desconocido";
+  if (!ua) return t("Dispositivo desconocido");
   // Order matters: Edge and Opera also say Chrome, Chrome also says Safari.
   const browser = /Edg(e|A|iOS)?\//.test(ua)
     ? "Edge"
@@ -40,23 +42,23 @@ export function deviceName(userAgent: string): string {
           : /Linux|X11/.test(ua)
             ? "Linux"
             : null;
-  if (browser && os) return `${browser} en ${os}`;
-  return browser ?? os ?? "Dispositivo desconocido";
+  if (browser && os) return t("{browser} en {os}", { browser, os });
+  return browser ?? os ?? t("Dispositivo desconocido");
 }
 
 export function methodLabel(method: string): string {
-  return method === "google" ? "Google" : "Contraseña";
+  return method === "google" ? "Google" : t("Contraseña");
 }
 
 /** "ahora", "hace 5 min", "hace 3 h", "hace 2 días", or the date for older ones. */
 export function agoText(iso: string, now: number): string {
   const seconds = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
-  if (seconds < 90) return "ahora";
+  if (seconds < 90) return t("ahora");
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `hace ${minutes} min`;
+  if (minutes < 60) return t("hace {n} min", { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `hace ${hours} h`;
+  if (hours < 24) return t("hace {n} h", { n: hours });
   const days = Math.round(hours / 24);
-  if (days < 30) return `hace ${days} ${days === 1 ? "día" : "días"}`;
-  return new Date(iso).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
+  if (days < 30) return days === 1 ? t("hace 1 día") : t("hace {n} días", { n: days });
+  return new Date(iso).toLocaleDateString(localeTag(), { day: "numeric", month: "short", year: "numeric" });
 }
