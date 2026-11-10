@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { auth } from "../../services/api";
-import { isGoogleCancel } from "../../services/googleSignIn";
+import { ApiError } from "../../services/http";
+import { googleFailureMessage, isGoogleCancel } from "../../services/googleSignIn";
 import { isDesktop, native } from "../../services/native";
 import type { AuthProviders } from "../../services/types";
 import { useSession } from "../../stores/session";
 import WButton from "../atoms/WButton.vue";
+import WInput from "../atoms/WInput.vue";
 
 const emit = defineEmits<{ signedIn: [] }>();
 const session = useSession();
@@ -13,6 +15,9 @@ const session = useSession();
 const providers = ref<AuthProviders | null>(null);
 const waiting = ref(false);
 const error = ref<string | null>(null);
+/** Google said yes; an account with an authenticator app still needs its code. */
+const grant = ref<{ code: string; verifier: string } | null>(null);
+const totpCode = ref("");
 
 // Only offered where it can work: in the desktop app, on a server that has it.
 onMounted(async () => {
@@ -30,13 +35,43 @@ async function start() {
   waiting.value = true;
   error.value = null;
   try {
-    await session.loginWithGoogle(providers.value.webUrl);
-    emit("signedIn");
+    grant.value = await session.googleBrowser(providers.value.webUrl);
   } catch (e) {
     if (!isGoogleCancel(e)) error.value = e instanceof Error ? e.message : String(e);
+    return;
   } finally {
     waiting.value = false;
   }
+  await finish();
+}
+
+/** Trades the grant for a session; asks for the second step if the account has one. */
+async function finish() {
+  if (!grant.value) return;
+  waiting.value = true;
+  error.value = null;
+  try {
+    await session.googleExchange(grant.value, totpCode.value.trim() || undefined);
+    grant.value = null;
+    emit("signedIn");
+  } catch (e) {
+    if (e instanceof ApiError && e.code === "totp_required") {
+      // Nothing to show yet: the field appears.
+    } else if (e instanceof ApiError && e.code === "invalid_totp") {
+      error.value = e.message;
+    } else {
+      grant.value = null;
+      error.value = googleFailureMessage("server_error");
+    }
+  } finally {
+    waiting.value = false;
+  }
+}
+
+function giveUp() {
+  grant.value = null;
+  totpCode.value = "";
+  error.value = null;
 }
 
 function cancel() {
@@ -47,7 +82,16 @@ function cancel() {
 <template>
   <div v-if="providers" class="google-signin" data-testid="google-signin">
     <p class="google-signin__divider"><span>o</span></p>
-    <div v-if="waiting" class="google-signin__waiting" role="status">
+    <form v-if="grant && !waiting" class="google-signin__totp" @submit.prevent="finish">
+      <label for="google-totp">Código de verificación</label>
+      <WInput id="google-totp" v-model="totpCode" size="lg" autocomplete="one-time-code" placeholder="123456" />
+      <p class="google-signin__hint">El de tu aplicación de autenticación, o un código de recuperación.</p>
+      <WButton type="submit" size="lg" block :disabled="!totpCode.trim()" data-testid="google-totp-submit">
+        Continuar
+      </WButton>
+      <WButton variant="ghost" @click="giveUp">Cancelar</WButton>
+    </form>
+    <div v-else-if="waiting" class="google-signin__waiting" role="status">
       <p>Termina el inicio de sesión en tu navegador. Warlay sigue aquí esperando.</p>
       <WButton variant="ghost" data-testid="google-cancel" @click="cancel">Cancelar</WButton>
     </div>
@@ -113,6 +157,21 @@ function cancel() {
     p {
       margin: 0;
     }
+  }
+
+  &__totp {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    label {
+      font-weight: 600;
+    }
+  }
+
+  &__hint {
+    margin: 0;
+    color: var(--text-3);
+    font-size: var(--fs-sm);
   }
 
   &__error {
