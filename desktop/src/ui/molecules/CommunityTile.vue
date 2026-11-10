@@ -3,6 +3,7 @@ import { Globe, Lock, Users } from "@lucide/vue";
 import type { CommunitySummary } from "../../services/types";
 import WAvatar from "../atoms/WAvatar.vue";
 import WButton from "../atoms/WButton.vue";
+import { t } from "../../services/i18n";
 
 defineProps<{ community: CommunitySummary; busy?: boolean }>();
 defineEmits<{ join: [CommunitySummary]; open: [CommunitySummary] }>();
@@ -20,18 +21,18 @@ defineEmits<{ join: [CommunitySummary]; open: [CommunitySummary] }>();
     />
     <div class="community-tile__body">
       <h3>{{ community.name }}</h3>
-      <p>{{ community.description || "Sin descripción todavía." }}</p>
+      <p>{{ community.description || t("Sin descripción todavía.") }}</p>
       <div class="community-tile__meta">
-        <span><Users :size="13" /> {{ community.memberCount }} miembros</span>
-        <span v-if="community.isPublic"><Globe :size="13" /> Pública</span>
-        <span v-else><Lock :size="13" /> Privada</span>
+        <span><Users :size="13" /> {{ t('{n} miembros', { n: community.memberCount }) }}</span>
+        <span v-if="community.isPublic"><Globe :size="13" /> {{ t("Pública") }}</span>
+        <span v-else><Lock :size="13" /> {{ t("Privada") }}</span>
       </div>
     </div>
     <div class="community-tile__actions">
       <WButton v-if="community.myRole" variant="secondary" size="sm" block @click="$emit('open', community)"
-        >Entrar</WButton
+        >{{ t("Entrar") }}</WButton
       >
-      <WButton v-else size="sm" block :loading="busy" @click="$emit('join', community)">Unirme</WButton>
+      <WButton v-else size="sm" block :loading="busy" @click="$emit('join', community)">{{ t("Unirme") }}</WButton>
     </div>
   </article>
 </template>
