@@ -47,6 +47,9 @@ pub struct LoginRequest {
     /// Username or email.
     pub login: String,
     pub password: String,
+    /// The second step, for accounts that turned on an authenticator app: a
+    /// code from it, or a recovery code.
+    pub totp_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,7 +225,9 @@ pub async fn login(
     }
     rate_limit(&state, &format!("login:{login}"), 10, 300).await?;
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username::text AS username, email::text AS email, password_hash, password_set, display_name, avatar_color, bio, created_at
+        "SELECT id, username::text AS username, email::text AS email, password_hash, password_set,
+                EXISTS (SELECT 1 FROM user_totp t WHERE t.user_id = users.id AND t.enabled_at IS NOT NULL) AS totp_enabled,
+                display_name, avatar_color, bio, created_at
          FROM users WHERE username = $1 OR email = $1",
     )
     .bind(&login)
@@ -241,6 +246,10 @@ pub async fn login(
     let matches = verify_password(&req.password, user.as_ref().map(|u| u.password_hash.as_str())).await?;
     // An account born with Google has no password yet: nothing can match.
     let user = user.filter(|u| matches && u.password_set).ok_or_else(invalid)?;
+    // Only after the password is right, so this does not say which accounts use it.
+    if user.totp_enabled {
+        super::totp::require(&state, user.id, req.totp_code.as_deref()).await?;
+    }
     Ok(Json(start_session(&state, user, &headers).await?))
 }
 
