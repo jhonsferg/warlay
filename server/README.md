@@ -185,6 +185,8 @@ docker run -d --name warlay-helper-1 --restart unless-stopped \
 | `WARLAY_HELPER_SECRET`          | main, helper | `main.helper_secret`, `helper.helper_secret`                          |
 | `WARLAY_CLIENT_IP_HEADER`       | main         | `main.client_ip_header` (e.g. `x-real-ip` behind nginx)               |
 | `WARLAY_WEB_BASE_URL`           | main         | `main.web_base_url` (public address of the website)                   |
+| `WARLAY_GOOGLE_CLIENT_ID`       | main         | `main.google_client_id` (turns on Google sign-in with the secret)     |
+| `WARLAY_GOOGLE_CLIENT_SECRET`   | main         | `main.google_client_secret`                                           |
 | `WARLAY_HELPER_NAME`            | helper       | `helper.name` (keep it stable: the helper's identity derives from it) |
 | `WARLAY_HELPER_REGION`          | helper       | `helper.region`                                                       |
 | `WARLAY_MAIN_URL`               | helper       | `helper.main_url`                                                     |
@@ -224,7 +226,32 @@ the server. Set `web_base_url` (or `WARLAY_WEB_BASE_URL`) to the public address,
 for example `https://warlay.example.com`: it goes into canonical links and the
 sitemap. Point a second host name at the same upstream and expose only these
 paths on it: `/`, `/privacy`, `/terms`, `/robots.txt`, `/sitemap.xml`,
-`/favicon.svg` and `/assets/`.
+`/favicon.svg` and `/assets/`, plus `/auth/` if you turn on Google sign-in.
+
+### Google sign-in
+
+Players can sign in with Google as well as with a username and password, and
+keep the same account either way. It is off until both
+`WARLAY_GOOGLE_CLIENT_ID` and `WARLAY_GOOGLE_CLIENT_SECRET` are set.
+
+1. In Google Cloud, create an OAuth client of type **Web application** and add
+   `{web_base_url}/auth/google/callback` as an authorized redirect URI. The
+   consent screen only needs the `openid`, `email` and `profile` scopes.
+2. Put the two values in the server's environment and restart it.
+3. Expose `/auth/` on the website's host name (`/auth/google/start`,
+   `/auth/google/callback` and `/auth/google/link`); the app's half lives under
+   the API (`/api/v1/auth/providers` and `/api/v1/auth/google/exchange`).
+
+How it works: the desktop app listens on a random loopback port, opens the
+browser on `/auth/google/start` and waits (RFC 8252 with PKCE and a `state`).
+After Google, the website sends the browser to the app's loopback address with
+a one-time code valid for two minutes; the app trades the code and its PKCE
+verifier for a session. A cookie ties the callback to the browser that started
+it. A Google identity is matched by Google's stable subject id; if an existing
+account has the same e-mail, it is linked only after the player types that
+account's password (Warlay never verified those e-mails). Google accounts
+that are new get an account with no password, which the player can set later
+in Settings. Only e-mails Google reports as verified are accepted.
 
 ## TLS with a reverse proxy
 
@@ -343,6 +370,10 @@ Linux caps them at `net.core.rmem_max` and `net.core.wmem_max`; raise both to
   password does not spend it, and a wrong account and a wrong code get the same
   answer. `POST /me/recovery-codes` (with the password) replaces the set;
   `GET /me/recovery-codes` says how many are left.
+- **Deleting an account.** `DELETE /me` removes the account and what hangs from
+  it (friendships, messages, memberships, notifications, keys, sessions and
+  the Google link) after the player types their username and, if the account
+  has a password, the password. A room they host is closed first.
 - **Private chat.** Direct messages are end-to-end encrypted between clients
   (X25519 + ChaCha20-Poly1305, identity keys published at `/me/e2e-key`); the
   server stores and relays ciphertext only.
