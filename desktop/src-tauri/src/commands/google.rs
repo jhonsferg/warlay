@@ -119,28 +119,6 @@ async fn request_line(stream: &mut TcpStream) -> Option<String> {
     text.lines().next().map(str::to_string)
 }
 
-/// Opens the browser. Only the Warlay website (https, or plain http on this
-/// machine for development) is ever opened.
-fn open_browser(url: &str) -> Result<(), String> {
-    let allowed =
-        url.starts_with("https://") || url.starts_with("http://127.0.0.1") || url.starts_with("http://localhost");
-    if !allowed {
-        return Err("invalid_url".into());
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        // `explorer` takes the URL as a single argument: no shell parsing.
-        std::process::Command::new("explorer")
-            .arg(url)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| format!("open_failed: {e}"))?;
-    }
-    Ok(())
-}
-
 /// Runs the whole browser round trip and returns what the app needs to ask the
 /// server for a session. Errors are short codes the interface translates:
 /// `cancelled`, `timeout`, and the website's own (`access_denied`,
@@ -178,7 +156,7 @@ async fn run(web_url: &str, lang: &str, cancel: &Notify) -> Result<GoogleGrant, 
         .append_pair("state", &state)
         .append_pair("challenge", &challenge_of(&verifier))
         .append_pair("lang", if spanish { "es" } else { "en" });
-    open_browser(url.as_str())?;
+    super::browser::open_url(url.as_str())?;
 
     let wait = async {
         loop {
@@ -252,13 +230,6 @@ mod tests {
         );
         assert_ne!(random_text(), random_text());
         assert_eq!(random_text().len(), 43);
-    }
-
-    #[test]
-    fn only_websites_open_in_the_browser() {
-        assert!(open_browser("file:///C:/Windows/System32/calc.exe").is_err());
-        assert!(open_browser("javascript:alert(1)").is_err());
-        assert!(open_browser("http://evil.example/").is_err());
     }
 
     #[tokio::test]
