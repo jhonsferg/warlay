@@ -6,6 +6,7 @@ import { useBlocks } from "../../stores/blocks";
 import { useToasts } from "../../stores/toasts";
 import WAvatar from "../atoms/WAvatar.vue";
 import WButton from "../atoms/WButton.vue";
+import { t } from "../../services/i18n";
 
 /** The players the user blocked, with a way to undo it. */
 const blocks = useBlocks();
@@ -20,9 +21,9 @@ async function unblock(id: string, name: string) {
   busy.value = id;
   try {
     await blocks.unblock(id);
-    toasts.success("Usuario desbloqueado", name);
+    toasts.success(t("Usuario desbloqueado"), name);
   } catch (e) {
-    toasts.error("No se pudo desbloquear", errorMessage(e));
+    toasts.error(t("No se pudo desbloquear"), errorMessage(e));
   } finally {
     busy.value = null;
   }
@@ -31,12 +32,11 @@ async function unblock(id: string, name: string) {
 
 <template>
   <section class="blocked" data-testid="blocked-card">
-    <h3><Ban /> Usuarios bloqueados</h3>
+    <h3><Ban /> {{ t("Usuarios bloqueados") }}</h3>
     <p class="blocked__muted">
-      Una persona bloqueada no puede enviarte solicitudes, invitaciones ni mensajes, y no ves sus mensajes en salas y
-      comunidades. No se le avisa.
+      {{ t("Una persona bloqueada no puede enviarte solicitudes, invitaciones ni mensajes, y no ves sus mensajes en salas y comunidades. No se le avisa.") }}
     </p>
-    <p v-if="!blocks.list.length" class="blocked__muted" data-testid="blocked-empty">No has bloqueado a nadie.</p>
+    <p v-if="!blocks.list.length" class="blocked__muted" data-testid="blocked-empty">{{ t("No has bloqueado a nadie.") }}</p>
     <ul v-else class="blocked__list">
       <li v-for="b in blocks.list" :key="b.id" data-testid="blocked-row">
         <WAvatar :name="b.displayName" :color="b.avatarColor" size="sm" />
@@ -44,7 +44,7 @@ async function unblock(id: string, name: string) {
           >{{ b.displayName }} <small>@{{ b.username }}</small></span
         >
         <WButton size="sm" variant="secondary" :loading="busy === b.id" @click="unblock(b.id, b.displayName)">
-          Desbloquear
+          {{ t("Desbloquear") }}
         </WButton>
       </li>
     </ul>
