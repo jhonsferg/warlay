@@ -7,6 +7,7 @@ import { useSession } from "../stores/session";
 import WButton from "../ui/atoms/WButton.vue";
 import WInput from "../ui/atoms/WInput.vue";
 import FormField from "../ui/molecules/FormField.vue";
+import GoogleSignIn from "../ui/organisms/GoogleSignIn.vue";
 import AuthLayout from "../ui/templates/AuthLayout.vue";
 
 const session = useSession();
@@ -16,6 +17,10 @@ const login = ref("");
 const password = ref("");
 const busy = ref(false);
 const error = ref<string | null>(null);
+
+function signedInWithGoogle() {
+  void router.replace((route.query.next as string) || "/");
+}
 
 async function submit() {
   busy.value = true;
@@ -57,6 +62,7 @@ async function submit() {
       </FormField>
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
       <WButton type="submit" size="lg" block :loading="busy" :disabled="!login.trim() || !password">Entrar</WButton>
+      <GoogleSignIn @signed-in="signedInWithGoogle" />
       <p class="auth-form__switch"><RouterLink to="/recover">¿Olvidaste tu contraseña?</RouterLink></p>
       <p class="auth-form__switch">¿No tienes cuenta? <RouterLink to="/register">Crear una</RouterLink></p>
     </form>
