@@ -2,6 +2,7 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "./App.vue";
 import { router } from "./router";
+import { ApiError } from "./services/http";
 import { isDesktop, native } from "./services/native";
 import { removeLegacyServerOverride } from "./services/serverUrl";
 // Self-hosted fonts (no external fetch): Inter for UI text, Rajdhani for
@@ -17,7 +18,36 @@ import "./styles/theme.scss";
 // The server address used to be editable in Ajustes; it is fixed by the build now.
 removeLegacyServerOverride(localStorage);
 
-createApp(App).use(createPinia()).use(router).mount("#app");
+const app = createApp(App);
+app.use(createPinia()).use(router);
+
+// Errors nobody handled are kept on this machine for the next run to offer as a
+// report (see `crash.rs`); nothing is sent. Failing to keep one is not worth another error.
+function keepUiError(message: string, stack: string) {
+  if (!isDesktop) return;
+  void native.recordUiError(message, stack).catch(() => {});
+}
+app.config.errorHandler = (error, _instance, info) => {
+  console.error(error);
+  keepUiError(
+    String(error instanceof Error ? error.message : error),
+    `${error instanceof Error ? (error.stack ?? "") : ""}\n(${info})`,
+  );
+};
+window.addEventListener("error", (event) =>
+  keepUiError(event.message, event.error instanceof Error ? (event.error.stack ?? "") : ""),
+);
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason;
+  // A refused request or a failed command is an answer, not a crash.
+  if (!(reason instanceof Error) || reason instanceof ApiError) return;
+  keepUiError(
+    `Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`,
+    reason instanceof Error ? (reason.stack ?? "") : "",
+  );
+});
+
+app.mount("#app");
 
 // Dismiss the static splash (index.html) once the first route has resolved,
 // which includes restoring the session, so the user never sees a blank frame.
