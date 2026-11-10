@@ -8,6 +8,7 @@ import RecoveryCodesPanel from "../ui/organisms/RecoveryCodesPanel.vue";
 import WButton from "../ui/atoms/WButton.vue";
 import WInput from "../ui/atoms/WInput.vue";
 import FormField from "../ui/molecules/FormField.vue";
+import GoogleSignIn from "../ui/organisms/GoogleSignIn.vue";
 import AuthLayout from "../ui/templates/AuthLayout.vue";
 
 const session = useSession();
@@ -142,6 +143,7 @@ async function submit() {
       </FormField>
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
       <WButton type="submit" size="lg" block :loading="busy" :disabled="!valid">Crear cuenta</WButton>
+      <GoogleSignIn @signed-in="router.replace('/')" />
       <p class="auth-form__switch">¿Ya tienes cuenta? <RouterLink to="/login">Inicia sesión</RouterLink></p>
     </form>
   </AuthLayout>
