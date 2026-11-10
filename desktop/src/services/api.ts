@@ -6,6 +6,7 @@ import type {
   AppNotification,
   AuthProviders,
   AuthResponse,
+  BlockedUser,
   ChannelKind,
   ChatMessage,
   CommunityDetail,
@@ -62,6 +63,18 @@ export type { Tokens };
 export const users = {
   search: (q: string) => api<UserWithPresence[]>("GET", `/users/search?q=${encodeURIComponent(q)}`),
   profile: (id: string) => api<Profile>("GET", `/users/${id}`),
+};
+
+export const blocks = {
+  list: () => api<BlockedUser[]>("GET", "/blocks"),
+  /** Also ends the friendship and any pending request or invitation. */
+  block: (userId: string) => api<void>("PUT", `/blocks/${userId}`),
+  unblock: (userId: string) => api<void>("DELETE", `/blocks/${userId}`),
+};
+
+export const reports = {
+  send: (body: { userId: string; reason: string; details?: string; messageId?: string }) =>
+    api<void>("POST", "/reports", body),
 };
 
 export const friends = {
