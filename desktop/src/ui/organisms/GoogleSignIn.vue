@@ -82,7 +82,9 @@ function cancel() {
 
 <template>
   <div v-if="providers" class="google-signin" data-testid="google-signin">
-    <p class="google-signin__divider"><span>{{ t("o") }}</span></p>
+    <p class="google-signin__divider">
+      <span>{{ t("o") }}</span>
+    </p>
     <form v-if="grant && !waiting" class="google-signin__totp" @submit.prevent="finish">
       <label for="google-totp">{{ t("Código de verificación") }}</label>
       <WInput id="google-totp" v-model="totpCode" size="lg" autocomplete="one-time-code" placeholder="123456" />
