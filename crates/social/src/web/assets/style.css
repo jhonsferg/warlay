@@ -338,3 +338,39 @@ footer.site .legal {
     scroll-behavior: auto;
   }
 }
+
+.auth .stack {
+  display: grid;
+  gap: 10px;
+  max-width: 360px;
+  margin: 18px 0;
+}
+
+.auth label {
+  font-weight: 700;
+}
+
+.auth input[type="password"] {
+  padding: 12px 14px;
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.auth input[type="password"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.auth button.btn {
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.auth .error {
+  color: #ff9d8f;
+  font-weight: 700;
+}
