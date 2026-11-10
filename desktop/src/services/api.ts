@@ -2,6 +2,7 @@
 import { edgeBase } from "./edges";
 import { api, ApiError } from "./http";
 import { realtime } from "./realtime";
+import type { SessionView } from "./sessions";
 import type {
   AppNotification,
   AuthProviders,
@@ -41,6 +42,10 @@ export const auth = {
     api<void>("POST", "/me/password", { currentPassword, newPassword }),
   /** Deletes the account for good. The password is asked only if it has one. */
   deleteAccount: (confirm: string, password?: string) => api<void>("DELETE", "/me", { confirm, password }),
+  /** The devices signed in to the account, and ending them. */
+  sessions: () => api<SessionView[]>("GET", "/me/sessions"),
+  endSession: (id: string) => api<void>("DELETE", `/me/sessions/${id}`),
+  endOtherSessions: () => api<{ revoked: number }>("DELETE", "/me/sessions"),
   providers: () => api<AuthProviders>("GET", "/auth/providers"),
   /** Trades the one-time code the browser returned for a session. */
   googleExchange: (code: string, verifier: string, totpCode?: string) =>
