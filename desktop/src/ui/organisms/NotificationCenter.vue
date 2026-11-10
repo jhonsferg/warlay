@@ -32,9 +32,15 @@ function describe(n: AppNotification): string {
     case "friend_accepted":
       return t("{name} aceptó tu solicitud", { name: p.user?.displayName ?? t("Tu amigo") });
     case "room_invite":
-      return t("{name} te invitó a la sala {room}", { name: (p.inviter as { displayName?: string })?.displayName ?? t("Alguien"), room: String(p.targetName ?? "") });
+      return t("{name} te invitó a la sala {room}", {
+        name: (p.inviter as { displayName?: string })?.displayName ?? t("Alguien"),
+        room: String(p.targetName ?? ""),
+      });
     case "community_invite":
-      return t("{name} te invitó a {target}", { name: (p.inviter as { displayName?: string })?.displayName ?? t("Alguien"), target: String(p.targetName ?? t("una comunidad")) });
+      return t("{name} te invitó a {target}", {
+        name: (p.inviter as { displayName?: string })?.displayName ?? t("Alguien"),
+        target: String(p.targetName ?? t("una comunidad")),
+      });
     default:
       return t("Nueva notificación");
   }
@@ -71,7 +77,12 @@ const ago = (iso: string) => {
 
 <template>
   <div class="notif">
-    <WIconButton :label="t('Notificaciones')" :badge="badge" :active="open" data-testid="notifications-button" @click="toggle"
+    <WIconButton
+      :label="t('Notificaciones')"
+      :badge="badge"
+      :active="open"
+      data-testid="notifications-button"
+      @click="toggle"
       ><Bell
     /></WIconButton>
     <div v-if="open" class="notif__backdrop" @click="open = false" />
@@ -107,7 +118,8 @@ const ago = (iso: string) => {
           <WAvatar :name="i.inviter.displayName" :color="i.inviter.avatarColor" size="sm" />
           <p>
             <strong>{{ i.inviter.displayName }}</strong>
-            {{ i.kind === "room" ? t("te invita a la sala") : t("te invita a la comunidad") }} <strong>{{ i.targetName }}</strong>
+            {{ i.kind === "room" ? t("te invita a la sala") : t("te invita a la comunidad") }}
+            <strong>{{ i.targetName }}</strong>
           </p>
           <WButton size="sm" @click="accept(i)">{{ t("Aceptar") }}</WButton>
           <WIconButton :label="t('Rechazar')" size="sm" tone="danger" @click="notifications.declineInvite(i.id)"
