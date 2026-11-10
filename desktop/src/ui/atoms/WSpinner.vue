@@ -4,7 +4,12 @@ withDefaults(defineProps<{ size?: number }>(), { size: 16 });
 </script>
 
 <template>
-  <span class="w-spinner" :style="{ width: `${size}px`, height: `${size}px` }" role="status" :aria-label="t('Cargando')" />
+  <span
+    class="w-spinner"
+    :style="{ width: `${size}px`, height: `${size}px` }"
+    role="status"
+    :aria-label="t('Cargando')"
+  />
 </template>
 
 <style scoped lang="scss">
