@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod blocks;
 pub mod chat;
 pub mod communities;
 pub mod friends;
@@ -7,5 +8,6 @@ pub mod keys;
 pub mod notifications;
 pub mod recovery;
 pub mod rooms;
+pub mod sessions;
 pub mod totp;
 pub mod users;

@@ -2,6 +2,7 @@ import { watch } from "vue";
 import { native } from "../services/native";
 import { notifyOs } from "../services/osNotify";
 import { realtime } from "../services/realtime";
+import { useBlocks } from "./blocks";
 import { useChat } from "./chat";
 import { acceptInviteAndOpen } from "./inviteFlow";
 import { useE2e } from "./e2e";
@@ -42,6 +43,7 @@ async function start() {
           rooms.resyncSession(),
           chat.catchUp(),
           chat.loadUnread(),
+          useBlocks().load(),
         ]);
         break;
       case "presence":
@@ -119,6 +121,7 @@ async function start() {
     communities.loadMine(),
     rooms.loadList(),
     notifications.load(),
+    useBlocks().load(),
     rooms.restoreCurrent(),
   ]);
 }
@@ -135,6 +138,7 @@ function stop() {
   useChat().reset();
   useE2e().reset();
   useNotifications().reset();
+  useBlocks().reset();
 }
 
 /** The host's game started/ended the match: reflect it on the room. */

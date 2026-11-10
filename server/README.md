@@ -382,6 +382,24 @@ totp_required` until `totpCode` is sent (a code from the app, accepted once,
   `helper_secret`: **changing `helper_secret` makes stored TOTP secrets
   unreadable** (those accounts could no longer sign in). Wrong codes are
   limited to 10 per account per 5 minutes.
+- **Active sessions.** `GET /me/sessions` lists the devices signed in (how each
+  introduced itself, how it signed in, when it was last renewed, and which one
+  is asking); `DELETE /me/sessions/{id}` ends one and `DELETE /me/sessions` all
+  but the current one. An ended session's refresh token stops working and its
+  access tokens are cut at once, so its next request is refused; a realtime
+  connection it already had open stays until it drops. No IP addresses are kept.
+- **Blocking and reporting.** `PUT /blocks/{id}` blocks a player (`DELETE`
+  undoes it, `GET /blocks` lists them). Blocking ends the friendship and removes
+  pending requests and invitations between the two, and from then on neither can
+  send the other friend requests, invitations or direct messages (those need a
+  friendship) or find them in search; the blocked player gets no notice, only
+  "user not found". Room and community chat is shared, so the app hides a
+  blocked player's messages there. `POST /reports` (`userId`, `reason` one of
+  `harassment`, `spam`, `inappropriate`, `cheating`, `impersonation`, `other`,
+  optional `details` up to 500 characters and `messageId`) stores a report, at
+  most 10 per hour per player and one open report per pair per day. Review them
+  with `SELECT * FROM user_reports WHERE status = 'open' ORDER BY created_at`
+  and close them with `UPDATE user_reports SET status = 'reviewed' WHERE id = ...`.
 - **Deleting an account.** `DELETE /me` removes the account and what hangs from
   it (friendships, messages, memberships, notifications, keys, sessions and
   the Google link) after the player types their username and, if the account

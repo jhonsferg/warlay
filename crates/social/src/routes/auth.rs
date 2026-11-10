@@ -129,18 +129,24 @@ fn user_agent(headers: &HeaderMap) -> String {
 }
 
 /// Creates a session row and the token pair for it.
-pub(crate) async fn start_session(state: &AppState, user: UserRow, headers: &HeaderMap) -> ApiResult<AuthResponse> {
+pub(crate) async fn start_session(
+    state: &AppState,
+    user: UserRow,
+    headers: &HeaderMap,
+    method: &str,
+) -> ApiResult<AuthResponse> {
     let session_id = Uuid::new_v4();
     let refresh_token = random_token();
     let expires_at = Utc::now() + Duration::days(state.settings.refresh_token_ttl_days);
     sqlx::query(
-        "INSERT INTO sessions (id, user_id, refresh_token_hash, user_agent, expires_at) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO sessions (id, user_id, refresh_token_hash, user_agent, expires_at, method) VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(session_id)
     .bind(user.id)
     .bind(token_hash(&refresh_token))
     .bind(user_agent(headers))
     .bind(expires_at)
+    .bind(method)
     .execute(&state.db)
     .await?;
     let access_token = issue_access_token(state, user.id, session_id).await?;
@@ -202,7 +208,7 @@ pub async fn register(
     let user = load_user(&state, id)
         .await?
         .ok_or_else(|| ApiError::internal("user vanished"))?;
-    let mut response = start_session(&state, user, &headers).await?;
+    let mut response = start_session(&state, user, &headers, "password").await?;
     // A new account starts with recovery codes; this is the only time they are
     // shown without asking for the password.
     response.recovery_codes = Some(super::recovery::create_set(&state, id).await?);
@@ -250,7 +256,7 @@ pub async fn login(
     if user.totp_enabled {
         super::totp::require(&state, user.id, req.totp_code.as_deref()).await?;
     }
-    Ok(Json(start_session(&state, user, &headers).await?))
+    Ok(Json(start_session(&state, user, &headers, "password").await?))
 }
 
 /// Rotates the refresh token and issues a fresh access token.
@@ -271,7 +277,7 @@ pub async fn refresh(
     .await?;
     let (session_id, user_id) = row.ok_or_else(ApiError::unauthorized)?;
     let refresh_token = random_token();
-    sqlx::query("UPDATE sessions SET refresh_token_hash = $1 WHERE id = $2")
+    sqlx::query("UPDATE sessions SET refresh_token_hash = $1, last_used_at = now() WHERE id = $2")
         .bind(token_hash(&refresh_token))
         .bind(session_id)
         .execute(&state.db)

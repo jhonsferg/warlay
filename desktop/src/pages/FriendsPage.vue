@@ -3,6 +3,7 @@ import { MessageCircle, UserPlus, UserRound, Users } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { errorMessage } from "../services/http";
+import { useBlocks } from "../stores/blocks";
 import { useDialogs } from "../stores/dialogs";
 import { useRooms } from "../stores/rooms";
 import { useSocial } from "../stores/social";
@@ -26,6 +27,7 @@ const router = useRouter();
 const social = useSocial();
 const rooms = useRooms();
 const dialogs = useDialogs();
+const blocks = useBlocks();
 const toasts = useToasts();
 
 const selectedId = computed(() => (route.params.id as string | undefined) || undefined);
@@ -66,6 +68,27 @@ async function removeFriend() {
     toasts.success("Amigo eliminado", target.displayName);
   } catch (e) {
     toasts.error("No se pudo eliminar", errorMessage(e));
+  }
+}
+
+async function blockFriend() {
+  const target = friend.value;
+  if (!target) return;
+  const accepted = await dialogs.confirm({
+    title: `Bloquear a ${target.displayName}`,
+    message: "Dejarán de ser amigos y no podrá escribirte ni enviarte solicitudes o invitaciones.",
+    bullets: ["No se le avisa.", "Puedes desbloquearlo en Ajustes, en Seguridad."],
+    confirmLabel: "Bloquear",
+    tone: "danger",
+  });
+  if (!accepted) return;
+  try {
+    await blocks.block(target.id);
+    profileOpen.value = false;
+    void router.replace("/friends");
+    toasts.success("Usuario bloqueado", target.displayName);
+  } catch (e) {
+    toasts.error("No se pudo bloquear", errorMessage(e));
   }
 }
 </script>
@@ -132,6 +155,8 @@ async function removeFriend() {
         :friend="friend"
         @close="profileOpen = false"
         @remove="removeFriend"
+        @block="blockFriend"
+        @report="dialogs.openReport(friend!)"
       />
     </div>
   </AppShell>

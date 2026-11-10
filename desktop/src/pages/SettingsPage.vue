@@ -19,6 +19,8 @@ import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import AdvancedSettingsSection from "../ui/organisms/AdvancedSettingsSection.vue";
 import RecoveryCodesPanel from "../ui/organisms/RecoveryCodesPanel.vue";
+import SessionsPanel from "../ui/organisms/SessionsPanel.vue";
+import BlockedUsersPanel from "../ui/organisms/BlockedUsersPanel.vue";
 import TotpPanel from "../ui/organisms/TotpPanel.vue";
 import GameArgsSwitches from "../ui/organisms/GameArgsSwitches.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
@@ -298,6 +300,10 @@ onMounted(() => {
           </WButton>
         </div>
       </section>
+
+      <SessionsPanel />
+
+      <BlockedUsersPanel />
 
       <section class="settings__card" data-testid="delete-account-card">
         <h3><Trash2 /> Eliminar cuenta</h3>

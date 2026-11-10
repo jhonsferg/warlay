@@ -6,6 +6,7 @@ import { installAppLifecycle } from "./stores/app";
 import { useSession } from "./stores/session";
 import { announceUpdateOnStart } from "./stores/updates";
 import ConfirmDialog from "./ui/organisms/ConfirmDialog.vue";
+import ReportDialog from "./ui/organisms/ReportDialog.vue";
 import ToastHost from "./ui/organisms/ToastHost.vue";
 
 const session = useSession();
@@ -39,5 +40,6 @@ watch(
 <template>
   <RouterView />
   <ConfirmDialog />
+  <ReportDialog v-if="session.status === 'signedIn'" />
   <ToastHost v-if="session.status === 'signedIn'" />
 </template>

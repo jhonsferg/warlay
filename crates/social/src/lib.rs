@@ -39,8 +39,8 @@ pub use error::ApiError;
 pub use state::AppState;
 
 use routes::{
-    auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications,
-    recovery as recovery_routes, rooms, totp as totp_routes, users,
+    auth as auth_routes, blocks, chat as chat_routes, communities, friends, invites, keys, notifications,
+    recovery as recovery_routes, rooms, sessions, totp as totp_routes, users,
 };
 
 /// Connects to Postgres (running migrations) and Redis, and starts the
@@ -116,6 +116,8 @@ pub fn router(state: AppState) -> Router {
             "/me/recovery-codes",
             get(recovery_routes::status).post(recovery_routes::regenerate),
         )
+        .route("/me/sessions", get(sessions::list).delete(sessions::revoke_others))
+        .route("/me/sessions/{id}", delete(sessions::revoke))
         .route("/me/totp", get(totp_routes::status))
         .route("/me/totp/setup", post(totp_routes::setup))
         .route("/me/totp/enable", post(totp_routes::enable))
@@ -124,6 +126,9 @@ pub fn router(state: AppState) -> Router {
         .route("/users/{id}/e2e-key", get(keys::get))
         .route("/users/search", get(users::search))
         .route("/users/{id}", get(users::profile))
+        .route("/blocks", get(blocks::list))
+        .route("/blocks/{id}", put(blocks::block).delete(blocks::unblock))
+        .route("/reports", post(blocks::report))
         .route("/friends", get(friends::list))
         .route("/friends/{id}", delete(friends::remove))
         .route("/friends/requests", get(friends::requests).post(friends::send_request))

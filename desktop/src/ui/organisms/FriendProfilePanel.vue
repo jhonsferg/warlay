@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarDays, UserMinus, X } from "@lucide/vue";
+import { Ban, CalendarDays, Flag, UserMinus, X } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { users } from "../../services/api";
 import { lastSeenText, shortDate } from "../../services/lastSeen";
@@ -15,7 +15,7 @@ import { useNow } from "../useNow";
  * Vue component cannot emit once unmounted.
  */
 const props = defineProps<{ friend: UserWithPresence }>();
-const emit = defineEmits<{ close: []; remove: [] }>();
+const emit = defineEmits<{ close: []; remove: []; block: []; report: [] }>();
 
 const now = useNow();
 
@@ -71,6 +71,12 @@ const since = computed(() => (profile.value ? shortDate(new Date(profile.value.m
     </dl>
 
     <div class="profile__actions">
+      <WButton variant="secondary" block data-testid="profile-report" @click="emit('report')">
+        <template #icon><Flag /></template>Reportar
+      </WButton>
+      <WButton variant="danger" block data-testid="profile-block" @click="emit('block')">
+        <template #icon><Ban /></template>Bloquear
+      </WButton>
       <WButton variant="danger" block data-testid="profile-remove" @click="emit('remove')">
         <template #icon><UserMinus /></template>Eliminar de mis amigos
       </WButton>
@@ -135,6 +141,9 @@ const since = computed(() => (profile.value ? shortDate(new Date(profile.value.m
     }
   }
   &__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
     margin-top: auto;
   }
 }

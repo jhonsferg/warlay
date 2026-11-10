@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import type { UserSummary } from "../services/types";
 
 export interface ConfirmOptions {
   title: string;
@@ -23,6 +24,8 @@ export const useDialogs = defineStore("dialogs", () => {
   const createCommunity = ref(false);
   const addFriend = ref(false);
   const confirmRequest = ref<PendingConfirm | null>(null);
+  /** The player being reported, and the message the report is about, if any. */
+  const report = ref<{ user: UserSummary; messageId?: string } | null>(null);
   const activityOpen = ref(localStorage.getItem("warlay.activityOpen") !== "false");
 
   function toggleActivity() {
@@ -49,6 +52,8 @@ export const useDialogs = defineStore("dialogs", () => {
     confirmRequest,
     confirm,
     answerConfirm,
+    report,
+    openReport: (user: UserSummary, messageId?: string) => (report.value = { user, messageId }),
     createRoom,
     createCommunity,
     addFriend,

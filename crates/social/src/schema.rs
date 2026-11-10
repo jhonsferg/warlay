@@ -17,6 +17,8 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (5, "recovery_codes", RECOVERY_CODES),
     (6, "external_identities", EXTERNAL_IDENTITIES),
     (7, "user_totp", USER_TOTP),
+    (8, "blocks_and_reports", BLOCKS_AND_REPORTS),
+    (9, "session_details", SESSION_DETAILS),
 ];
 
 /// Arbitrary constant identifying Warlay's migration lock.
@@ -249,6 +251,39 @@ CREATE TABLE IF NOT EXISTS user_totp (
     last_step   BIGINT NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+"#;
+
+/// Players blocking and reporting each other. A block is one-way (who blocked
+/// whom); reports wait in `user_reports` for the server's operator.
+const BLOCKS_AND_REPORTS: &str = r#"
+CREATE TABLE IF NOT EXISTS user_blocks (
+    blocker_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    blocked_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (blocker_id, blocked_id),
+    CHECK (blocker_id <> blocked_id)
+);
+CREATE INDEX IF NOT EXISTS user_blocks_blocked ON user_blocks (blocked_id);
+
+CREATE TABLE IF NOT EXISTS user_reports (
+    id           UUID PRIMARY KEY,
+    reporter_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reported_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason       TEXT NOT NULL,
+    details      TEXT NOT NULL DEFAULT '',
+    message_id   UUID,
+    status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewed', 'dismissed')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS user_reports_open ON user_reports (created_at DESC) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS user_reports_reported ON user_reports (reported_id);
+"#;
+
+/// What the list of devices shows: how each session signed in and when it was
+/// last used (renewed).
+const SESSION_DETAILS: &str = r#"
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'password';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ NOT NULL DEFAULT now();
 "#;
 
 /// Public keys for end-to-end encrypted direct messages. The server never

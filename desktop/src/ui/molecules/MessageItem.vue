@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, CheckCheck, Lock, Trash2 } from "@lucide/vue";
+import { Ban, Check, CheckCheck, Flag, Lock, Trash2 } from "@lucide/vue";
 import { computed, ref } from "vue";
 import type { ChatMessage, MessageStatus } from "../../services/types";
 import WAvatar from "../atoms/WAvatar.vue";
@@ -10,8 +10,14 @@ const props = defineProps<{
   mine: boolean;
   /** Delivery state under our own direct messages; absent elsewhere. */
   status?: MessageStatus;
+  /** Rooms and communities: other people's messages can be reported or their author blocked. */
+  moderable?: boolean;
 }>();
-const emit = defineEmits<{ delete: [message: ChatMessage] }>();
+const emit = defineEmits<{
+  delete: [message: ChatMessage];
+  report: [message: ChatMessage];
+  block: [message: ChatMessage];
+}>();
 
 const time = computed(() =>
   new Date(props.message.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" }),
@@ -66,6 +72,28 @@ function confirmDelete() {
         @click="confirming = true"
       >
         <Trash2 :size="14" />
+      </button>
+    </div>
+    <div v-else-if="moderable" class="message__actions">
+      <button
+        type="button"
+        class="message__action"
+        aria-label="Reportar mensaje"
+        title="Reportar"
+        data-testid="message-report"
+        @click="emit('report', message)"
+      >
+        <Flag :size="14" />
+      </button>
+      <button
+        type="button"
+        class="message__action"
+        aria-label="Bloquear a este usuario"
+        title="Bloquear"
+        data-testid="message-block"
+        @click="emit('block', message)"
+      >
+        <Ban :size="14" />
       </button>
     </div>
   </div>
