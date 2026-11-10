@@ -180,6 +180,11 @@ pub struct Realtime {
 }
 
 impl Realtime {
+    /// Sockets open on this instance.
+    pub fn connection_count(&self) -> usize {
+        self.conns.read().map(|c| c.values().map(Vec::len).sum()).unwrap_or(0)
+    }
+
     pub fn new(redis: ConnectionManager) -> Arc<Self> {
         Arc::new(Self {
             node_id: Uuid::new_v4(),
