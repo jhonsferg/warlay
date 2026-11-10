@@ -13,6 +13,7 @@ pub mod chat;
 pub mod config;
 mod error;
 pub mod helpers;
+mod metrics;
 mod models;
 mod oauth;
 pub mod realtime;
@@ -70,6 +71,7 @@ pub async fn connect(settings: MainSettings) -> anyhow::Result<AppState> {
         redis,
         settings: Arc::new(settings),
         realtime,
+        metrics: Arc::new(metrics::Metrics::new()),
     })
 }
 
@@ -186,12 +188,15 @@ pub fn router(state: AppState) -> Router {
         .nest("/api/v1", api)
         .route("/internal/helpers/heartbeat", post(helpers::heartbeat_handler))
         .route("/health", get(|| async { "ok" }))
+        .route("/metrics", get(metrics::scrape))
         // Google sign-in, the browser half (the app's half is under /api/v1).
         .route("/auth/google/start", get(oauth::start))
         .route("/auth/google/callback", get(oauth::callback))
         .route("/auth/google/link", post(oauth::link))
         // The website: landing page, privacy, terms.
         .merge(web::router())
+        // Counts what reaches a route, by its template (needs the matched path).
+        .route_layer(axum::middleware::from_fn_with_state(state.clone(), metrics::track))
         .layer(cors(&state.settings))
         .with_state(state)
 }

@@ -2346,3 +2346,86 @@ async fn the_account_lists_its_sessions_and_can_end_them_from_another() {
     assert_eq!(list.as_array().unwrap().len(), 1);
     assert_eq!(list[0]["current"], true);
 }
+
+#[tokio::test]
+async fn metrics_are_off_without_a_token_and_need_it_with_one() {
+    // Off by default: nothing is there.
+    let Some(off) = start().await else { return };
+    let res = off.client.get(format!("{}/metrics", off.base)).send().await.unwrap();
+    assert_eq!(res.status(), 404);
+
+    let Some(s) = start_with(|settings| settings.metrics_token = "scraper-token-0123456789".into()).await else {
+        return;
+    };
+    let url = format!("{}/metrics", s.base);
+    assert_eq!(s.client.get(&url).send().await.unwrap().status(), 401);
+    let wrong = s.client.get(&url).bearer_auth("not-the-token").send().await.unwrap();
+    assert_eq!(wrong.status(), 401);
+
+    // Some traffic to count: a sign-up, a read, a refusal and a missing route.
+    let user = s.register("metrica").await;
+    s.ok("GET", "/me", &user, None).await;
+    assert_eq!(s.call("GET", "/me", None, None).await.0, 401);
+    let _ = s.client.get(format!("{}/health", s.base)).send().await.unwrap();
+
+    let res = s
+        .client
+        .get(&url)
+        .bearer_auth("scraper-token-0123456789")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(res.headers()["content-type"]
+        .to_str()
+        .unwrap()
+        .starts_with("text/plain; version=0.0.4"));
+    let text = res.text().await.unwrap();
+
+    // Requests, by route template and status.
+    assert!(text.contains("# TYPE warlay_http_requests_total counter"));
+    assert!(
+        text.contains("warlay_http_requests_total{method=\"POST\",route=\"/api/v1/auth/register\",status=\"200\"} 1"),
+        "{text}"
+    );
+    assert!(text.contains("route=\"/api/v1/me\",status=\"200\"} 1"));
+    assert!(text.contains("route=\"/api/v1/me\",status=\"401\"} 1"));
+    assert!(text.contains("warlay_http_requests_total{method=\"GET\",route=\"/health\",status=\"200\"} 1"));
+    assert!(text.contains(
+        "warlay_http_request_duration_seconds_bucket{method=\"POST\",route=\"/api/v1/auth/register\",le=\"+Inf\"} 1"
+    ));
+    // Gauges from the process and the database.
+    for name in [
+        "warlay_build_info{version=\"",
+        "warlay_uptime_seconds ",
+        "warlay_realtime_connections ",
+        "warlay_db_pool_connections ",
+        "warlay_users ",
+        "warlay_sessions_active ",
+        "warlay_reports_open ",
+        "warlay_helper_active_rooms{helper=\"test-helper\",region=\"test\"} 0",
+    ] {
+        assert!(text.contains(name), "missing {name} in:\n{text}");
+    }
+    // The route is its template, never the player's own ids.
+    assert!(!text.contains(&user.id.to_string()));
+    // An open socket shows up.
+    let _ws = s.socket(&user).await;
+    let text = s
+        .client
+        .get(&url)
+        .bearer_auth("scraper-token-0123456789")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let connections: i64 = text
+        .lines()
+        .find_map(|l| l.strip_prefix("warlay_realtime_connections "))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(connections >= 1, "{text}");
+}
