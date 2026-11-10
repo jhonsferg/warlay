@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 /**
  * Pure helpers behind the microphone settings: which `getUserMedia`
  * constraints a noise level maps to, and what a capture failure means.
@@ -66,23 +67,24 @@ export function classifyMicError(error: unknown, consentGiven: boolean): MicErro
       return consentGiven
         ? {
             kind: "blocked-by-os",
-            message:
+            message: t(
               "Windows está bloqueando el micrófono para esta aplicación. Actívalo en Configuración > Privacidad > Micrófono.",
+            ),
           }
-        : { kind: "declined", message: "No diste permiso para usar el micrófono." };
+        : { kind: "declined", message: t("No diste permiso para usar el micrófono.") };
     case "NotFoundError":
-      return { kind: "no-device", message: "No se encontró ningún micrófono conectado." };
+      return { kind: "no-device", message: t("No se encontró ningún micrófono conectado.") };
     case "OverconstrainedError":
       return {
         kind: "device-unavailable",
-        message: "El micrófono elegido ya no está disponible. Elige otro en Ajustes.",
+        message: t("El micrófono elegido ya no está disponible. Elige otro en Ajustes."),
       };
     case "NotReadableError":
-      return { kind: "busy", message: "Otra aplicación está usando el micrófono o no se pudo abrir." };
+      return { kind: "busy", message: t("Otra aplicación está usando el micrófono o no se pudo abrir.") };
     default:
       return {
         kind: "unknown",
-        message: error instanceof Error ? error.message : "No se pudo activar el micrófono.",
+        message: error instanceof Error ? error.message : t("No se pudo activar el micrófono."),
       };
   }
 }

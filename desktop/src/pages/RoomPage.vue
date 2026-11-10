@@ -36,6 +36,7 @@ import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import InviteFriendsDialog from "../ui/organisms/InviteFriendsDialog.vue";
 import MicPermissionDialog from "../ui/organisms/MicPermissionDialog.vue";
 import AppShell from "../ui/templates/AppShell.vue";
+import { t } from "../services/i18n";
 
 const route = useRoute();
 const router = useRouter();
@@ -47,7 +48,7 @@ const toasts = useToasts();
 const voice = useVoice();
 const micOn = computed(() => voice.active && !voice.muted);
 const micLabel = computed(() =>
-  !voice.active ? "Unirse a la voz" : voice.muted ? "Micrófono apagado" : "Micrófono activo",
+  !voice.active ? t("Unirse a la voz") : voice.muted ? t("Micrófono apagado") : t("Micrófono activo"),
 );
 const inviting = ref(false);
 const launching = ref(false);
@@ -68,16 +69,16 @@ function linkOf(member: UserSummary): Link | null {
   const link = rooms.linkOf(member.id);
   switch (link?.state) {
     case "connected":
-      return { label: "P2P directo", tone: "success", icon: Wifi };
+      return { label: t("P2P directo"), tone: "success", icon: Wifi };
     case "relayed":
-      return { label: "Vía ayudante", tone: "info", icon: Waypoints };
+      return { label: t("Vía ayudante"), tone: "info", icon: Waypoints };
     case "failed":
-      return { label: "Reintentando", tone: "danger", icon: Repeat2 };
+      return { label: t("Reintentando"), tone: "danger", icon: Repeat2 };
     case "connecting":
     case "not_attempted":
-      return { label: "Conectando", tone: "warning", icon: Radio };
+      return { label: t("Conectando"), tone: "warning", icon: Radio };
     default:
-      return { label: "Esperando", tone: "neutral", icon: Radio };
+      return { label: t("Esperando"), tone: "neutral", icon: Radio };
   }
 }
 
@@ -97,11 +98,11 @@ async function play() {
     await settings.load();
     await rooms.play(settings.gameExecutablePath, settings.gameArgs);
     toasts.success(
-      settings.gameExecutablePath ? "Lanzando Warcraft III" : "Túnel de juego listo",
-      settings.gameExecutablePath ? undefined : "Configura el ejecutable en Ajustes para lanzarlo desde aquí.",
+      settings.gameExecutablePath ? t("Lanzando Warcraft III") : t("Túnel de juego listo"),
+      settings.gameExecutablePath ? undefined : t("Configura el ejecutable en Ajustes para lanzarlo desde aquí."),
     );
   } catch (e) {
-    toasts.error("No se pudo iniciar la partida", errorMessage(e));
+    toasts.error(t("No se pudo iniciar la partida"), errorMessage(e));
   } finally {
     launching.value = false;
   }
@@ -113,7 +114,7 @@ async function leave() {
     else await rooms.leave();
     void router.push("/");
   } catch (e) {
-    toasts.error("No se pudo salir", errorMessage(e));
+    toasts.error(t("No se pudo salir"), errorMessage(e));
   }
 }
 
@@ -124,11 +125,11 @@ async function addFriend(member: UserSummary) {
   try {
     const status = await social.sendRequestById(member.id);
     toasts.success(
-      status === "accepted" ? `Ahora eres amigo de ${member.displayName}` : "Solicitud enviada",
+      status === "accepted" ? t("Ahora eres amigo de {name}", { name: member.displayName }) : t("Solicitud enviada"),
       `@${member.username}`,
     );
   } catch (e) {
-    toasts.error("No se pudo enviar la solicitud", errorMessage(e));
+    toasts.error(t("No se pudo enviar la solicitud"), errorMessage(e));
   }
 }
 
@@ -136,24 +137,24 @@ async function kick(member: UserSummary) {
   try {
     await rooms.kick(member.id);
   } catch (e) {
-    toasts.error("No se pudo expulsar", errorMessage(e));
+    toasts.error(t("No se pudo expulsar"), errorMessage(e));
   }
 }
 </script>
 
 <template>
-  <AppShell :title="room?.name ?? 'Sala'" :subtitle="room?.communityName ?? 'Sala pública'" flush>
+  <AppShell :title="room?.name ?? t('Sala')" :subtitle="room?.communityName ?? t('Sala pública')" flush>
     <template #sidebar><HomeSidebar /></template>
     <template #title-icon><Gamepad2 :size="20" /></template>
     <template #actions>
       <WButton v-if="room" size="sm" variant="secondary" @click="inviting = true"
-        ><template #icon><UserPlus /></template>Invitar</WButton
+        ><template #icon><UserPlus /></template>{{ t("Invitar") }}</WButton
       >
     </template>
 
-    <EmptyState v-if="!room" title="No estás en esta sala" text="Únete desde la lista de salas.">
+    <EmptyState v-if="!room" :title="t('No estás en esta sala')" :text="t('Únete desde la lista de salas.')">
       <template #icon><Gamepad2 /></template>
-      <WButton @click="router.push('/')">Ver salas</WButton>
+      <WButton @click="router.push('/')">{{ t("Ver salas") }}</WButton>
     </EmptyState>
 
     <div v-else class="room">
@@ -161,22 +162,32 @@ async function kick(member: UserSummary) {
         <section class="room__banner" :class="{ 'room__banner--ingame': room.status === 'in_game' }">
           <div>
             <div class="room__badges">
-              <WBadge v-if="room.status === 'in_game'" tone="game" dot>En partida</WBadge>
-              <WBadge v-else tone="success" dot>Esperando jugadores</WBadge>
-              <WBadge tone="neutral">{{ room.members.length }}/{{ room.maxPlayers }} jugadores</WBadge>
-              <WBadge v-if="room.hostAway" tone="danger" dot data-testid="host-away">Anfitrión desconectado</WBadge>
-              <WBadge v-if="rooms.isHost" tone="warning"><Crown /> Eres el anfitrión</WBadge>
+              <WBadge v-if="room.status === 'in_game'" tone="game" dot>{{ t("En partida") }}</WBadge>
+              <WBadge v-else tone="success" dot>{{ t("Esperando jugadores") }}</WBadge>
+              <WBadge tone="neutral">{{
+                t("{n}/{max} jugadores", { n: room.members.length, max: room.maxPlayers })
+              }}</WBadge>
+              <WBadge v-if="room.hostAway" tone="danger" dot data-testid="host-away">{{
+                t("Anfitrión desconectado")
+              }}</WBadge>
+              <WBadge v-if="rooms.isHost" tone="warning"><Crown /> {{ t("Eres el anfitrión") }}</WBadge>
             </div>
             <h2>{{ room.name }}</h2>
             <p class="room__p2p">
               <ShieldCheck :size="15" />
-              <template v-if="room.members.length < 2"
-                >Cuando entren jugadores se conectarán directamente contigo.</template
-              >
+              <template v-if="room.members.length < 2">{{
+                t("Cuando entren jugadores se conectarán directamente contigo.")
+              }}</template>
               <template v-else>
-                {{ directCount }} enlace{{ directCount === 1 ? "" : "s" }} directo{{ directCount === 1 ? "" : "s"
-                }}<template v-if="relayCount"> · {{ relayCount }} vía ayudante</template> · servidor:
-                {{ rooms.session?.helper.name }} ({{ rooms.session?.helper.region }})
+                {{ directCount === 1 ? t("1 enlace directo") : t("{n} enlaces directos", { n: directCount })
+                }}<template v-if="relayCount"> · {{ t("{n} vía ayudante", { n: relayCount }) }}</template>
+                ·
+                {{
+                  t("servidor: {name} ({region})", {
+                    name: rooms.session?.helper.name ?? "",
+                    region: rooms.session?.helper.region ?? "",
+                  })
+                }}
               </template>
             </p>
           </div>
@@ -192,15 +203,15 @@ async function kick(member: UserSummary) {
               <template #icon><component :is="micOn ? Mic : MicOff" /></template>{{ micLabel }}
             </WButton>
             <WButton size="lg" variant="success" :loading="launching" data-testid="play" @click="play">
-              <template #icon><Play /></template>{{ rooms.tunnelActive ? "Abrir el juego" : "Jugar" }}
+              <template #icon><Play /></template>{{ rooms.tunnelActive ? t("Abrir el juego") : t("Jugar") }}
             </WButton>
             <WButton size="lg" variant="danger" data-testid="leave-room" @click="leave">
-              <template #icon><DoorOpen /></template>{{ rooms.isHost ? "Cerrar sala" : "Salir" }}
+              <template #icon><DoorOpen /></template>{{ rooms.isHost ? t("Cerrar sala") : t("Salir") }}
             </WButton>
           </div>
         </section>
 
-        <section class="room__roster" aria-label="Jugadores">
+        <section class="room__roster" :aria-label="t('Jugadores')">
           <article
             v-for="m in room.members"
             :key="m.id"
@@ -219,14 +230,14 @@ async function kick(member: UserSummary) {
                 v-if="voice.members[m.id] === 'muted'"
                 class="slot__mic slot__mic--muted"
                 data-testid="mic-muted"
-                title="Micrófono silenciado"
+                :title="t('Micrófono silenciado')"
                 ><MicOff :size="12"
               /></span>
               <span
                 v-else-if="voice.members[m.id] === 'live'"
                 class="slot__mic slot__mic--live"
                 data-testid="mic-live"
-                title="En la llamada de voz"
+                :title="t('En la llamada de voz')"
                 ><Mic :size="12"
               /></span>
             </span>
@@ -238,12 +249,12 @@ async function kick(member: UserSummary) {
                   v-if="isSpeaking(m)"
                   class="slot__wave"
                   data-testid="speaking-wave"
-                  aria-label="Hablando"
+                  :aria-label="t('Hablando')"
                   :style="{ '--level': voice.levels[m.id] ?? 0 }"
                   ><i /><i /><i
                 /></span>
               </strong>
-              <span v-if="m.id === session.me?.id" class="slot__you">Tú</span>
+              <span v-if="m.id === session.me?.id" class="slot__you">{{ t("Tú") }}</span>
               <div v-else-if="linkOf(m)" class="slot__badges">
                 <WBadge :tone="linkOf(m)!.tone"><component :is="linkOf(m)!.icon" />{{ linkOf(m)!.label }}</WBadge>
                 <WBadge v-if="pingOf(m)" :tone="pingOf(m)!.tone" data-testid="ping"
@@ -253,15 +264,17 @@ async function kick(member: UserSummary) {
             </div>
             <WIconButton
               v-if="m.id !== session.me?.id && !isFriend(m.id) && !isPending(m.id)"
-              label="Añadir amigo"
+              :label="t('Añadir amigo')"
               size="sm"
               @click="addFriend(m)"
               ><UserPlus
             /></WIconButton>
-            <WBadge v-else-if="m.id !== session.me?.id && isPending(m.id)" tone="neutral">Solicitud enviada</WBadge>
+            <WBadge v-else-if="m.id !== session.me?.id && isPending(m.id)" tone="neutral">{{
+              t("Solicitud enviada")
+            }}</WBadge>
             <WIconButton
               v-if="rooms.isHost && m.id !== session.me?.id"
-              label="Expulsar"
+              :label="t('Expulsar')"
               size="sm"
               tone="danger"
               @click="kick(m)"
@@ -270,18 +283,18 @@ async function kick(member: UserSummary) {
           </article>
           <article v-for="n in emptySlots" :key="`empty-${n}`" class="slot slot--empty">
             <span class="slot__ghost" />
-            <span>Libre</span>
+            <span>{{ t("Libre") }}</span>
           </article>
         </section>
       </div>
 
       <aside class="room__chat">
-        <header class="room__chat-head">Chat de la sala</header>
+        <header class="room__chat-head">{{ t("Chat de la sala") }}</header>
         <ChatPanel
           kind="room"
           :target-id="room.id"
-          placeholder="Escribe a la sala..."
-          empty-title="Saluda a tus compañeros"
+          :placeholder="t('Escribe a la sala...')"
+          :empty-title="t('Saluda a tus compañeros')"
         />
       </aside>
     </div>
@@ -296,7 +309,7 @@ async function kick(member: UserSummary) {
 
     <InviteFriendsDialog
       v-if="inviting && room"
-      title="Invitar a la sala"
+      :title="t('Invitar a la sala')"
       :exclude="room.members.map((m) => m.id)"
       :invite="rooms.invite"
       @close="inviting = false"

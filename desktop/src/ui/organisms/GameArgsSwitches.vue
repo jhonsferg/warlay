@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { GAME_ARG_GROUPS, GAME_ARGS, parseGameArgs, setGameArg, withoutExtraArgs } from "../../services/gameArgs";
 import WButton from "../atoms/WButton.vue";
 import WSwitch from "../atoms/WSwitch.vue";
+import { t } from "../../services/i18n";
 
 /** The launch arguments as the string passed to the game. */
 const model = defineModel<string>({ default: "" });
@@ -15,19 +16,19 @@ const groups = computed(() =>
 
 <template>
   <div class="game-args" data-testid="game-args">
-    <p class="game-args__intro">Activa las opciones con las que quieres que se abra Warcraft III.</p>
+    <p class="game-args__intro">{{ t("Activa las opciones con las que quieres que se abra Warcraft III.") }}</p>
 
     <section v-for="group in groups" :key="group.id" class="game-args__group">
-      <h4>{{ group.label }}</h4>
+      <h4>{{ t(group.label) }}</h4>
       <div v-for="arg in group.args" :key="arg.id" class="game-args__row">
         <div class="game-args__text">
-          <span class="game-args__label">{{ arg.label }}</span>
-          <span class="game-args__description">{{ arg.description }}</span>
+          <span class="game-args__label">{{ t(arg.label) }}</span>
+          <span class="game-args__description">{{ t(arg.description) }}</span>
           <code class="game-args__flag">{{ arg.tokens.join(" ") }}</code>
         </div>
         <WSwitch
           :model-value="parsed.enabled.has(arg.id)"
-          :label="arg.label"
+          :label="t(arg.label)"
           :data-testid="`game-arg-${arg.id}`"
           @update:model-value="model = setGameArg(model, arg.id, $event)"
         />
@@ -36,10 +37,10 @@ const groups = computed(() =>
 
     <div v-if="parsed.extra.length" class="game-args__extra" data-testid="game-args-extra">
       <p>
-        Hay argumentos guardados que no tienen interruptor y se siguen enviando al juego:
+        {{ t("Hay argumentos guardados que no tienen interruptor y se siguen enviando al juego:") }}
         <code>{{ parsed.extra.join(" ") }}</code>
       </p>
-      <WButton size="sm" variant="secondary" @click="model = withoutExtraArgs(model)">Quitarlos</WButton>
+      <WButton size="sm" variant="secondary" @click="model = withoutExtraArgs(model)">{{ t("Quitarlos") }}</WButton>
     </div>
   </div>
 </template>

@@ -4,6 +4,7 @@ import type { Toast, ToastAction } from "../../stores/toasts";
 import { useToasts } from "../../stores/toasts";
 import WButton from "../atoms/WButton.vue";
 import WIconButton from "../atoms/WIconButton.vue";
+import { t } from "../../services/i18n";
 
 const toasts = useToasts();
 
@@ -21,38 +22,38 @@ async function perform(toast: Toast, action: ToastAction) {
   <div class="toast-host" aria-live="polite">
     <TransitionGroup name="toast">
       <div
-        v-for="t in toasts.items"
-        :key="t.id"
+        v-for="toast in toasts.items"
+        :key="toast.id"
         class="toast"
-        :class="`toast--${t.tone}`"
+        :class="`toast--${toast.tone}`"
         role="status"
-        :data-toast="t.title"
-        @click="!t.actions && toasts.dismiss(t.id)"
+        :data-toast="toast.title"
+        @click="!toast.actions && toasts.dismiss(toast.id)"
       >
-        <CheckCircle2 v-if="t.tone === 'success'" class="toast__icon" />
-        <TriangleAlert v-else-if="t.tone === 'error'" class="toast__icon" />
+        <CheckCircle2 v-if="toast.tone === 'success'" class="toast__icon" />
+        <TriangleAlert v-else-if="toast.tone === 'error'" class="toast__icon" />
         <Info v-else class="toast__icon" />
         <div class="toast__body">
-          <strong>{{ t.title }}</strong>
-          <p v-if="t.text">{{ t.text }}</p>
-          <div v-if="t.actions" class="toast__actions">
+          <strong>{{ toast.title }}</strong>
+          <p v-if="toast.text">{{ toast.text }}</p>
+          <div v-if="toast.actions" class="toast__actions">
             <WButton
-              v-for="a in t.actions"
+              v-for="a in toast.actions"
               :key="a.label"
               size="sm"
               :variant="a.variant ?? 'primary'"
-              @click.stop="perform(t, a)"
+              @click.stop="perform(toast, a)"
               >{{ a.label }}</WButton
             >
           </div>
         </div>
         <WIconButton
-          v-if="t.actions"
+          v-if="toast.actions"
           class="toast__close"
-          label="Cerrar aviso"
+          :label="t('Cerrar aviso')"
           size="sm"
           data-testid="toast-close"
-          @click.stop="toasts.dismiss(t.id)"
+          @click.stop="toasts.dismiss(toast.id)"
           ><X
         /></WIconButton>
       </div>

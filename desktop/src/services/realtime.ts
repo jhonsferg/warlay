@@ -1,6 +1,7 @@
 import { currentEdge, edgeBase, nextEdge, refreshEdges } from "./edges";
 import { accessToken, mainServerUrl, refreshTokens } from "./http";
 import type { ChatMessage, RealtimeEvent } from "./types";
+import { t } from "./i18n.ts";
 
 type Handler = (event: RealtimeEvent) => void;
 
@@ -98,7 +99,7 @@ class Realtime {
         this.pending.delete(event.requestId!);
         clearTimeout(waiter.timer);
         if (event.type === "chat.ack") waiter.resolve(event.message as ChatMessage);
-        else waiter.reject(new Error(String(event.message ?? "No se pudo enviar")));
+        else waiter.reject(new Error(String(event.message ?? t("No se pudo enviar"))));
         return;
       }
       this.handlers.forEach((h) => h(event as RealtimeEvent));

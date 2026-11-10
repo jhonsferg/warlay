@@ -1,3 +1,4 @@
+import { localeTag, t } from "./i18n.ts";
 // Client self-update (like Discord): look for a newer GitHub release, then
 // download it, verify it and restart into it. The work is done by the desktop
 // shell; this module holds the screen's logic (phases, progress, how the
@@ -137,12 +138,12 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 /** When the last check happened, as the label under the check button. */
-export function formatLastCheck(at: number | null, now: number, locale = "es"): string {
-  if (at === null || !Number.isFinite(at)) return "Nunca";
+export function formatLastCheck(at: number | null, now: number, locale = localeTag()): string {
+  if (at === null || !Number.isFinite(at)) return t("Nunca");
   const ago = Math.max(0, now - at);
-  if (ago < MINUTE) return "Hace unos segundos";
-  if (ago < HOUR) return `Hace ${Math.floor(ago / MINUTE)} min`;
-  if (ago < 24 * HOUR) return `Hace ${Math.floor(ago / HOUR)} h`;
+  if (ago < MINUTE) return t("Hace unos segundos");
+  if (ago < HOUR) return t("Hace {n} min", { n: Math.floor(ago / MINUTE) });
+  if (ago < 24 * HOUR) return t("Hace {n} h", { n: Math.floor(ago / HOUR) });
   return new Date(at).toLocaleString(locale, {
     day: "numeric",
     month: "long",

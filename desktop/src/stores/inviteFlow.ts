@@ -5,6 +5,7 @@ import { useCommunities } from "./communities";
 import { useNotifications } from "./notifications";
 import { useRooms } from "./rooms";
 import { useToasts } from "./toasts";
+import { t } from "../services/i18n";
 
 /**
  * Accepting an invitation, wherever the button is (the bell or the toast that
@@ -26,7 +27,7 @@ export async function acceptInviteAndOpen(invite: InviteView): Promise<boolean> 
     }
     return true;
   } catch (error) {
-    toasts.error("No se pudo aceptar la invitación", errorMessage(error));
+    toasts.error(t("No se pudo aceptar la invitación"), errorMessage(error));
     return false;
   }
 }

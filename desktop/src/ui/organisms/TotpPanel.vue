@@ -10,6 +10,7 @@ import { useToasts } from "../../stores/toasts";
 import WButton from "../atoms/WButton.vue";
 import WInput from "../atoms/WInput.vue";
 import FormField from "../molecules/FormField.vue";
+import { t } from "../../services/i18n";
 
 const session = useSession();
 const toasts = useToasts();
@@ -32,7 +33,7 @@ async function start() {
     qr.value = await QRCode.toDataURL(setup.value.otpauthUri, { margin: 1, width: 192 });
     password.value = "";
   } catch (e) {
-    toasts.error("No se pudo preparar la verificación en dos pasos", errorMessage(e));
+    toasts.error(t("No se pudo preparar la verificación en dos pasos"), errorMessage(e));
   } finally {
     busy.value = false;
   }
@@ -46,9 +47,12 @@ async function confirm() {
     setup.value = null;
     qr.value = "";
     code.value = "";
-    toasts.success("Verificación en dos pasos activada", "Al iniciar sesión te pediremos un código de tu aplicación.");
+    toasts.success(
+      t("Verificación en dos pasos activada"),
+      t("Al iniciar sesión te pediremos un código de tu aplicación."),
+    );
   } catch (e) {
-    toasts.error("El código no es correcto", errorMessage(e));
+    toasts.error(t("El código no es correcto"), errorMessage(e));
   } finally {
     busy.value = false;
   }
@@ -61,9 +65,9 @@ async function turnOff() {
     if (session.me) session.me = { ...session.me, totpEnabled: false };
     password.value = "";
     code.value = "";
-    toasts.success("Verificación en dos pasos desactivada");
+    toasts.success(t("Verificación en dos pasos desactivada"));
   } catch (e) {
-    toasts.error("No se pudo desactivar", errorMessage(e));
+    toasts.error(t("No se pudo desactivar"), errorMessage(e));
   } finally {
     busy.value = false;
   }
@@ -78,37 +82,44 @@ function cancel() {
 
 <template>
   <section class="totp" data-testid="totp-card">
-    <h3><ShieldCheck /> Verificación en dos pasos</h3>
+    <h3><ShieldCheck /> {{ t("Verificación en dos pasos") }}</h3>
 
     <template v-if="setup">
       <p class="totp__muted">
-        Escanea el código con tu aplicación de autenticación (Google Authenticator, Authy, 2FAS, Aegis...) o escribe la
-        clave a mano. Después escribe el código de 6 dígitos que muestre.
+        {{
+          t(
+            "Escanea el código con tu aplicación de autenticación (Google Authenticator, Authy, 2FAS, Aegis...) o escribe la clave a mano. Después escribe el código de 6 dígitos que muestre.",
+          )
+        }}
       </p>
       <div class="totp__setup">
-        <img :src="qr" alt="Código QR para tu aplicación de autenticación" width="192" height="192" />
+        <img :src="qr" :alt="t('Código QR para tu aplicación de autenticación')" width="192" height="192" />
         <code class="totp__secret" data-testid="totp-secret">{{ setup.secret }}</code>
       </div>
-      <FormField label="Código de 6 dígitos" for="totp-confirm">
+      <FormField :label="t('Código de 6 dígitos')" for="totp-confirm">
         <WInput id="totp-confirm" v-model="code" autocomplete="one-time-code" placeholder="123456" :maxlength="7" />
       </FormField>
       <div class="totp__actions">
-        <WButton variant="ghost" @click="cancel">Cancelar</WButton>
+        <WButton variant="ghost" @click="cancel">{{ t("Cancelar") }}</WButton>
         <WButton :disabled="code.trim().length < 6" :loading="busy" data-testid="totp-confirm" @click="confirm">
-          Activar
+          {{ t("Activar") }}
         </WButton>
       </div>
     </template>
 
     <template v-else-if="enabled">
       <p class="totp__muted">
-        Está <strong>activada</strong>: al iniciar sesión, además de la contraseña o Google, se pide un código de tu
-        aplicación. Si pierdes el teléfono, un código de recuperación sirve en su lugar (una vez).
+        {{ t("Está") }} <strong>{{ t("activada") }}</strong
+        >{{
+          t(
+            ": al iniciar sesión, además de la contraseña o Google, se pide un código de tu aplicación. Si pierdes el teléfono, un código de recuperación sirve en su lugar (una vez).",
+          )
+        }}
       </p>
-      <FormField v-if="hasPassword" label="Tu contraseña" for="totp-off-password">
+      <FormField v-if="hasPassword" :label="t('Tu contraseña')" for="totp-off-password">
         <WInput id="totp-off-password" v-model="password" type="password" autocomplete="current-password" />
       </FormField>
-      <FormField label="Un código de tu aplicación (o de recuperación)" for="totp-off-code">
+      <FormField :label="t('Un código de tu aplicación (o de recuperación)')" for="totp-off-code">
         <WInput id="totp-off-code" v-model="code" autocomplete="one-time-code" />
       </FormField>
       <div class="totp__actions">
@@ -119,22 +130,25 @@ function cancel() {
           data-testid="totp-off"
           @click="turnOff"
         >
-          Desactivar
+          {{ t("Desactivar") }}
         </WButton>
       </div>
     </template>
 
     <template v-else>
       <p class="totp__muted">
-        Protege tu cuenta con un código que cambia cada 30 segundos y que solo muestra tu teléfono. Sirve también para
-        quien entra con Google.
+        {{
+          t(
+            "Protege tu cuenta con un código que cambia cada 30 segundos y que solo muestra tu teléfono. Sirve también para quien entra con Google.",
+          )
+        }}
       </p>
-      <FormField v-if="hasPassword" label="Tu contraseña" for="totp-on-password">
+      <FormField v-if="hasPassword" :label="t('Tu contraseña')" for="totp-on-password">
         <WInput id="totp-on-password" v-model="password" type="password" autocomplete="current-password" />
       </FormField>
       <div class="totp__actions">
         <WButton :disabled="hasPassword && !password" :loading="busy" data-testid="totp-start" @click="start">
-          Activar
+          {{ t("Activar") }}
         </WButton>
       </div>
     </template>

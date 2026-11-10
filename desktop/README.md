@@ -21,6 +21,12 @@ executable does everything.
 
 - **Accounts, friends and communities** - sign up, add friends, see who is
   online or in a room, and join communities, all in real time.
+- **Spanish and English** - the app opens in the system's language (Spanish if
+  it is neither) and Settings > Cuenta > Idioma changes it on the spot. Texts
+  are written in Spanish inside `t("...")` and English lives in a dictionary
+  keyed by that Spanish text (`src/i18n/en.ts`); a unit test fails if a text has
+  no English or the dictionary holds one that is no longer used. Messages that
+  come from the server (for example a rejected password) are still in Spanish.
 - **Rooms** - create, list and join rooms, with a live roster that shows each
   player's **ping**, whether their **microphone is muted**, and who is
   **talking** (a ring around the avatar that follows their volume, plus

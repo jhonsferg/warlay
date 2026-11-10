@@ -8,6 +8,7 @@ import { useDialogs } from "../../stores/dialogs";
 import { useToasts } from "../../stores/toasts";
 import WButton from "../atoms/WButton.vue";
 import { useNow } from "../useNow";
+import { t } from "../../services/i18n";
 
 /** The devices signed in to the account, with a way to end them. */
 const toasts = useToasts();
@@ -23,7 +24,7 @@ async function load() {
   try {
     sessions.value = await auth.sessions();
   } catch (e) {
-    toasts.error("No se pudieron cargar las sesiones", errorMessage(e));
+    toasts.error(t("No se pudieron cargar las sesiones"), errorMessage(e));
   } finally {
     loaded.value = true;
   }
@@ -36,9 +37,9 @@ async function end(session: SessionView) {
   try {
     await auth.endSession(session.id);
     sessions.value = sessions.value.filter((s) => s.id !== session.id);
-    toasts.success("Sesión cerrada", deviceName(session.userAgent));
+    toasts.success(t("Sesión cerrada"), deviceName(session.userAgent));
   } catch (e) {
-    toasts.error("No se pudo cerrar la sesión", errorMessage(e));
+    toasts.error(t("No se pudo cerrar la sesión"), errorMessage(e));
   } finally {
     busy.value = null;
   }
@@ -46,10 +47,13 @@ async function end(session: SessionView) {
 
 async function endOthers() {
   const accepted = await dialogs.confirm({
-    title: "Cerrar las demás sesiones",
-    message: `Se cerrará la sesión en ${others.value.length} ${others.value.length === 1 ? "dispositivo" : "dispositivos"}.`,
-    bullets: ["Tendrán que iniciar sesión de nuevo.", "Esta sesión sigue abierta."],
-    confirmLabel: "Cerrar las demás",
+    title: t("Cerrar las demás sesiones"),
+    message:
+      others.value.length === 1
+        ? t("Se cerrará la sesión en 1 dispositivo.")
+        : t("Se cerrará la sesión en {n} dispositivos.", { n: others.value.length }),
+    bullets: [t("Tendrán que iniciar sesión de nuevo."), t("Esta sesión sigue abierta.")],
+    confirmLabel: t("Cerrar las demás"),
     tone: "danger",
   });
   if (!accepted) return;
@@ -57,9 +61,9 @@ async function endOthers() {
   try {
     await auth.endOtherSessions();
     sessions.value = sessions.value.filter((s) => s.current);
-    toasts.success("Las demás sesiones se cerraron");
+    toasts.success(t("Las demás sesiones se cerraron"));
   } catch (e) {
-    toasts.error("No se pudieron cerrar", errorMessage(e));
+    toasts.error(t("No se pudieron cerrar"), errorMessage(e));
   } finally {
     busy.value = null;
   }
@@ -68,27 +72,33 @@ async function endOthers() {
 
 <template>
   <section class="sessions" data-testid="sessions-card">
-    <h3><MonitorSmartphone /> Sesiones activas</h3>
+    <h3><MonitorSmartphone /> {{ t("Sesiones activas") }}</h3>
     <p class="sessions__muted">
-      Los dispositivos donde tu cuenta tiene la sesión abierta. Si no reconoces alguno, ciérralo y cambia tu contraseña.
+      {{
+        t(
+          "Los dispositivos donde tu cuenta tiene la sesión abierta. Si no reconoces alguno, ciérralo y cambia tu contraseña.",
+        )
+      }}
     </p>
-    <p v-if="!loaded" class="sessions__muted">Cargando…</p>
+    <p v-if="!loaded" class="sessions__muted">{{ t("Cargando…") }}</p>
     <ul v-else class="sessions__list">
       <li v-for="s in sessions" :key="s.id" :class="{ 'sessions__row--current': s.current }" data-testid="session-row">
         <Laptop class="sessions__icon" :size="20" />
         <div class="sessions__info">
           <strong>{{ deviceName(s.userAgent) }}</strong>
-          <span v-if="s.current" class="sessions__badge">Esta sesión</span>
-          <small>{{ methodLabel(s.method) }} · activa {{ agoText(s.lastUsedAt, now) }}</small>
+          <span v-if="s.current" class="sessions__badge">{{ t("Esta sesión") }}</span>
+          <small>{{
+            t("{method} · activa {ago}", { method: methodLabel(s.method), ago: agoText(s.lastUsedAt, now) })
+          }}</small>
         </div>
         <WButton v-if="!s.current" size="sm" variant="secondary" :loading="busy === s.id" @click="end(s)">
-          Cerrar
+          {{ t("Cerrar") }}
         </WButton>
       </li>
     </ul>
     <div v-if="others.length" class="sessions__actions">
       <WButton variant="danger" :loading="busy === 'others'" data-testid="end-other-sessions" @click="endOthers">
-        Cerrar las demás sesiones
+        {{ t("Cerrar las demás sesiones") }}
       </WButton>
     </div>
   </section>

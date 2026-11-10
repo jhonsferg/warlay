@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useCommunities } from "../../stores/communities";
 import WAvatar from "../atoms/WAvatar.vue";
 import WLogo from "../atoms/WLogo.vue";
+import { t } from "../../services/i18n";
 
 defineEmits<{ createCommunity: [] }>();
 const communities = useCommunities();
@@ -14,13 +15,13 @@ const isHome = () => !route.path.startsWith("/c/") && route.path !== "/discover"
 </script>
 
 <template>
-  <nav class="app-rail" aria-label="Comunidades">
+  <nav class="app-rail" :aria-label="t('Comunidades')">
     <button
       type="button"
       class="app-rail__item"
       :class="{ 'app-rail__item--active': isHome() }"
-      title="Inicio"
-      aria-label="Inicio"
+      :title="t('Inicio')"
+      :aria-label="t('Inicio')"
       @click="router.push('/')"
     >
       <WLogo :size="44" />
@@ -43,8 +44,8 @@ const isHome = () => !route.path.startsWith("/c/") && route.path !== "/discover"
     <button
       type="button"
       class="app-rail__action"
-      title="Crear comunidad"
-      aria-label="Crear comunidad"
+      :title="t('Crear comunidad')"
+      :aria-label="t('Crear comunidad')"
       @click="$emit('createCommunity')"
     >
       <Plus />
@@ -53,8 +54,8 @@ const isHome = () => !route.path.startsWith("/c/") && route.path !== "/discover"
       type="button"
       class="app-rail__action"
       :class="{ 'app-rail__action--active': route.path === '/discover' }"
-      title="Explorar comunidades"
-      aria-label="Explorar comunidades"
+      :title="t('Explorar comunidades')"
+      :aria-label="t('Explorar comunidades')"
       @click="router.push('/discover')"
     >
       <Compass />

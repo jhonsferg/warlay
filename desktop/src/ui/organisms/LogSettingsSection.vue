@@ -7,17 +7,18 @@ import { useSettings } from "../../stores/settings";
 import { useToasts } from "../../stores/toasts";
 import WButton from "../atoms/WButton.vue";
 import FormField from "../molecules/FormField.vue";
+import { t, tx } from "../../services/i18n";
 
 const settings = useSettings();
 const toasts = useToasts();
 
 /** Least to most detail; more detail means bigger files. */
 const LEVELS = [
-  { value: "error", label: "Solo errores" },
-  { value: "warn", label: "Avisos y errores" },
-  { value: "info", label: "Información (recomendado)" },
-  { value: "debug", label: "Depuración (muy detallado)" },
-  { value: "trace", label: "Traza (enorme, solo para diagnosticar)" },
+  { value: "error", label: tx("Solo errores") },
+  { value: "warn", label: tx("Avisos y errores") },
+  { value: "info", label: tx("Información (recomendado)") },
+  { value: "debug", label: tx("Depuración (muy detallado)") },
+  { value: "trace", label: tx("Traza (enorme, solo para diagnosticar)") },
 ];
 
 const RETENTION_DAYS = [1, 3, 7, 14, 30, 90];
@@ -44,20 +45,25 @@ async function setLevel(level: string) {
   const previous = settings.fileLogLevel;
   try {
     await settings.setFileLogLevel(level);
-    toasts.success("Nivel de detalle actualizado", "Se aplicó al instante.");
+    toasts.success(t("Nivel de detalle actualizado"), t("Se aplicó al instante."));
   } catch (e) {
     settings.fileLogLevel = previous;
-    toasts.error("No se pudo cambiar el nivel de detalle", errorMessage(e));
+    toasts.error(t("No se pudo cambiar el nivel de detalle"), errorMessage(e));
   }
 }
 
 async function setRetention(days: number) {
   try {
     await settings.setLogRetentionDays(days);
-    toasts.success("Limpieza programada", `Se borran los registros con más de ${days} ${days === 1 ? "día" : "días"}.`);
+    toasts.success(
+      t("Limpieza programada"),
+      days === 1
+        ? t("Se borran los registros con más de 1 día.")
+        : t("Se borran los registros con más de {days} días.", { days }),
+    );
     await refreshUsage();
   } catch (e) {
-    toasts.error("No se pudo guardar la limpieza", errorMessage(e));
+    toasts.error(t("No se pudo guardar la limpieza"), errorMessage(e));
   }
 }
 
@@ -68,12 +74,12 @@ async function cleanNow(allInactive: boolean) {
     if (result) {
       usage.value = result;
       toasts.success(
-        result.removed > 0 ? `${result.removed} archivo(s) eliminado(s)` : "No había nada que borrar",
-        `Quedan ${result.files} archivo(s), ${formatBytes(result.bytes)}.`,
+        result.removed > 0 ? t("{n} archivo(s) eliminado(s)", { n: result.removed }) : t("No había nada que borrar"),
+        t("Quedan {n} archivo(s), {size}.", { n: result.files, size: formatBytes(result.bytes) }),
       );
     }
   } catch (e) {
-    toasts.error("No se pudo limpiar", errorMessage(e));
+    toasts.error(t("No se pudo limpiar"), errorMessage(e));
   } finally {
     busy.value = false;
   }
@@ -89,15 +95,17 @@ onMounted(() => {
 <template>
   <div class="log-settings">
     <p v-if="!isDesktop" class="log-settings__note" data-testid="logs-desktop-only">
-      Los registros se configuran desde la aplicación de escritorio.
+      {{ t("Los registros se configuran desde la aplicación de escritorio.") }}
     </p>
     <template v-else>
       <section class="log-settings__card">
-        <h3><FileText /> Nivel de detalle</h3>
+        <h3><FileText /> {{ t("Nivel de detalle") }}</h3>
         <p class="log-settings__muted">
-          Más detalle significa archivos mucho más grandes. Los cambios se aplican al instante, sin reiniciar.
+          {{
+            t("Más detalle significa archivos mucho más grandes. Los cambios se aplican al instante, sin reiniciar.")
+          }}
         </p>
-        <FormField label="Registros de Warlay" for="app-log-level" hint="Lo que registra esta aplicación.">
+        <FormField :label="t('Registros de Warlay')" for="app-log-level" :hint="t('Lo que registra esta aplicación.')">
           <select
             id="app-log-level"
             class="log-settings__select"
@@ -105,18 +113,21 @@ onMounted(() => {
             :value="settings.fileLogLevel"
             @change="setLevel(($event.target as HTMLSelectElement).value)"
           >
-            <option v-for="l in LEVELS" :key="l.value" :value="l.value">{{ l.label }}</option>
+            <option v-for="l in LEVELS" :key="l.value" :value="l.value">{{ t(l.label) }}</option>
           </select>
         </FormField>
       </section>
 
       <section class="log-settings__card">
-        <h3><Trash2 /> Limpieza automática</h3>
+        <h3><Trash2 /> {{ t("Limpieza automática") }}</h3>
         <p class="log-settings__muted">
-          Los registros más viejos se borran solos al abrir la aplicación y cada hora mientras esté abierta. El archivo
-          que se está escribiendo nunca se borra.
+          {{
+            t(
+              "Los registros más viejos se borran solos al abrir la aplicación y cada hora mientras esté abierta. El archivo que se está escribiendo nunca se borra.",
+            )
+          }}
         </p>
-        <FormField label="Borrar registros con más de" for="log-retention">
+        <FormField :label="t('Borrar registros con más de')" for="log-retention">
           <select
             id="log-retention"
             class="log-settings__select"
@@ -124,22 +135,25 @@ onMounted(() => {
             :value="settings.logRetentionDays"
             @change="setRetention(Number(($event.target as HTMLSelectElement).value))"
           >
-            <option v-for="d in RETENTION_DAYS" :key="d" :value="d">{{ d }} {{ d === 1 ? "día" : "días" }}</option>
+            <option v-for="d in RETENTION_DAYS" :key="d" :value="d">
+              {{ d === 1 ? t("1 día") : t("{n} días", { n: d }) }}
+            </option>
           </select>
         </FormField>
         <p class="log-settings__usage" data-testid="log-usage">
           <template v-if="usage">
-            Ahora ocupan <strong>{{ formatBytes(usage.bytes) }}</strong> en {{ usage.files }} archivo(s).
+            {{ t("Ahora ocupan") }} <strong>{{ formatBytes(usage.bytes) }}</strong>
+            {{ t("en {n} archivo(s).", { n: usage.files }) }}
           </template>
-          <template v-else>No se pudo leer el tamaño de los registros.</template>
+          <template v-else>{{ t("No se pudo leer el tamaño de los registros.") }}</template>
         </p>
         <div class="log-settings__actions">
-          <WButton variant="secondary" :loading="busy" data-testid="clean-now" @click="cleanNow(false)"
-            >Limpiar ahora</WButton
-          >
-          <WButton variant="secondary" :loading="busy" data-testid="clean-all" @click="cleanNow(true)"
-            >Borrar todos los inactivos</WButton
-          >
+          <WButton variant="secondary" :loading="busy" data-testid="clean-now" @click="cleanNow(false)">{{
+            t("Limpiar ahora")
+          }}</WButton>
+          <WButton variant="secondary" :loading="busy" data-testid="clean-all" @click="cleanNow(true)">{{
+            t("Borrar todos los inactivos")
+          }}</WButton>
         </div>
       </section>
     </template>

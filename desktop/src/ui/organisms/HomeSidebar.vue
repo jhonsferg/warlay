@@ -6,6 +6,7 @@ import { useChat } from "../../stores/chat";
 import { useSocial } from "../../stores/social";
 import WAvatar from "../atoms/WAvatar.vue";
 import { useRooms } from "../../stores/rooms";
+import { t } from "../../services/i18n";
 
 const route = useRoute();
 const router = useRouter();
@@ -21,16 +22,16 @@ const dms = computed(() =>
 );
 
 const nav = computed(() => [
-  { to: "/", label: "Salas", icon: Swords, badge: 0 },
-  { to: "/friends", label: "Amigos", icon: Users, badge: social.incoming.length },
-  ...(rooms.current ? [{ to: `/room/${rooms.current.id}`, label: "Mi sala", icon: Gamepad2, badge: 0 }] : []),
+  { to: "/", label: t("Salas"), icon: Swords, badge: 0 },
+  { to: "/friends", label: t("Amigos"), icon: Users, badge: social.incoming.length },
+  ...(rooms.current ? [{ to: `/room/${rooms.current.id}`, label: t("Mi sala"), icon: Gamepad2, badge: 0 }] : []),
 ]);
 </script>
 
 <template>
   <div class="home-sidebar">
     <header class="home-sidebar__head">
-      <h2>Inicio</h2>
+      <h2>{{ t("Inicio") }}</h2>
     </header>
     <nav class="home-sidebar__nav">
       <button
@@ -47,9 +48,9 @@ const nav = computed(() => [
       </button>
     </nav>
 
-    <p class="home-sidebar__eyebrow"><MessageCircle :size="12" /> Mensajes directos</p>
+    <p class="home-sidebar__eyebrow"><MessageCircle :size="12" /> {{ t("Mensajes directos") }}</p>
     <div class="home-sidebar__dms">
-      <p v-if="dms.length === 0" class="home-sidebar__hint">Abre un chat desde tu lista de amigos.</p>
+      <p v-if="dms.length === 0" class="home-sidebar__hint">{{ t("Abre un chat desde tu lista de amigos.") }}</p>
       <button
         v-for="f in dms"
         :key="f.id"

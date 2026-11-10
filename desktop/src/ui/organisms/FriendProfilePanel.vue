@@ -8,6 +8,7 @@ import WAvatar from "../atoms/WAvatar.vue";
 import WButton from "../atoms/WButton.vue";
 import WIconButton from "../atoms/WIconButton.vue";
 import { useNow } from "../useNow";
+import { t } from "../../services/i18n";
 
 /**
  * A friend's profile. Removing is only *requested* here: the page confirms and
@@ -42,10 +43,10 @@ const since = computed(() => (profile.value ? shortDate(new Date(profile.value.m
 </script>
 
 <template>
-  <aside class="profile" aria-label="Perfil" data-testid="friend-profile">
+  <aside class="profile" :aria-label="t('Perfil')" data-testid="friend-profile">
     <header class="profile__head">
-      <span>Perfil</span>
-      <WIconButton label="Cerrar perfil" size="sm" data-testid="profile-close" @click="emit('close')"
+      <span>{{ t("Perfil") }}</span>
+      <WIconButton :label="t('Cerrar perfil')" size="sm" data-testid="profile-close" @click="emit('close')"
         ><X
       /></WIconButton>
     </header>
@@ -59,26 +60,26 @@ const since = computed(() => (profile.value ? shortDate(new Date(profile.value.m
 
     <dl class="profile__details">
       <div>
-        <dt>Biografía</dt>
-        <dd v-if="profile" data-testid="profile-bio">{{ profile.bio || "Sin biografía." }}</dd>
-        <dd v-else-if="failed" class="profile__muted">No se pudo cargar el perfil.</dd>
-        <dd v-else class="profile__muted">Cargando…</dd>
+        <dt>{{ t("Biografía") }}</dt>
+        <dd v-if="profile" data-testid="profile-bio">{{ profile.bio || t("Sin biografía.") }}</dd>
+        <dd v-else-if="failed" class="profile__muted">{{ t("No se pudo cargar el perfil.") }}</dd>
+        <dd v-else class="profile__muted">{{ t("Cargando…") }}</dd>
       </div>
       <div v-if="profile">
-        <dt><CalendarDays :size="14" /> Miembro desde</dt>
+        <dt><CalendarDays :size="14" /> {{ t("Miembro desde") }}</dt>
         <dd data-testid="profile-since">{{ since }}</dd>
       </div>
     </dl>
 
     <div class="profile__actions">
       <WButton variant="secondary" block data-testid="profile-report" @click="emit('report')">
-        <template #icon><Flag /></template>Reportar
+        <template #icon><Flag /></template>{{ t("Reportar") }}
       </WButton>
       <WButton variant="danger" block data-testid="profile-block" @click="emit('block')">
-        <template #icon><Ban /></template>Bloquear
+        <template #icon><Ban /></template>{{ t("Bloquear") }}
       </WButton>
       <WButton variant="danger" block data-testid="profile-remove" @click="emit('remove')">
-        <template #icon><UserMinus /></template>Eliminar de mis amigos
+        <template #icon><UserMinus /></template>{{ t("Eliminar de mis amigos") }}
       </WButton>
     </div>
   </aside>

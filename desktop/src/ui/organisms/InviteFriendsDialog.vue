@@ -8,6 +8,7 @@ import WButton from "../atoms/WButton.vue";
 import FriendRow from "../molecules/FriendRow.vue";
 import EmptyState from "../molecules/EmptyState.vue";
 import WModal from "./WModal.vue";
+import { t } from "../../services/i18n";
 
 const props = defineProps<{ title: string; exclude: string[]; invite: (userId: string) => Promise<unknown> }>();
 const emit = defineEmits<{ close: [] }>();
@@ -22,17 +23,17 @@ async function send(userId: string) {
     await props.invite(userId);
     invited.value = new Set([...invited.value, userId]);
   } catch (e) {
-    toasts.error("No se pudo invitar", errorMessage(e));
+    toasts.error(t("No se pudo invitar"), errorMessage(e));
   }
 }
 </script>
 
 <template>
-  <WModal :title="title" subtitle="Tus amigos recibirán la invitación al instante." @close="emit('close')">
+  <WModal :title="title" :subtitle="t('Tus amigos recibirán la invitación al instante.')" @close="emit('close')">
     <EmptyState
       v-if="candidates.length === 0"
-      title="No hay a quién invitar"
-      text="Todos tus amigos ya están aquí, o aún no agregaste ninguno."
+      :title="t('No hay a quién invitar')"
+      :text="t('Todos tus amigos ya están aquí, o aún no agregaste ninguno.')"
     >
       <template #icon><UserCheck /></template>
     </EmptyState>
@@ -40,9 +41,9 @@ async function send(userId: string) {
       <FriendRow v-for="f in candidates" :key="f.id" :friend="f">
         <template #actions>
           <WButton v-if="invited.has(f.id)" size="sm" variant="ghost" disabled
-            ><template #icon><Check /></template>Invitado</WButton
+            ><template #icon><Check /></template>{{ t("Invitado") }}</WButton
           >
-          <WButton v-else size="sm" @click="send(f.id)">Invitar</WButton>
+          <WButton v-else size="sm" @click="send(f.id)">{{ t("Invitar") }}</WButton>
         </template>
       </FriendRow>
     </div>

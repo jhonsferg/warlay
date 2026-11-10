@@ -11,6 +11,7 @@ import WInput from "../atoms/WInput.vue";
 import WSwitch from "../atoms/WSwitch.vue";
 import FormField from "../molecules/FormField.vue";
 import WModal from "./WModal.vue";
+import { t } from "../../services/i18n";
 
 const props = defineProps<{ communityId?: string | null }>();
 const emit = defineEmits<{ close: [] }>();
@@ -20,7 +21,7 @@ const communities = useCommunities();
 const session = useSession();
 const router = useRouter();
 
-const name = ref(`Sala de ${session.me?.displayName ?? "Warcraft"}`);
+const name = ref(t("Sala de {name}", { name: session.me?.displayName ?? "Warcraft" }));
 const maxPlayers = ref(12);
 const usePassword = ref(false);
 const password = ref("");
@@ -30,7 +31,7 @@ const busy = ref(false);
 
 const nameError = computed(() =>
   name.value.trim().length > 0 && (name.value.trim().length < 3 || name.value.trim().length > 48)
-    ? "Entre 3 y 48 caracteres"
+    ? t("Entre 3 y 48 caracteres")
     : null,
 );
 
@@ -56,23 +57,27 @@ async function submit() {
 </script>
 
 <template>
-  <WModal title="Crear sala" subtitle="Tus amigos se conectarán directamente a tu partida." @close="emit('close')">
+  <WModal
+    :title="t('Crear sala')"
+    :subtitle="t('Tus amigos se conectarán directamente a tu partida.')"
+    @close="emit('close')"
+  >
     <form id="create-room" class="create-room" @submit.prevent="submit">
-      <FormField label="Nombre de la sala" for="room-name" :error="nameError">
+      <FormField :label="t('Nombre de la sala')" for="room-name" :error="nameError">
         <WInput id="room-name" v-model="name" :invalid="!!nameError" :maxlength="48" />
       </FormField>
 
       <div class="create-room__row">
-        <FormField label="Jugadores" for="room-players">
+        <FormField :label="t('Jugadores')" for="room-players">
           <div class="create-room__players">
             <Users :size="16" />
             <input id="room-players" v-model.number="maxPlayers" type="range" min="2" max="24" />
             <strong>{{ maxPlayers }}</strong>
           </div>
         </FormField>
-        <FormField label="Comunidad" for="room-community">
+        <FormField :label="t('Comunidad')" for="room-community">
           <select id="room-community" v-model="communityId" class="create-room__select">
-            <option :value="null">Pública (todos)</option>
+            <option :value="null">{{ t("Pública (todos)") }}</option>
             <option v-for="c in communities.mine" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </FormField>
@@ -81,22 +86,22 @@ async function submit() {
       <div class="create-room__toggle">
         <Lock :size="16" />
         <div>
-          <strong>Sala con contraseña</strong>
-          <p>Solo entra quien la conozca (o reciba tu invitación).</p>
+          <strong>{{ t("Sala con contraseña") }}</strong>
+          <p>{{ t("Solo entra quien la conozca (o reciba tu invitación).") }}</p>
         </div>
-        <WSwitch v-model="usePassword" label="Sala con contraseña" />
+        <WSwitch v-model="usePassword" :label="t('Sala con contraseña')" />
       </div>
-      <FormField v-if="usePassword" label="Contraseña" for="room-password">
+      <FormField v-if="usePassword" :label="t('Contraseña')" for="room-password">
         <WInput id="room-password" v-model="password" type="password" />
       </FormField>
 
       <p v-if="error" class="create-room__error" role="alert">{{ error }}</p>
     </form>
     <template #footer>
-      <WButton variant="ghost" @click="emit('close')">Cancelar</WButton>
-      <WButton type="submit" form="create-room" :loading="busy" :disabled="!name.trim() || !!nameError"
-        >Crear sala</WButton
-      >
+      <WButton variant="ghost" @click="emit('close')">{{ t("Cancelar") }}</WButton>
+      <WButton type="submit" form="create-room" :loading="busy" :disabled="!name.trim() || !!nameError">{{
+        t("Crear sala")
+      }}</WButton>
     </template>
   </WModal>
 </template>

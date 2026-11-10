@@ -15,6 +15,7 @@ import E2eBanner from "../molecules/E2eBanner.vue";
 import EmojiPicker from "../molecules/EmojiPicker.vue";
 import EmptyState from "../molecules/EmptyState.vue";
 import MessageItem from "../molecules/MessageItem.vue";
+import { t } from "../../services/i18n";
 
 const props = defineProps<{ kind: ChannelKind; targetId: string; placeholder: string; emptyTitle?: string }>();
 
@@ -65,7 +66,7 @@ async function open() {
   try {
     await chat.load(props.kind, props.targetId);
   } catch (error) {
-    toasts.error("No se pudo cargar el chat", errorMessage(error));
+    toasts.error(t("No se pudo cargar el chat"), errorMessage(error));
   } finally {
     loading.value = false;
     void scrollToBottom();
@@ -81,7 +82,7 @@ async function send() {
     draft.value = "";
     void scrollToBottom();
   } catch (error) {
-    toasts.error("No se pudo enviar el mensaje", errorMessage(error));
+    toasts.error(t("No se pudo enviar el mensaje"), errorMessage(error));
   } finally {
     sending.value = false;
   }
@@ -91,7 +92,7 @@ async function remove(message: ChatMessage) {
   try {
     await chat.remove(message);
   } catch (error) {
-    toasts.error("No se pudo borrar el mensaje", errorMessage(error));
+    toasts.error(t("No se pudo borrar el mensaje"), errorMessage(error));
   }
 }
 
@@ -101,18 +102,18 @@ function reportMessage(message: ChatMessage) {
 
 async function blockSender(message: ChatMessage) {
   const accepted = await dialogs.confirm({
-    title: `Bloquear a ${message.sender.displayName}`,
-    message: "No verás sus mensajes y no podrá enviarte solicitudes, invitaciones ni mensajes.",
-    bullets: ["No se le avisa.", "Puedes desbloquearlo en Ajustes, en Seguridad."],
-    confirmLabel: "Bloquear",
+    title: t("Bloquear a {name}", { name: message.sender.displayName }),
+    message: t("No verás sus mensajes y no podrá enviarte solicitudes, invitaciones ni mensajes."),
+    bullets: [t("No se le avisa."), t("Puedes desbloquearlo en Ajustes, en Seguridad.")],
+    confirmLabel: t("Bloquear"),
     tone: "danger",
   });
   if (!accepted) return;
   try {
     await blocks.block(message.sender.id);
-    toasts.success("Usuario bloqueado", message.sender.displayName);
+    toasts.success(t("Usuario bloqueado"), message.sender.displayName);
   } catch (error) {
-    toasts.error("No se pudo bloquear", errorMessage(error));
+    toasts.error(t("No se pudo bloquear"), errorMessage(error));
   }
 }
 
@@ -163,8 +164,8 @@ onUnmounted(() => {
       <div v-if="loading" class="chat-panel__loading"><WSpinner :size="22" /></div>
       <EmptyState
         v-else-if="messages.length === 0"
-        :title="emptyTitle ?? 'Aún no hay mensajes'"
-        text="Rompe el hielo: el primer mensaje es tuyo."
+        :title="emptyTitle ?? t('Aún no hay mensajes')"
+        :text="t('Rompe el hielo: el primer mensaje es tuyo.')"
       >
         <template #icon><MessagesSquare /></template>
       </EmptyState>
@@ -190,11 +191,11 @@ onUnmounted(() => {
         rows="1"
         :placeholder="placeholder"
         maxlength="2000"
-        aria-label="Escribe un mensaje"
+        :aria-label="t('Escribe un mensaje')"
         @keydown="onKeydown"
       />
-      <WIconButton label="Emojis" :active="emojiOpen" @click="emojiOpen = !emojiOpen"><Smile /></WIconButton>
-      <WIconButton label="Enviar" :active="draft.trim().length > 0" @click="send"><SendHorizontal /></WIconButton>
+      <WIconButton :label="t('Emojis')" :active="emojiOpen" @click="emojiOpen = !emojiOpen"><Smile /></WIconButton>
+      <WIconButton :label="t('Enviar')" :active="draft.trim().length > 0" @click="send"><SendHorizontal /></WIconButton>
     </form>
   </section>
 </template>

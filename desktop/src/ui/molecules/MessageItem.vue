@@ -3,6 +3,7 @@ import { Ban, Check, CheckCheck, Flag, Lock, Trash2 } from "@lucide/vue";
 import { computed, ref } from "vue";
 import type { ChatMessage, MessageStatus } from "../../services/types";
 import WAvatar from "../atoms/WAvatar.vue";
+import { localeTag, t, tx } from "../../services/i18n";
 
 const props = defineProps<{
   message: ChatMessage;
@@ -20,10 +21,14 @@ const emit = defineEmits<{
 }>();
 
 const time = computed(() =>
-  new Date(props.message.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" }),
+  new Date(props.message.createdAt).toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit" }),
 );
 
-const STATUS_LABEL: Record<MessageStatus, string> = { sent: "Enviado", delivered: "Recibido", read: "Leído" };
+const STATUS_LABEL: Record<MessageStatus, string> = {
+  sent: tx("Enviado"),
+  delivered: tx("Recibido"),
+  read: tx("Leído"),
+};
 
 const confirming = ref(false);
 function confirmDelete() {
@@ -46,29 +51,31 @@ function confirmDelete() {
         <time class="message__time">{{ time }}</time>
       </header>
       <p v-if="message.undecryptable" class="message__text message__text--locked" data-testid="undecryptable">
-        <Lock :size="13" /> Mensaje cifrado que este dispositivo no puede leer
+        <Lock :size="13" /> {{ t("Mensaje cifrado que este dispositivo no puede leer") }}
       </p>
       <p v-else class="message__text">{{ message.body }}</p>
       <span v-if="status || message.encrypted" class="message__meta">
-        <Lock v-if="message.encrypted" :size="11" class="message__lock" title="Cifrado de extremo a extremo" />
+        <Lock v-if="message.encrypted" :size="11" class="message__lock" :title="t('Cifrado de extremo a extremo')" />
         <span v-if="status" class="message__status" :class="`message__status--${status}`" :data-status="status">
           <CheckCheck v-if="status !== 'sent'" :size="13" />
           <Check v-else :size="13" />
-          {{ STATUS_LABEL[status] }}
+          {{ t(STATUS_LABEL[status]) }}
         </span>
       </span>
     </div>
     <div v-if="mine" class="message__actions">
       <template v-if="confirming">
-        <button type="button" class="message__action message__action--danger" @click="confirmDelete">Borrar</button>
-        <button type="button" class="message__action" @click="confirming = false">Cancelar</button>
+        <button type="button" class="message__action message__action--danger" @click="confirmDelete">
+          {{ t("Borrar") }}
+        </button>
+        <button type="button" class="message__action" @click="confirming = false">{{ t("Cancelar") }}</button>
       </template>
       <button
         v-else
         type="button"
         class="message__action"
-        aria-label="Borrar mensaje"
-        title="Borrar mensaje"
+        :aria-label="t('Borrar mensaje')"
+        :title="t('Borrar mensaje')"
         @click="confirming = true"
       >
         <Trash2 :size="14" />
@@ -78,8 +85,8 @@ function confirmDelete() {
       <button
         type="button"
         class="message__action"
-        aria-label="Reportar mensaje"
-        title="Reportar"
+        :aria-label="t('Reportar mensaje')"
+        :title="t('Reportar')"
         data-testid="message-report"
         @click="emit('report', message)"
       >
@@ -88,8 +95,8 @@ function confirmDelete() {
       <button
         type="button"
         class="message__action"
-        aria-label="Bloquear a este usuario"
-        title="Bloquear"
+        :aria-label="t('Bloquear a este usuario')"
+        :title="t('Bloquear')"
         data-testid="message-block"
         @click="emit('block', message)"
       >

@@ -6,6 +6,7 @@ import { useRooms } from "../../stores/rooms";
 import { useSession } from "../../stores/session";
 import WIconButton from "../atoms/WIconButton.vue";
 import UserChip from "../molecules/UserChip.vue";
+import { t } from "../../services/i18n";
 
 const session = useSession();
 const rooms = useRooms();
@@ -25,7 +26,7 @@ const presence = computed(() => ({
   <div v-if="session.me" class="user-panel" data-testid="user-panel">
     <UserChip :user="session.me" :presence="presence" size="sm" :subtitle="`@${session.me.username}`" />
     <div class="user-panel__actions">
-      <WIconButton label="Ajustes" size="md" @click="router.push('/settings')"><Settings /></WIconButton>
+      <WIconButton :label="t('Ajustes')" size="md" @click="router.push('/settings')"><Settings /></WIconButton>
     </div>
   </div>
 </template>

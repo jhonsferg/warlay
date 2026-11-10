@@ -12,6 +12,7 @@ import { useRooms } from "./rooms";
 import { useSession } from "./session";
 import { useSocial } from "./social";
 import { useToasts } from "./toasts";
+import { t } from "../services/i18n";
 
 let started = false;
 let unsubscribe: (() => void) | null = null;
@@ -52,14 +53,18 @@ async function start() {
       case "friendRequest":
         social.applyRequest(event.request, session.me?.id ?? "");
         if (!("removed" in event.request) && event.request.to.id === session.me?.id) {
-          void notifyOs("Nueva solicitud de amistad", event.request.from.displayName);
+          void notifyOs(t("Nueva solicitud de amistad"), event.request.from.displayName);
           const request = event.request;
           // Like Facebook: answer right from the toast. The X only closes it --
           // the request stays under the bell until it is answered.
-          toasts.action("Nueva solicitud de amistad", `${request.from.displayName} quiere ser tu amigo`, [
-            { label: "Aceptar", run: () => social.accept(request.id) },
-            { label: "Rechazar", variant: "ghost", run: () => social.decline(request.id) },
-          ]);
+          toasts.action(
+            t("Nueva solicitud de amistad"),
+            t("{name} quiere ser tu amigo", { name: request.from.displayName }),
+            [
+              { label: t("Aceptar"), run: () => social.accept(request.id) },
+              { label: t("Rechazar"), variant: "ghost", run: () => social.decline(request.id) },
+            ],
+          );
         }
         break;
       case "friendAdded":
@@ -70,18 +75,18 @@ async function start() {
         break;
       case "notification":
         notifications.applyNotification(event.notification);
-        if (event.notification.kind === "friend_accepted") toasts.success("Solicitud de amistad aceptada");
+        if (event.notification.kind === "friend_accepted") toasts.success(t("Solicitud de amistad aceptada"));
         break;
       case "invite":
         notifications.applyInvite(event.invite);
         {
           const invite = event.invite;
           toasts.action(
-            invite.kind === "room" ? "Te invitaron a una sala" : "Te invitaron a una comunidad",
+            invite.kind === "room" ? t("Te invitaron a una sala") : t("Te invitaron a una comunidad"),
             `${invite.inviter.displayName} · ${invite.targetName}`,
             [
-              { label: "Aceptar", run: () => acceptInviteAndOpen(invite) },
-              { label: "Rechazar", variant: "ghost", run: () => notifications.declineInvite(invite.id) },
+              { label: t("Aceptar"), run: () => acceptInviteAndOpen(invite) },
+              { label: t("Rechazar"), variant: "ghost", run: () => notifications.declineInvite(invite.id) },
             ],
           );
         }
@@ -96,13 +101,13 @@ async function start() {
         chat.applyReceipt(event.channel, event.userId, event.receipt);
         break;
       case "roomUpdated":
-        if (rooms.applyUpdated(event.room) === "kicked") toasts.error("Te expulsaron de la sala");
+        if (rooms.applyUpdated(event.room) === "kicked") toasts.error(t("Te expulsaron de la sala"));
         break;
       case "roomHelperChanged":
         rooms.applyHelperChanged(event.roomId, event.helper);
         break;
       case "roomClosed":
-        if (rooms.applyClosed(event.roomId)) toasts.info("La sala se cerró");
+        if (rooms.applyClosed(event.roomId)) toasts.info(t("La sala se cerró"));
         break;
       case "communityUpdated":
         communities.refreshSoon(event.communityId);

@@ -2,6 +2,7 @@
 import { Hash, LogOut, Swords, Trash2, UserPlus, Users } from "@lucide/vue";
 import type { CommunityDetail } from "../../services/types";
 import WAvatar from "../atoms/WAvatar.vue";
+import { t } from "../../services/i18n";
 
 defineProps<{ community: CommunityDetail; view: string }>();
 defineEmits<{ select: [view: string]; invite: []; leave: []; remove: [] }>();
@@ -15,24 +16,24 @@ defineEmits<{ select: [view: string]; invite: []; leave: []; remove: [] }>();
     </header>
     <div class="community-sidebar__banner" aria-hidden="true" />
     <nav class="community-sidebar__nav">
-      <p class="community-sidebar__eyebrow">Canales</p>
+      <p class="community-sidebar__eyebrow">{{ t("Canales") }}</p>
       <button type="button" :class="{ active: view === 'chat' }" @click="$emit('select', 'chat')">
-        <Hash /> general
+        <Hash /> {{ t("general") }}
       </button>
       <button type="button" :class="{ active: view === 'rooms' }" @click="$emit('select', 'rooms')">
-        <Swords /> salas
+        <Swords /> {{ t("salas") }}
         <span v-if="community.rooms.length" class="community-sidebar__count">{{ community.rooms.length }}</span>
       </button>
       <button type="button" :class="{ active: view === 'members' }" @click="$emit('select', 'members')">
-        <Users /> miembros <span class="community-sidebar__count">{{ community.memberCount }}</span>
+        <Users /> {{ t("miembros") }} <span class="community-sidebar__count">{{ community.memberCount }}</span>
       </button>
-      <p class="community-sidebar__eyebrow">Comunidad</p>
-      <button type="button" @click="$emit('invite')"><UserPlus /> Invitar amigos</button>
+      <p class="community-sidebar__eyebrow">{{ t("Comunidad") }}</p>
+      <button type="button" @click="$emit('invite')"><UserPlus /> {{ t("Invitar amigos") }}</button>
       <button v-if="community.myRole === 'owner'" type="button" class="danger" @click="$emit('remove')">
-        <Trash2 /> Eliminar comunidad
+        <Trash2 /> {{ t("Eliminar comunidad") }}
       </button>
       <button v-else-if="community.myRole" type="button" class="danger" @click="$emit('leave')">
-        <LogOut /> Salir de la comunidad
+        <LogOut /> {{ t("Salir de la comunidad") }}
       </button>
     </nav>
   </div>

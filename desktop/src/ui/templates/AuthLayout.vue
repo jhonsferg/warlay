@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Radio, ShieldCheck, Users } from "@lucide/vue";
 import WLogo from "../atoms/WLogo.vue";
+import { t } from "../../services/i18n";
 </script>
 
 <template>
@@ -11,15 +12,18 @@ import WLogo from "../atoms/WLogo.vue";
       <div class="auth-layout__grid" />
       <div class="auth-layout__copy">
         <WLogo :size="56" wordmark />
-        <h1>Tu LAN, sin fronteras.</h1>
+        <h1>{{ t("Tu LAN, sin fronteras.") }}</h1>
         <p>
-          Juega Warcraft III en red local con tus amigos estén donde estén. Conexión directa entre jugadores, sin VPN ni
-          puertos.
+          {{
+            t(
+              "Juega Warcraft III en red local con tus amigos estén donde estén. Conexión directa entre jugadores, sin VPN ni puertos.",
+            )
+          }}
         </p>
         <ul>
-          <li><Radio /> Conexión P2P directa: menos latencia para todos</li>
-          <li><Users /> Amigos, comunidades y salas en tiempo real</li>
-          <li><ShieldCheck /> Cifrado de extremo a extremo entre jugadores</li>
+          <li><Radio /> {{ t("Conexión P2P directa: menos latencia para todos") }}</li>
+          <li><Users /> {{ t("Amigos, comunidades y salas en tiempo real") }}</li>
+          <li><ShieldCheck /> {{ t("Cifrado de extremo a extremo entre jugadores") }}</li>
         </ul>
       </div>
     </section>

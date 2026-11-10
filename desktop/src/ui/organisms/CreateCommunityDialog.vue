@@ -9,6 +9,7 @@ import WButton from "../atoms/WButton.vue";
 import WInput from "../atoms/WInput.vue";
 import FormField from "../molecules/FormField.vue";
 import WModal from "./WModal.vue";
+import { t } from "../../services/i18n";
 
 const emit = defineEmits<{ close: [] }>();
 const communities = useCommunities();
@@ -40,25 +41,29 @@ async function submit() {
 </script>
 
 <template>
-  <WModal title="Crear comunidad" subtitle="Un lugar para tu clan: chat, salas y miembros." @close="emit('close')">
+  <WModal
+    :title="t('Crear comunidad')"
+    :subtitle="t('Un lugar para tu clan: chat, salas y miembros.')"
+    @close="emit('close')"
+  >
     <form id="create-community" class="create-community" @submit.prevent="submit">
       <div class="create-community__preview">
-        <WAvatar :name="name || 'Nueva comunidad'" color="#7b61ff" size="xl" shape="squircle" />
+        <WAvatar :name="name || t('Nueva comunidad')" color="#7b61ff" size="xl" shape="squircle" />
       </div>
-      <FormField label="Nombre" for="community-name" hint="Entre 3 y 40 caracteres.">
-        <WInput id="community-name" v-model="name" placeholder="Los Orcos de Durotar" :maxlength="40" />
+      <FormField :label="t('Nombre')" for="community-name" :hint="t('Entre 3 y 40 caracteres.')">
+        <WInput id="community-name" v-model="name" :placeholder="t('Los Orcos de Durotar')" :maxlength="40" />
       </FormField>
-      <FormField label="Descripción" for="community-description">
+      <FormField :label="t('Descripción')" for="community-description">
         <textarea
           id="community-description"
           v-model="description"
           class="create-community__textarea"
           rows="3"
           maxlength="300"
-          placeholder="¿De qué se trata tu comunidad?"
+          :placeholder="t('¿De qué se trata tu comunidad?')"
         />
       </FormField>
-      <div class="create-community__visibility" role="radiogroup" aria-label="Visibilidad">
+      <div class="create-community__visibility" role="radiogroup" :aria-label="t('Visibilidad')">
         <button
           type="button"
           role="radio"
@@ -67,8 +72,8 @@ async function submit() {
           @click="isPublic = true"
         >
           <Globe :size="18" />
-          <strong>Pública</strong>
-          <span>Cualquiera puede encontrarla y unirse.</span>
+          <strong>{{ t("Pública") }}</strong>
+          <span>{{ t("Cualquiera puede encontrarla y unirse.") }}</span>
         </button>
         <button
           type="button"
@@ -78,17 +83,17 @@ async function submit() {
           @click="isPublic = false"
         >
           <Lock :size="18" />
-          <strong>Privada</strong>
-          <span>Solo por invitación.</span>
+          <strong>{{ t("Privada") }}</strong>
+          <span>{{ t("Solo por invitación.") }}</span>
         </button>
       </div>
       <p v-if="error" class="create-community__error" role="alert">{{ error }}</p>
     </form>
     <template #footer>
-      <WButton variant="ghost" @click="emit('close')">Cancelar</WButton>
-      <WButton type="submit" form="create-community" :loading="busy" :disabled="name.trim().length < 3"
-        >Crear comunidad</WButton
-      >
+      <WButton variant="ghost" @click="emit('close')">{{ t("Cancelar") }}</WButton>
+      <WButton type="submit" form="create-community" :loading="busy" :disabled="name.trim().length < 3">{{
+        t("Crear comunidad")
+      }}</WButton>
     </template>
   </WModal>
 </template>

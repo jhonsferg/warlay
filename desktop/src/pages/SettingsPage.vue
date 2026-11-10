@@ -21,11 +21,13 @@ import AdvancedSettingsSection from "../ui/organisms/AdvancedSettingsSection.vue
 import RecoveryCodesPanel from "../ui/organisms/RecoveryCodesPanel.vue";
 import SessionsPanel from "../ui/organisms/SessionsPanel.vue";
 import BlockedUsersPanel from "../ui/organisms/BlockedUsersPanel.vue";
+import LanguagePanel from "../ui/organisms/LanguagePanel.vue";
 import TotpPanel from "../ui/organisms/TotpPanel.vue";
 import GameArgsSwitches from "../ui/organisms/GameArgsSwitches.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import VoiceSettingsSection from "../ui/organisms/VoiceSettingsSection.vue";
 import AppShell from "../ui/templates/AppShell.vue";
+import { t } from "../services/i18n";
 
 const session = useSession();
 const settings = useSettings();
@@ -75,9 +77,9 @@ async function saveProfile() {
   savingProfile.value = true;
   try {
     await session.update({ displayName: displayName.value.trim(), bio: bio.value, avatarColor: color.value });
-    toasts.success("Perfil actualizado");
+    toasts.success(t("Perfil actualizado"));
   } catch (e) {
-    toasts.error("No se pudo guardar", errorMessage(e));
+    toasts.error(t("No se pudo guardar"), errorMessage(e));
   } finally {
     savingProfile.value = false;
   }
@@ -89,14 +91,14 @@ const deletingAccount = ref(false);
 
 async function deleteAccount() {
   const accepted = await dialogs.confirm({
-    title: "Eliminar cuenta",
-    message: "Esto no se puede deshacer.",
+    title: t("Eliminar cuenta"),
+    message: t("Esto no se puede deshacer."),
     bullets: [
-      "Se borran tu perfil, tus amigos, tus mensajes y tus notificaciones.",
-      "Se cierran la sala que alojes y las comunidades que hayas creado.",
-      "Tu nombre de usuario y tu correo quedarán libres.",
+      t("Se borran tu perfil, tus amigos, tus mensajes y tus notificaciones."),
+      t("Se cierran la sala que alojes y las comunidades que hayas creado."),
+      t("Tu nombre de usuario y tu correo quedarán libres."),
     ],
-    confirmLabel: "Eliminar mi cuenta",
+    confirmLabel: t("Eliminar mi cuenta"),
     tone: "danger",
   });
   if (!accepted) return;
@@ -106,7 +108,7 @@ async function deleteAccount() {
     setTokens(null);
     void router.push("/login");
   } catch (e) {
-    toasts.error("No se pudo eliminar la cuenta", errorMessage(e));
+    toasts.error(t("No se pudo eliminar la cuenta"), errorMessage(e));
   } finally {
     deletingAccount.value = false;
   }
@@ -114,10 +116,10 @@ async function deleteAccount() {
 
 async function logout() {
   const accepted = await dialogs.confirm({
-    title: "Cerrar sesión",
-    message: "¿Seguro que quieres cerrar sesión?",
-    bullets: ["Saldrás de la sala en la que estés.", "Tendrás que iniciar sesión de nuevo para volver a entrar."],
-    confirmLabel: "Cerrar sesión",
+    title: t("Cerrar sesión"),
+    message: t("¿Seguro que quieres cerrar sesión?"),
+    bullets: [t("Saldrás de la sala en la que estés."), t("Tendrás que iniciar sesión de nuevo para volver a entrar.")],
+    confirmLabel: t("Cerrar sesión"),
     tone: "danger",
   });
   if (!accepted) return;
@@ -141,7 +143,7 @@ async function generateCodes() {
     recoveryRemaining.value = newCodes.value.length;
     recoveryPassword.value = "";
   } catch (e) {
-    toasts.error("No se pudieron generar los códigos", errorMessage(e));
+    toasts.error(t("No se pudieron generar los códigos"), errorMessage(e));
   } finally {
     generatingCodes.value = false;
   }
@@ -155,10 +157,10 @@ async function changePassword() {
     currentPassword.value = "";
     newPassword.value = "";
     if (session.me) session.me = { ...session.me, passwordSet: true };
-    if (first) toasts.success("Contraseña creada", "Ahora también puedes entrar con tu usuario y contraseña.");
-    else toasts.success("Contraseña actualizada", "Las demás sesiones deberán iniciar sesión de nuevo.");
+    if (first) toasts.success(t("Contraseña creada"), t("Ahora también puedes entrar con tu usuario y contraseña."));
+    else toasts.success(t("Contraseña actualizada"), t("Las demás sesiones deberán iniciar sesión de nuevo."));
   } catch (e) {
-    toasts.error("No se pudo cambiar la contraseña", errorMessage(e));
+    toasts.error(t("No se pudo cambiar la contraseña"), errorMessage(e));
   } finally {
     savingPassword.value = false;
   }
@@ -172,9 +174,9 @@ async function pickExe() {
 async function saveGame() {
   try {
     await settings.save();
-    toasts.success("Ajustes del juego guardados");
+    toasts.success(t("Ajustes del juego guardados"));
   } catch (e) {
-    toasts.error("No se pudo guardar", errorMessage(e));
+    toasts.error(t("No se pudo guardar"), errorMessage(e));
   }
 }
 
@@ -184,7 +186,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <AppShell title="Ajustes">
+  <AppShell :title="t('Ajustes')">
     <template #sidebar><HomeSidebar /></template>
     <template #title-icon><Settings :size="20" /></template>
 
@@ -192,16 +194,16 @@ onMounted(() => {
       v-model="tab"
       class="settings__tabs"
       :tabs="[
-        { id: 'account', label: 'Cuenta' },
-        { id: 'security', label: 'Seguridad' },
-        { id: 'game', label: 'Juego' },
-        { id: 'advanced', label: 'Avanzado' },
+        { id: 'account', label: t('Cuenta') },
+        { id: 'security', label: t('Seguridad') },
+        { id: 'game', label: t('Juego') },
+        { id: 'advanced', label: t('Avanzado') },
       ]"
     />
 
     <div v-if="tab === 'account'" class="settings__grid">
       <section class="settings__card">
-        <h3><User /> Perfil</h3>
+        <h3><User /> {{ t("Perfil") }}</h3>
         <div class="settings__profile">
           <WAvatar :name="displayName || '?'" :color="color" size="xl" />
           <div>
@@ -209,14 +211,14 @@ onMounted(() => {
             <p>@{{ session.me?.username }} · {{ session.me?.email }}</p>
           </div>
         </div>
-        <FormField label="Nombre visible" for="display-name">
+        <FormField :label="t('Nombre visible')" for="display-name">
           <WInput id="display-name" v-model="displayName" :maxlength="32" />
         </FormField>
-        <FormField label="Biografía" for="bio" hint="Hasta 190 caracteres.">
+        <FormField :label="t('Biografía')" for="bio" :hint="t('Hasta 190 caracteres.')">
           <textarea id="bio" v-model="bio" class="settings__textarea" rows="3" maxlength="190" />
         </FormField>
-        <FormField label="Color" for="colors">
-          <div id="colors" class="settings__colors" role="radiogroup" aria-label="Color del avatar">
+        <FormField :label="t('Color')" for="colors">
+          <div id="colors" class="settings__colors" role="radiogroup" :aria-label="t('Color del avatar')">
             <button
               v-for="c in AVATAR_COLORS"
               :key="c"
@@ -233,18 +235,22 @@ onMounted(() => {
           </div>
         </FormField>
         <div class="settings__actions">
-          <WButton :disabled="!profileDirty" :loading="savingProfile" @click="saveProfile">Guardar perfil</WButton>
+          <WButton :disabled="!profileDirty" :loading="savingProfile" @click="saveProfile">{{
+            t("Guardar perfil")
+          }}</WButton>
         </div>
       </section>
 
+      <LanguagePanel />
+
       <section class="settings__card">
-        <h3><LogOut /> Sesión</h3>
+        <h3><LogOut /> {{ t("Sesión") }}</h3>
         <p class="settings__muted">
-          Cierra la sesión en este equipo. Tendrás que iniciar sesión de nuevo para volver a entrar.
+          {{ t("Cierra la sesión en este equipo. Tendrás que iniciar sesión de nuevo para volver a entrar.") }}
         </p>
         <div class="settings__actions">
           <WButton variant="danger" data-testid="logout" @click="logout">
-            <template #icon><LogOut /></template>Cerrar sesión
+            <template #icon><LogOut /></template>{{ t("Cerrar sesión") }}
           </WButton>
         </div>
       </section>
@@ -252,14 +258,18 @@ onMounted(() => {
 
     <div v-else-if="tab === 'security'" class="settings__grid">
       <section class="settings__card">
-        <h3><KeyRound /> {{ hasPassword ? "Contraseña" : "Crear una contraseña" }}</h3>
+        <h3><KeyRound /> {{ hasPassword ? t("Contraseña") : t("Crear una contraseña") }}</h3>
         <p v-if="!hasPassword" class="settings__muted">
-          Tu cuenta entra con Google. Si creas una contraseña, también podrás entrar con tu usuario y esa contraseña.
+          {{
+            t(
+              "Tu cuenta entra con Google. Si creas una contraseña, también podrás entrar con tu usuario y esa contraseña.",
+            )
+          }}
         </p>
-        <FormField v-if="hasPassword" label="Contraseña actual" for="current-password">
+        <FormField v-if="hasPassword" :label="t('Contraseña actual')" for="current-password">
           <WInput id="current-password" v-model="currentPassword" type="password" autocomplete="current-password" />
         </FormField>
-        <FormField label="Nueva contraseña" for="new-password-settings" hint="Al menos 8 caracteres.">
+        <FormField :label="t('Nueva contraseña')" for="new-password-settings" :hint="t('Al menos 8 caracteres.')">
           <WInput id="new-password-settings" v-model="newPassword" type="password" autocomplete="new-password" />
         </FormField>
         <div class="settings__actions">
@@ -269,7 +279,7 @@ onMounted(() => {
             :loading="savingPassword"
             @click="changePassword"
           >
-            {{ hasPassword ? "Cambiar contraseña" : "Crear contraseña" }}
+            {{ hasPassword ? t("Cambiar contraseña") : t("Crear contraseña") }}
           </WButton>
         </div>
       </section>
@@ -277,26 +287,26 @@ onMounted(() => {
       <TotpPanel />
 
       <section v-if="recoveryRemaining !== null" class="settings__card" data-testid="recovery-card">
-        <h3><ShieldCheck /> Códigos de recuperación</h3>
+        <h3><ShieldCheck /> {{ t("Códigos de recuperación") }}</h3>
         <p class="settings__muted">
-          Sirven para poner una contraseña nueva si olvidas la tuya. Te quedan
-          <strong>{{ recoveryRemaining }}</strong> sin usar.
+          {{ t("Sirven para poner una contraseña nueva si olvidas la tuya. Te quedan") }}
+          <strong>{{ recoveryRemaining }}</strong> {{ t("sin usar.") }}
         </p>
         <RecoveryCodesPanel v-if="newCodes.length" :username="session.me?.username ?? ''" :codes="newCodes" />
         <p v-if="!hasPassword" class="settings__muted">
-          Crea primero una contraseña para poder generar códigos nuevos.
+          {{ t("Crea primero una contraseña para poder generar códigos nuevos.") }}
         </p>
         <FormField
           v-if="hasPassword"
-          label="Tu contraseña"
+          :label="t('Tu contraseña')"
           for="recovery-password"
-          hint="Los códigos nuevos reemplazan a los anteriores."
+          :hint="t('Los códigos nuevos reemplazan a los anteriores.')"
         >
           <WInput id="recovery-password" v-model="recoveryPassword" type="password" autocomplete="current-password" />
         </FormField>
         <div v-if="hasPassword" class="settings__actions">
           <WButton variant="secondary" :disabled="!recoveryPassword" :loading="generatingCodes" @click="generateCodes">
-            Generar códigos nuevos
+            {{ t("Generar códigos nuevos") }}
           </WButton>
         </div>
       </section>
@@ -306,16 +316,16 @@ onMounted(() => {
       <BlockedUsersPanel />
 
       <section class="settings__card" data-testid="delete-account-card">
-        <h3><Trash2 /> Eliminar cuenta</h3>
+        <h3><Trash2 /> {{ t("Eliminar cuenta") }}</h3>
         <p class="settings__muted">
-          Borra tu cuenta y sus datos de forma permanente. Para confirmar, escribe tu nombre de usuario
+          {{ t("Borra tu cuenta y sus datos de forma permanente. Para confirmar, escribe tu nombre de usuario") }}
           <strong>{{ session.me?.username }}</strong
-          >{{ hasPassword ? " y tu contraseña" : "" }}.
+          >{{ hasPassword ? t(" y tu contraseña") : "" }}.
         </p>
-        <FormField label="Tu nombre de usuario" for="delete-confirm">
+        <FormField :label="t('Tu nombre de usuario')" for="delete-confirm">
           <WInput id="delete-confirm" v-model="deleteConfirm" autocomplete="off" />
         </FormField>
-        <FormField v-if="hasPassword" label="Tu contraseña" for="delete-password">
+        <FormField v-if="hasPassword" :label="t('Tu contraseña')" for="delete-password">
           <WInput id="delete-password" v-model="deletePassword" type="password" autocomplete="current-password" />
         </FormField>
         <div class="settings__actions">
@@ -326,7 +336,7 @@ onMounted(() => {
             :loading="deletingAccount"
             @click="deleteAccount"
           >
-            <template #icon><Trash2 /></template>Eliminar mi cuenta
+            <template #icon><Trash2 /></template>{{ t("Eliminar mi cuenta") }}
           </WButton>
         </div>
       </section>
@@ -334,22 +344,22 @@ onMounted(() => {
 
     <div v-else-if="tab === 'game'" class="settings__grid">
       <section class="settings__card">
-        <h3><Gamepad2 /> Warcraft III</h3>
-        <FormField label="Ejecutable" for="exe" hint="Warcraft III.exe o Frozen Throne.exe">
+        <h3><Gamepad2 /> {{ t("Warcraft III") }}</h3>
+        <FormField :label="t('Ejecutable')" for="exe" :hint="t('Warcraft III.exe o Frozen Throne.exe')">
           <div class="settings__row">
             <WInput
               id="exe"
               v-model="settings.gameExecutablePath"
-              placeholder="C:\\Juegos\\Warcraft III\\Frozen Throne.exe"
+              :placeholder="t('C:\\\\Juegos\\\\Warcraft III\\\\Frozen Throne.exe')"
             />
             <WButton v-if="isDesktop" variant="secondary" @click="pickExe"
-              ><template #icon><FolderOpen /></template>Buscar</WButton
+              ><template #icon><FolderOpen /></template>{{ t("Buscar") }}</WButton
             >
           </div>
         </FormField>
         <GameArgsSwitches v-model="settings.gameArgs" />
         <div class="settings__actions">
-          <WButton @click="saveGame">Guardar</WButton>
+          <WButton @click="saveGame">{{ t("Guardar") }}</WButton>
         </div>
       </section>
 

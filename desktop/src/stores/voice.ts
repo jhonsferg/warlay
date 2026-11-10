@@ -16,6 +16,7 @@ import { classifyMicError } from "../services/voicePrefs";
 import { useSession } from "./session";
 import { useSettings } from "./settings";
 import { useToasts } from "./toasts";
+import { t } from "../services/i18n";
 
 /** Which microphone dialog is showing: Warlay's own request, or the guide
  * for when Windows itself blocks the microphone. */
@@ -161,7 +162,7 @@ export const useVoice = defineStore("voice", () => {
         await native.startDesktopAudio();
         sharingDesktop.value = true;
       } catch (e) {
-        toasts.error("No se pudo compartir el audio del escritorio", e instanceof Error ? e.message : String(e));
+        toasts.error(t("No se pudo compartir el audio del escritorio"), e instanceof Error ? e.message : String(e));
         await settings
           .setVoicePrefs({
             micDeviceId: settings.micDeviceId,
@@ -188,7 +189,7 @@ export const useVoice = defineStore("voice", () => {
       return;
     }
     if (!voiceSupported()) {
-      error.value = "Este entorno no soporta voz (WebCodecs/Opus).";
+      error.value = t("Este entorno no soporta voz (WebCodecs/Opus).");
       return;
     }
     busy.value = true;
@@ -216,7 +217,7 @@ export const useVoice = defineStore("voice", () => {
       announceChange();
       heartbeat ??= setInterval(announceState, HEARTBEAT_MS);
       if (settings.noiseSuppression === "strong" && engine.noiseFallbackReason) {
-        toasts.info("Supresión fuerte no disponible", "Se usa la estándar del navegador.");
+        toasts.info(t("Supresión fuerte no disponible"), t("Se usa la estándar del navegador."));
       }
       // The PC's sound is independent of the microphone's mute.
       await syncDesktopShare(settings.shareDesktopAudio);

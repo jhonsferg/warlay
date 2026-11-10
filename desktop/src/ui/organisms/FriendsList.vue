@@ -11,6 +11,7 @@ import WIconButton from "../atoms/WIconButton.vue";
 import WInput from "../atoms/WInput.vue";
 import EmptyState from "../molecules/EmptyState.vue";
 import UserChip from "../molecules/UserChip.vue";
+import { t } from "../../services/i18n";
 
 /**
  * The Messenger-style left column: every friend (connected or not), a search
@@ -37,9 +38,14 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
 </script>
 
 <template>
-  <section class="friends-list" aria-label="Lista de amigos">
+  <section class="friends-list" :aria-label="t('Lista de amigos')">
     <div class="friends-list__search">
-      <WInput v-model="query" placeholder="Buscar amigos" data-testid="friends-search" aria-label="Buscar amigos">
+      <WInput
+        v-model="query"
+        :placeholder="t('Buscar amigos')"
+        data-testid="friends-search"
+        :aria-label="t('Buscar amigos')"
+      >
         <template #icon><Search /></template>
       </WInput>
     </div>
@@ -51,43 +57,51 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
         data-testid="friend-requests"
       >
         <p class="friends-list__eyebrow">
-          Solicitudes de amistad — {{ social.incoming.length + social.outgoing.length }}
+          {{ t("Solicitudes de amistad — {n}", { n: social.incoming.length + social.outgoing.length }) }}
         </p>
         <div v-for="r in social.incoming" :key="r.id" class="friends-list__request" :data-request="r.from.username">
-          <UserChip :user="r.from" :subtitle="`@${r.from.username} quiere ser tu amigo`" size="sm" />
-          <WButton size="sm" variant="success" @click="answer(() => social.accept(r.id), 'No se pudo aceptar')"
-            ><template #icon><Check /></template>Aceptar</WButton
+          <UserChip
+            :user="r.from"
+            :subtitle="t('@{username} quiere ser tu amigo', { username: r.from.username })"
+            size="sm"
+          />
+          <WButton size="sm" variant="success" @click="answer(() => social.accept(r.id), t('No se pudo aceptar'))"
+            ><template #icon><Check /></template>{{ t("Aceptar") }}</WButton
           >
           <WIconButton
-            label="Rechazar"
+            :label="t('Rechazar')"
             size="sm"
             tone="danger"
-            @click="answer(() => social.decline(r.id), 'No se pudo rechazar')"
+            @click="answer(() => social.decline(r.id), t('No se pudo rechazar'))"
             ><X
           /></WIconButton>
         </div>
         <div v-for="r in social.outgoing" :key="r.id" class="friends-list__request">
-          <UserChip :user="r.to" :subtitle="`@${r.to.username} · esperando respuesta`" size="sm" />
-          <WButton size="sm" variant="ghost" @click="answer(() => social.decline(r.id), 'No se pudo cancelar')"
-            >Cancelar</WButton
-          >
+          <UserChip
+            :user="r.to"
+            :subtitle="t('@{username} · esperando respuesta', { username: r.to.username })"
+            size="sm"
+          />
+          <WButton size="sm" variant="ghost" @click="answer(() => social.decline(r.id), t('No se pudo cancelar'))">{{
+            t("Cancelar")
+          }}</WButton>
         </div>
       </section>
 
-      <p class="friends-list__eyebrow">Todos los amigos — {{ social.friends.length }}</p>
+      <p class="friends-list__eyebrow">{{ t("Todos los amigos — {n}", { n: social.friends.length }) }}</p>
 
       <EmptyState
         v-if="social.friends.length === 0"
-        title="Aún no tienes amigos"
-        text="Busca a tus compañeros por su nombre de usuario."
+        :title="t('Aún no tienes amigos')"
+        :text="t('Busca a tus compañeros por su nombre de usuario.')"
       >
         <template #icon><Users /></template>
         <WButton @click="dialogs.addFriend = true"
-          ><template #icon><UserPlus /></template>Agregar amigo</WButton
+          ><template #icon><UserPlus /></template>{{ t("Agregar amigo") }}</WButton
         >
       </EmptyState>
       <p v-else-if="shown.length === 0" class="friends-list__none" data-testid="friends-no-match">
-        Ningún amigo coincide con «{{ query }}».
+        {{ t("Ningún amigo coincide con «{query}».", { query }) }}
       </p>
 
       <button

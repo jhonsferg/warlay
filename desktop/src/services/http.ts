@@ -1,6 +1,7 @@
 import { refreshVerdict } from "./outage";
 import { resolveServerUrl } from "./serverUrl";
 import type { ApiErrorBody, Tokens } from "./types";
+import { t } from "./i18n.ts";
 
 const TOKENS_KEY = "warlay.tokens";
 
@@ -111,7 +112,7 @@ export async function api<T>(method: Method, path: string, body?: unknown, base?
       res = await send(method, path, body, base);
     }
   } catch {
-    throw new ApiError(0, "network", "No se pudo conectar con el servidor de Warlay");
+    throw new ApiError(0, "network", t("No se pudo conectar con el servidor de Warlay"));
   }
   if (res.ok) {
     const text = await res.text();

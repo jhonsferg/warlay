@@ -5,6 +5,7 @@ import { ApiError } from "../services/http";
 import { isDesktop, native } from "../services/native";
 import type { ChatMessage } from "../services/types";
 import { useSession } from "./session";
+import { t } from "../services/i18n";
 
 /** What an encrypted message body starts with (see `warlay::crypto::e2e`). */
 export const ENVELOPE_PREFIX = "e2e1:";
@@ -23,7 +24,7 @@ export type ConversationSecurity =
 /** Raised when sending to a friend whose key changed and wasn't confirmed. */
 export class KeyChangedError extends Error {
   constructor() {
-    super("La clave de seguridad de tu amigo cambió. Verifícala y confíala para seguir escribiendo.");
+    super(t("La clave de seguridad de tu amigo cambió. Verifícala y confíala para seguir escribiendo."));
   }
 }
 
