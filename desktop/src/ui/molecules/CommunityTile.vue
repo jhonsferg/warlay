@@ -23,15 +23,15 @@ defineEmits<{ join: [CommunitySummary]; open: [CommunitySummary] }>();
       <h3>{{ community.name }}</h3>
       <p>{{ community.description || t("Sin descripción todavía.") }}</p>
       <div class="community-tile__meta">
-        <span><Users :size="13" /> {{ t('{n} miembros', { n: community.memberCount }) }}</span>
+        <span><Users :size="13" /> {{ t("{n} miembros", { n: community.memberCount }) }}</span>
         <span v-if="community.isPublic"><Globe :size="13" /> {{ t("Pública") }}</span>
         <span v-else><Lock :size="13" /> {{ t("Privada") }}</span>
       </div>
     </div>
     <div class="community-tile__actions">
-      <WButton v-if="community.myRole" variant="secondary" size="sm" block @click="$emit('open', community)"
-        >{{ t("Entrar") }}</WButton
-      >
+      <WButton v-if="community.myRole" variant="secondary" size="sm" block @click="$emit('open', community)">{{
+        t("Entrar")
+      }}</WButton>
       <WButton v-else size="sm" block :loading="busy" @click="$emit('join', community)">{{ t("Unirme") }}</WButton>
     </div>
   </article>
