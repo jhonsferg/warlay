@@ -164,27 +164,28 @@ async function kick(member: UserSummary) {
             <div class="room__badges">
               <WBadge v-if="room.status === 'in_game'" tone="game" dot>{{ t("En partida") }}</WBadge>
               <WBadge v-else tone="success" dot>{{ t("Esperando jugadores") }}</WBadge>
-              <WBadge tone="neutral">{{ t('{n}/{max} jugadores', { n: room.members.length, max: room.maxPlayers }) }}</WBadge>
-              <WBadge v-if="room.hostAway" tone="danger" dot data-testid="host-away">{{ t("Anfitrión desconectado") }}</WBadge>
+              <WBadge tone="neutral">{{
+                t("{n}/{max} jugadores", { n: room.members.length, max: room.maxPlayers })
+              }}</WBadge>
+              <WBadge v-if="room.hostAway" tone="danger" dot data-testid="host-away">{{
+                t("Anfitrión desconectado")
+              }}</WBadge>
               <WBadge v-if="rooms.isHost" tone="warning"><Crown /> {{ t("Eres el anfitrión") }}</WBadge>
             </div>
             <h2>{{ room.name }}</h2>
             <p class="room__p2p">
               <ShieldCheck :size="15" />
-              <template v-if="room.members.length < 2"
-                >{{ t("Cuando entren jugadores se conectarán directamente contigo.") }}</template
-              >
+              <template v-if="room.members.length < 2">{{
+                t("Cuando entren jugadores se conectarán directamente contigo.")
+              }}</template>
               <template v-else>
-                {{ directCount === 1 ? t('1 enlace directo') : t('{n} enlaces directos', { n: directCount }) }}<template
-                  v-if="relayCount"
-                >
-                  · {{ t('{n} vía ayudante', { n: relayCount }) }}</template
-                >
+                {{ directCount === 1 ? t("1 enlace directo") : t("{n} enlaces directos", { n: directCount })
+                }}<template v-if="relayCount"> · {{ t("{n} vía ayudante", { n: relayCount }) }}</template>
                 ·
                 {{
-                  t('servidor: {name} ({region})', {
-                    name: rooms.session?.helper.name ?? '',
-                    region: rooms.session?.helper.region ?? '',
+                  t("servidor: {name} ({region})", {
+                    name: rooms.session?.helper.name ?? "",
+                    region: rooms.session?.helper.region ?? "",
                   })
                 }}
               </template>
@@ -268,7 +269,9 @@ async function kick(member: UserSummary) {
               @click="addFriend(m)"
               ><UserPlus
             /></WIconButton>
-            <WBadge v-else-if="m.id !== session.me?.id && isPending(m.id)" tone="neutral">{{ t("Solicitud enviada") }}</WBadge>
+            <WBadge v-else-if="m.id !== session.me?.id && isPending(m.id)" tone="neutral">{{
+              t("Solicitud enviada")
+            }}</WBadge>
             <WIconButton
               v-if="rooms.isHost && m.id !== session.me?.id"
               :label="t('Expulsar')"
