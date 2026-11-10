@@ -103,7 +103,7 @@ onMounted(() => void rooms.loadList(query.value).catch(() => {}));
           </h2>
           <p>
             {{
-              t('{n} de {max} jugadores. Lanza el juego cuando estén todos.', {
+              t("{n} de {max} jugadores. Lanza el juego cuando estén todos.", {
                 n: rooms.current.members.length,
                 max: rooms.current.maxPlayers,
               })
@@ -111,7 +111,7 @@ onMounted(() => void rooms.loadList(query.value).catch(() => {}));
           </p>
         </template>
         <template v-else>
-          <h2>{{ t('Hola, {name}', { name: session.me?.displayName ?? '' }) }}</h2>
+          <h2>{{ t("Hola, {name}", { name: session.me?.displayName ?? "" }) }}</h2>
           <p>{{ t("Crea una sala y tus amigos se conectarán directamente a tu partida, sin servidores en medio.") }}</p>
         </template>
         <div class="hero__actions">
@@ -158,7 +158,11 @@ onMounted(() => void rooms.loadList(query.value).catch(() => {}));
         @open="router.push(`/room/${room.id}`)"
       />
     </div>
-    <EmptyState v-else :title="t('No hay salas por aquí')" :text="t('Sé el primero: crea una sala e invita a tus amigos.')">
+    <EmptyState
+      v-else
+      :title="t('No hay salas por aquí')"
+      :text="t('Sé el primero: crea una sala e invita a tus amigos.')"
+    >
       <template #icon><Swords /></template>
       <WButton @click="dialogs.openCreateRoom()"
         ><template #icon><Plus /></template>{{ t("Crear sala") }}</WButton
