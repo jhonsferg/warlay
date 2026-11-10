@@ -57,10 +57,14 @@ async function start() {
           const request = event.request;
           // Like Facebook: answer right from the toast. The X only closes it --
           // the request stays under the bell until it is answered.
-          toasts.action(t("Nueva solicitud de amistad"), t("{name} quiere ser tu amigo", { name: request.from.displayName }), [
-            { label: t("Aceptar"), run: () => social.accept(request.id) },
-            { label: t("Rechazar"), variant: "ghost", run: () => social.decline(request.id) },
-          ]);
+          toasts.action(
+            t("Nueva solicitud de amistad"),
+            t("{name} quiere ser tu amigo", { name: request.from.displayName }),
+            [
+              { label: t("Aceptar"), run: () => social.accept(request.id) },
+              { label: t("Rechazar"), variant: "ghost", run: () => social.decline(request.id) },
+            ],
+          );
         }
         break;
       case "friendAdded":
