@@ -57,7 +57,7 @@ async fn run_hub(args: HubArgs) -> Result<()> {
     logging::init(&settings.observability.log_level);
 
     let store = Arc::new(
-        ServerStore::open(&settings.hub.data_dir.join("warlay.db"))
+        ServerStore::open(&settings.hub.data_dir.join("hub.json"))
             .context("opening the hub's persistent data store")?,
     );
 
