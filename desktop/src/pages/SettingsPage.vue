@@ -19,6 +19,7 @@ import FormField from "../ui/molecules/FormField.vue";
 import TabBar from "../ui/molecules/TabBar.vue";
 import AdvancedSettingsSection from "../ui/organisms/AdvancedSettingsSection.vue";
 import RecoveryCodesPanel from "../ui/organisms/RecoveryCodesPanel.vue";
+import TotpPanel from "../ui/organisms/TotpPanel.vue";
 import GameArgsSwitches from "../ui/organisms/GameArgsSwitches.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import VoiceSettingsSection from "../ui/organisms/VoiceSettingsSection.vue";
@@ -31,14 +32,16 @@ const dialogs = useDialogs();
 const rooms = useRooms();
 const router = useRouter();
 
-type Tab = "account" | "game" | "advanced";
+type Tab = "account" | "security" | "game" | "advanced";
 const route = useRoute();
 // A link such as /settings?tab=advanced opens that tab straight away.
-const tab = ref<Tab>((["account", "game", "advanced"] as const).find((t) => t === route.query.tab) ?? "account");
+const tab = ref<Tab>(
+  (["account", "security", "game", "advanced"] as const).find((t) => t === route.query.tab) ?? "account",
+);
 watch(
   () => route.query.tab,
   (next) => {
-    if (next === "account" || next === "game" || next === "advanced") tab.value = next;
+    if (next === "account" || next === "security" || next === "game" || next === "advanced") tab.value = next;
   },
 );
 
@@ -188,6 +191,7 @@ onMounted(() => {
       class="settings__tabs"
       :tabs="[
         { id: 'account', label: 'Cuenta' },
+        { id: 'security', label: 'Seguridad' },
         { id: 'game', label: 'Juego' },
         { id: 'advanced', label: 'Avanzado' },
       ]"
@@ -232,6 +236,20 @@ onMounted(() => {
       </section>
 
       <section class="settings__card">
+        <h3><LogOut /> Sesión</h3>
+        <p class="settings__muted">
+          Cierra la sesión en este equipo. Tendrás que iniciar sesión de nuevo para volver a entrar.
+        </p>
+        <div class="settings__actions">
+          <WButton variant="danger" data-testid="logout" @click="logout">
+            <template #icon><LogOut /></template>Cerrar sesión
+          </WButton>
+        </div>
+      </section>
+    </div>
+
+    <div v-else-if="tab === 'security'" class="settings__grid">
+      <section class="settings__card">
         <h3><KeyRound /> {{ hasPassword ? "Contraseña" : "Crear una contraseña" }}</h3>
         <p v-if="!hasPassword" class="settings__muted">
           Tu cuenta entra con Google. Si creas una contraseña, también podrás entrar con tu usuario y esa contraseña.
@@ -254,6 +272,8 @@ onMounted(() => {
         </div>
       </section>
 
+      <TotpPanel />
+
       <section v-if="recoveryRemaining !== null" class="settings__card" data-testid="recovery-card">
         <h3><ShieldCheck /> Códigos de recuperación</h3>
         <p class="settings__muted">
@@ -275,18 +295,6 @@ onMounted(() => {
         <div v-if="hasPassword" class="settings__actions">
           <WButton variant="secondary" :disabled="!recoveryPassword" :loading="generatingCodes" @click="generateCodes">
             Generar códigos nuevos
-          </WButton>
-        </div>
-      </section>
-
-      <section class="settings__card">
-        <h3><LogOut /> Sesión</h3>
-        <p class="settings__muted">
-          Cierra la sesión en este equipo. Tendrás que iniciar sesión de nuevo para volver a entrar.
-        </p>
-        <div class="settings__actions">
-          <WButton variant="danger" data-testid="logout" @click="logout">
-            <template #icon><LogOut /></template>Cerrar sesión
           </WButton>
         </div>
       </section>
