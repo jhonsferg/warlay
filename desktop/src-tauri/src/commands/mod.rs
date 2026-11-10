@@ -1,4 +1,5 @@
 pub mod browser;
+pub mod crash;
 pub mod devtools;
 pub mod discovery;
 pub mod e2e;
