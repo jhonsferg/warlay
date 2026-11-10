@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { UserSummary } from "../services/types";
+import { t } from "../services/i18n";
 
 export interface ConfirmOptions {
   title: string;
@@ -38,7 +39,7 @@ export const useDialogs = defineStore("dialogs", () => {
     // A new question replaces an unanswered one (which counts as "no").
     confirmRequest.value?.resolve(false);
     return new Promise((resolve) => {
-      confirmRequest.value = { cancelLabel: "Cancelar", tone: "primary", ...options, resolve };
+      confirmRequest.value = { cancelLabel: t("Cancelar"), tone: "primary", ...options, resolve };
     });
   }
 
