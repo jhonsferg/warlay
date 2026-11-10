@@ -2230,3 +2230,119 @@ async fn reports_are_validated_stored_once_a_day_and_rate_limited() {
     }
     assert!(limited, "reports are rate limited");
 }
+
+#[tokio::test]
+async fn the_account_lists_its_sessions_and_can_end_them_from_another() {
+    let Some(s) = start().await else { return };
+    let user = s.register("sesiones").await;
+    let email = format!("{}@test.dev", user.username);
+    // Two more devices sign in, each introducing itself.
+    let sign_in = |agent: &'static str| {
+        let body = json!({ "login": email, "password": "supersecret" });
+        let request = s
+            .client
+            .post(format!("{}/api/v1/auth/login", s.base))
+            .header("user-agent", agent)
+            .json(&body);
+        async move { request.send().await.unwrap().json::<Value>().await.unwrap() }
+    };
+    let laptop = sign_in("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/130.0").await;
+    let phone = sign_in("Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile").await;
+    let token_of = |login: &Value| login["tokens"]["accessToken"].as_str().unwrap().to_string();
+    let refresh_of = |login: &Value| login["tokens"]["refreshToken"].as_str().unwrap().to_string();
+    let (laptop_token, phone_token) = (token_of(&laptop), token_of(&phone));
+
+    // The list says which one is asking, and how each signed in.
+    let (status, list) = s.call("GET", "/me/sessions", Some(&laptop_token), None).await;
+    assert_eq!(status, 200, "{list}");
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 3);
+    assert_eq!(list.iter().filter(|x| x["current"] == true).count(), 1);
+    assert!(list.iter().all(|x| x["method"] == "password"));
+    let phone_entry = list
+        .iter()
+        .find(|x| x["userAgent"].as_str().unwrap().contains("Android"))
+        .expect("the phone is listed");
+    assert_eq!(phone_entry["current"], false);
+    let phone_session = phone_entry["id"].as_str().unwrap().to_string();
+
+    // Refreshing marks a session as used.
+    let before = phone_entry["lastUsedAt"].as_str().unwrap().to_string();
+    let (status, _) = s
+        .call(
+            "POST",
+            "/auth/refresh",
+            None,
+            Some(json!({ "refreshToken": refresh_of(&phone) })),
+        )
+        .await;
+    assert_eq!(status, 200);
+    let (_, after) = s.call("GET", "/me/sessions", Some(&laptop_token), None).await;
+    let after = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["id"] == json!(phone_session))
+        .unwrap()["lastUsedAt"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(after > before, "{after} should be later than {before}");
+
+    // Ending the phone cuts its access token at once and its refresh token.
+    assert_eq!(s.call("GET", "/me", Some(&phone_token), None).await.0, 200);
+    let (status, _) = s
+        .call(
+            "DELETE",
+            &format!("/me/sessions/{phone_session}"),
+            Some(&laptop_token),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(s.call("GET", "/me", Some(&phone_token), None).await.0, 401);
+    let (status, _) = s
+        .call(
+            "POST",
+            "/auth/refresh",
+            None,
+            Some(json!({ "refreshToken": refresh_of(&phone) })),
+        )
+        .await;
+    assert_eq!(status, 401);
+    let (_, list) = s.call("GET", "/me/sessions", Some(&laptop_token), None).await;
+    assert_eq!(list.as_array().unwrap().len(), 2);
+    // It is gone: ending it again, or somebody else's, finds nothing.
+    let (status, _) = s
+        .call(
+            "DELETE",
+            &format!("/me/sessions/{phone_session}"),
+            Some(&laptop_token),
+            None,
+        )
+        .await;
+    assert_eq!(status, 404);
+    let stranger = s.register("ajeno").await;
+    let (status, _) = s
+        .call(
+            "DELETE",
+            &format!("/me/sessions/{}", list[0]["id"].as_str().unwrap()),
+            Some(&stranger.token),
+            None,
+        )
+        .await;
+    assert_eq!(status, 404);
+    assert_eq!(s.call("GET", "/me", Some(&laptop_token), None).await.0, 200);
+
+    // "Close the others" leaves only the one asking.
+    let (status, ended) = s.call("DELETE", "/me/sessions", Some(&laptop_token), None).await;
+    assert_eq!((status, &ended["revoked"]), (200, &json!(1)), "{ended}");
+    assert_eq!(
+        s.call("GET", "/me", Some(&user.token), None).await.0,
+        401,
+        "the sign-up session was another one"
+    );
+    let (_, list) = s.call("GET", "/me/sessions", Some(&laptop_token), None).await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["current"], true);
+}
