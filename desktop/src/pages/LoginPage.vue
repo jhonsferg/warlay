@@ -53,7 +53,13 @@ async function submit() {
         <h2>{{ t("Iniciar sesión") }}</h2>
       </header>
       <FormField :label="t('Usuario o correo')" for="login">
-        <WInput id="login" v-model="login" size="lg" autocomplete="username" :placeholder="t('thrall o thrall@horda.gg')">
+        <WInput
+          id="login"
+          v-model="login"
+          size="lg"
+          autocomplete="username"
+          :placeholder="t('thrall o thrall@horda.gg')"
+        >
           <template #icon><User /></template>
         </WInput>
       </FormField>
@@ -89,8 +95,12 @@ async function submit() {
         >{{ t("Entrar") }}</WButton
       >
       <GoogleSignIn @signed-in="signedInWithGoogle" />
-      <p class="auth-form__switch"><RouterLink to="/recover">{{ t("¿Olvidaste tu contraseña?") }}</RouterLink></p>
-      <p class="auth-form__switch">{{ t("¿No tienes cuenta?") }} <RouterLink to="/register">{{ t("Crear una") }}</RouterLink></p>
+      <p class="auth-form__switch">
+        <RouterLink to="/recover">{{ t("¿Olvidaste tu contraseña?") }}</RouterLink>
+      </p>
+      <p class="auth-form__switch">
+        {{ t("¿No tienes cuenta?") }} <RouterLink to="/register">{{ t("Crear una") }}</RouterLink>
+      </p>
     </form>
   </AuthLayout>
 </template>
