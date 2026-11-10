@@ -51,7 +51,7 @@ async function add(user: UserWithPresence) {
     </WInput>
     <div class="add-friend__results">
       <p v-if="query.trim().length >= 2 && results.length === 0" class="add-friend__empty">
-        {{ t('Sin resultados para “{query}”.', { query }) }}
+        {{ t("Sin resultados para “{query}”.", { query }) }}
       </p>
       <div v-for="u in results" :key="u.id" class="add-friend__row" :data-result="u.username">
         <UserChip :user="u" :subtitle="`@${u.username}`" />
