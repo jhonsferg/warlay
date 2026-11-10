@@ -401,7 +401,7 @@ totp_required` until `totpCode` is sent (a code from the app, accepted once,
 
 The `hub` mode is the previous all-in-one server: centralized matchmaking over
 WebSocket, a TCP tunnel for the game session, P2P rendezvous and a
-LAN-discovery relay, with SQLite for its identity. The current desktop client
+LAN-discovery relay, with a small JSON file for its identity. The current desktop client
 does not connect to it; it stays for existing deployments and for
 `cargo test -p matchmaking`. Its ports are 7777/tcp (control plane `/ws`),
 7778/tcp (tunnel), 7779/udp (rendezvous) and 6112/udp (LAN relay).
@@ -438,7 +438,7 @@ relay_addr = "0.0.0.0:6112"
 tcp_tunnel_addr = "0.0.0.0:7778"
 rendezvous_udp_addr = "0.0.0.0:7779"
 membership_ttl_secs = 30               # prune silent UDP relay members
-data_dir = "/app/data"                 # warlay.db lives here
+data_dir = "/app/data"                 # hub.json lives here
 client_inactivity_purge_days = 30      # forget clients that never come back
 room_inactivity_purge_minutes = 15     # drop rooms with nobody connected
 
@@ -515,11 +515,13 @@ certificate for both the control plane and the game tunnel.
 
 ### Persistence
 
-`data_dir` holds `warlay.db` (SQLite, compiled in): the server's own
+`data_dir` holds `hub.json` (plain JSON, written atomically): the server's own
 `server_id`, generated on first boot, and every client's issued key, indexed
 by the client's persistent `client_id`. A background task purges clients not
 seen for `client_inactivity_purge_days` every hour; a purged client's next
-connection looks like a first-time one.
+connection looks like a first-time one. Earlier versions kept this in a SQLite
+file, `warlay.db`: if one is there on the first start, its contents are
+imported and it is renamed to `warlay.db.migrated`.
 
 ## LAN-mesh mode
 
