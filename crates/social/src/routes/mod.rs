@@ -8,5 +8,6 @@ pub mod keys;
 pub mod notifications;
 pub mod recovery;
 pub mod rooms;
+pub mod sessions;
 pub mod totp;
 pub mod users;
