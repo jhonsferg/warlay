@@ -18,7 +18,11 @@ const emit = defineEmits<{ trust: [] }>();
       <Lock :size="14" />
       <span>
         {{ t("Cifrado de extremo a extremo: solo tú y tu amigo pueden leer estos mensajes.") }}
-        <span v-if="code" class="e2e-banner__code" :title="t('Compara este código con tu amigo (en persona o por llamada)')">
+        <span
+          v-if="code"
+          class="e2e-banner__code"
+          :title="t('Compara este código con tu amigo (en persona o por llamada)')"
+        >
           {{ t("Código de seguridad") }} <code>{{ code }}</code>
         </span>
       </span>
@@ -36,9 +40,9 @@ const emit = defineEmits<{ trust: [] }>();
         >
         {{ t("Compruébalo con tu amigo antes de confiar.") }}
       </span>
-      <WButton size="sm" variant="secondary" data-testid="trust-key" @click="emit('trust')"
-        >{{ t("Confiar en la nueva clave") }}</WButton
-      >
+      <WButton size="sm" variant="secondary" data-testid="trust-key" @click="emit('trust')">{{
+        t("Confiar en la nueva clave")
+      }}</WButton>
     </template>
   </div>
 </template>
