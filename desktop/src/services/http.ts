@@ -1,7 +1,7 @@
 import { refreshVerdict } from "./outage";
 import { resolveServerUrl } from "./serverUrl";
 import type { ApiErrorBody, Tokens } from "./types";
-import { t } from "./i18n.ts";
+import { t, tServer } from "./i18n.ts";
 
 const TOKENS_KEY = "warlay.tokens";
 
@@ -129,7 +129,7 @@ export async function api<T>(method: Method, path: string, body?: unknown, base?
 }
 
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) return tServer(error.message);
   if (error instanceof Error) return error.message;
   return String(error);
 }

@@ -5,6 +5,7 @@
 // screen; `i18n.test.ts` fails when one exists.
 import { ref } from "vue";
 import { EN } from "../i18n/en.ts";
+import { EN_SERVER } from "../i18n/enServer.ts";
 
 export type Locale = "es" | "en";
 
@@ -59,6 +60,11 @@ export function fill(template: string, params?: Record<string, string | number>)
 export function t(text: string, params?: Record<string, string | number>): string {
   const template = locale.value === "en" ? (EN[text] ?? text) : text;
   return fill(template, params);
+}
+
+/** A message the server wrote in an error (always Spanish there), in the current language. */
+export function tServer(message: string): string {
+  return locale.value === "en" ? (EN_SERVER[message] ?? message) : message;
 }
 
 /**
