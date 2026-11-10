@@ -1,101 +1,59 @@
 use crate::core::dto::AppSettings;
-use rusqlite::{params, Connection};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use uuid::Uuid;
+use warlay::storage::{KvFile, StorageError};
 
+/// The app's local settings and identifiers: one small JSON file, written
+/// atomically (see `warlay::storage`). Earlier versions kept them in a SQLite
+/// database next to it (`warlay.db`); on the first run of this version that
+/// file's contents are imported and it is renamed to `warlay.db.migrated`.
 #[derive(Clone)]
 pub struct ClientStore {
-    conn: Arc<Mutex<Connection>>,
+    kv: Arc<KvFile>,
 }
 
 impl ClientStore {
-    pub fn open(path: &std::path::Path) -> Result<Self, rusqlite::Error> {
+    pub fn open(path: &std::path::Path) -> Result<Self, StorageError> {
         // On a genuinely fresh install, %APPDATA%\com.warlay.lanlauncher\
-        // doesn't exist yet -- SQLite can't create the db file inside a
-        // missing directory, `Connection::open` fails, and since `run()`
-        // calls this via `.expect(...)` before any logging or window setup
-        // exists, the whole app panics (release builds abort) at the very
-        // first line, with nothing visible to explain why.
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        // doesn't exist yet; `KvFile::open` creates it. This is called via
+        // `.expect(...)` before any logging or window setup exists, so a
+        // failure here would abort the app with nothing visible to explain why.
+        let legacy = path.with_file_name("warlay.db");
+        let kv = KvFile::open(path, Some(&legacy))?;
+        if kv.get("client_id").is_none() {
+            kv.set("client_id", &Uuid::new_v4().to_string())?;
         }
-        let conn = Connection::open(path)?;
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )",
-            [],
-        )?;
-
-        let client_id_query: Result<String, _> =
-            conn.query_row("SELECT value FROM settings WHERE key = 'client_id'", [], |row| {
-                row.get(0)
-            });
-        if client_id_query.is_err() {
-            let new_id = Uuid::new_v4().to_string();
-            conn.execute(
-                "INSERT INTO settings (key, value) VALUES ('client_id', ?1)",
-                params![new_id],
-            )?;
-        }
-
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-        })
+        Ok(Self { kv: Arc::new(kv) })
     }
 
     pub fn client_id(&self) -> Uuid {
-        let conn = self.conn.lock().unwrap();
-        let id_str: String = conn
-            .query_row("SELECT value FROM settings WHERE key = 'client_id'", [], |row| {
-                row.get(0)
-            })
-            .unwrap_or_else(|_| Uuid::new_v4().to_string());
-        Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4())
+        self.kv
+            .get("client_id")
+            .and_then(|id| Uuid::parse_str(&id).ok())
+            .unwrap_or_else(Uuid::new_v4)
     }
 
     /// Remembers when this version of the app was first run, which is when it
     /// was installed or last updated: the stored moment is kept while the
     /// version is the same and restarted when it changes. Returns that moment
     /// (Unix seconds).
-    pub fn note_running_version(&self, version: &str, now_unix: i64) -> Result<i64, rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        let read = |key: &str| -> Option<String> {
-            conn.query_row("SELECT value FROM settings WHERE key = ?1", params![key], |row| {
-                row.get(0)
-            })
-            .ok()
-        };
-        if read("running_version").as_deref() == Some(version) {
-            if let Some(at) = read("running_version_since").and_then(|v| v.parse().ok()) {
+    pub fn note_running_version(&self, version: &str, now_unix: i64) -> Result<i64, StorageError> {
+        if self.kv.get("running_version").as_deref() == Some(version) {
+            if let Some(at) = self.kv.get("running_version_since").and_then(|v| v.parse().ok()) {
                 return Ok(at);
             }
         }
-        for (key, value) in [
+        self.kv.set_many(&[
             ("running_version", version.to_string()),
             ("running_version_since", now_unix.to_string()),
-        ] {
-            conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
-                params![key, value],
-            )?;
-        }
+        ])?;
         Ok(now_unix)
     }
 
-    pub fn get_settings(&self) -> Result<AppSettings, rusqlite::Error> {
-        let json: Result<String, _> = {
-            let conn = self.conn.lock().unwrap();
-            conn.query_row("SELECT value FROM settings WHERE key = 'app_settings'", [], |row| {
-                row.get(0)
-            })
-        };
-
-        if let Ok(j) = json {
-            if let Ok(s) = serde_json::from_str(&j) {
-                return Ok(s);
+    pub fn get_settings(&self) -> Result<AppSettings, StorageError> {
+        if let Some(json) = self.kv.get("app_settings") {
+            if let Ok(settings) = serde_json::from_str(&json) {
+                return Ok(settings);
             }
         }
 
@@ -124,35 +82,30 @@ impl ClientStore {
         })
     }
 
-    pub fn save_settings(&self, settings: &AppSettings) -> Result<(), rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        let json = serde_json::to_string(settings).unwrap();
-        conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_settings', ?1)",
-            params![json],
-        )?;
-        Ok(())
+    pub fn save_settings(&self, settings: &AppSettings) -> Result<(), StorageError> {
+        let json = serde_json::to_string(settings).expect("settings serialize");
+        self.kv.set("app_settings", &json)
     }
 
-    pub fn set_console_log_level(&self, level: &str) -> Result<(), rusqlite::Error> {
+    pub fn set_console_log_level(&self, level: &str) -> Result<(), StorageError> {
         let mut settings = self.get_settings()?;
         settings.console_log_level = level.to_string();
         self.save_settings(&settings)
     }
 
-    pub fn set_file_log_level(&self, level: &str) -> Result<(), rusqlite::Error> {
+    pub fn set_file_log_level(&self, level: &str) -> Result<(), StorageError> {
         let mut settings = self.get_settings()?;
         settings.file_log_level = level.to_string();
         self.save_settings(&settings)
     }
 
-    pub fn set_mic_consent(&self, granted: bool) -> Result<(), rusqlite::Error> {
+    pub fn set_mic_consent(&self, granted: bool) -> Result<(), StorageError> {
         let mut settings = self.get_settings()?;
         settings.mic_consent = granted;
         self.save_settings(&settings)
     }
 
-    pub fn set_log_retention_days(&self, days: u32) -> Result<(), rusqlite::Error> {
+    pub fn set_log_retention_days(&self, days: u32) -> Result<(), StorageError> {
         let mut settings = self.get_settings()?;
         settings.log_retention_days = days;
         self.save_settings(&settings)
