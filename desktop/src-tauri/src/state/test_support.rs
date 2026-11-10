@@ -19,7 +19,7 @@ pub struct TestApp {
 impl TestApp {
     pub fn new() -> Self {
         let dir = std::env::temp_dir().join(format!("warlay-app-test-{}", Uuid::new_v4()));
-        let store = ClientStore::open(&dir.join("warlay.db")).expect("open test store");
+        let store = ClientStore::open(&dir.join("settings.json")).expect("open test store");
         let app = mock_app();
         app.manage(AppState::new(store));
         Self { app, dir }
