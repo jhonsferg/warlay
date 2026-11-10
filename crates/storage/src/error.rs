@@ -9,8 +9,12 @@ pub enum StorageError {
         #[source]
         source: std::io::Error,
     },
-    #[error("database error: {0}")]
-    Database(#[from] rusqlite::Error),
+    #[error("could not read or write {path}: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("stored PSK for a client has an unexpected length ({0} bytes, expected 32)")]
     MalformedPsk(usize),
 }
