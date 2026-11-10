@@ -5,6 +5,7 @@ import type { RoomView } from "../../services/types";
 import WBadge from "../atoms/WBadge.vue";
 import WButton from "../atoms/WButton.vue";
 import AvatarStack from "./AvatarStack.vue";
+import { t } from "../../services/i18n";
 
 const props = defineProps<{ room: RoomView; current?: boolean; busy?: boolean }>();
 defineEmits<{ join: [room: RoomView]; open: [room: RoomView] }>();
@@ -24,15 +25,15 @@ const fill = computed(() => Math.round((props.room.members.length / props.room.m
         <h3>{{ room.name }}</h3>
         <span class="room-card__host"><Crown :size="12" /> {{ room.host.displayName }}</span>
       </div>
-      <WBadge v-if="room.status === 'in_game'" tone="game" dot>En partida</WBadge>
-      <WBadge v-else tone="success" dot>Abierta</WBadge>
+      <WBadge v-if="room.status === 'in_game'" tone="game" dot>{{ t("En partida") }}</WBadge>
+      <WBadge v-else tone="success" dot>{{ t("Abierta") }}</WBadge>
     </header>
-    <WBadge v-if="room.hostAway" tone="danger" dot>Anfitrión desconectado</WBadge>
+    <WBadge v-if="room.hostAway" tone="danger" dot>{{ t("Anfitrión desconectado") }}</WBadge>
 
     <div class="room-card__tags">
       <WBadge v-if="room.communityName" tone="accent">{{ room.communityName }}</WBadge>
-      <WBadge v-else tone="neutral">Pública</WBadge>
-      <WBadge v-if="room.hasPassword" tone="warning"><Lock /> Privada</WBadge>
+      <WBadge v-else tone="neutral">{{ t("Pública") }}</WBadge>
+      <WBadge v-if="room.hasPassword" tone="warning"><Lock /> {{ t("Privada") }}</WBadge>
     </div>
 
     <footer class="room-card__foot">
@@ -40,9 +41,9 @@ const fill = computed(() => Math.round((props.room.members.length / props.room.m
         <AvatarStack :users="room.members" :max="5" :slots="Math.min(room.maxPlayers, 5)" />
         <span class="room-card__count"><Users :size="14" /> {{ room.members.length }}/{{ room.maxPlayers }}</span>
       </div>
-      <WButton v-if="current" size="sm" variant="secondary" @click="$emit('open', room)">Abrir sala</WButton>
+      <WButton v-if="current" size="sm" variant="secondary" @click="$emit('open', room)">{{ t("Abrir sala") }}</WButton>
       <WButton v-else size="sm" :disabled="full" :loading="busy" @click="$emit('join', room)">
-        {{ full ? "Llena" : "Unirse" }}
+        {{ full ? t("Llena") : t("Unirse") }}
       </WButton>
     </footer>
     <div class="room-card__meter" :style="{ '--fill': `${fill}%` }" aria-hidden="true" />
