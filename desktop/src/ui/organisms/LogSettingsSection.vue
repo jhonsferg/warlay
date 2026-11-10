@@ -55,7 +55,12 @@ async function setLevel(level: string) {
 async function setRetention(days: number) {
   try {
     await settings.setLogRetentionDays(days);
-    toasts.success(t("Limpieza programada"), days === 1 ? t("Se borran los registros con más de 1 día.") : t("Se borran los registros con más de {days} días.", { days }));
+    toasts.success(
+      t("Limpieza programada"),
+      days === 1
+        ? t("Se borran los registros con más de 1 día.")
+        : t("Se borran los registros con más de {days} días.", { days }),
+    );
     await refreshUsage();
   } catch (e) {
     toasts.error(t("No se pudo guardar la limpieza"), errorMessage(e));
@@ -96,7 +101,9 @@ onMounted(() => {
       <section class="log-settings__card">
         <h3><FileText /> {{ t("Nivel de detalle") }}</h3>
         <p class="log-settings__muted">
-          {{ t("Más detalle significa archivos mucho más grandes. Los cambios se aplican al instante, sin reiniciar.") }}
+          {{
+            t("Más detalle significa archivos mucho más grandes. Los cambios se aplican al instante, sin reiniciar.")
+          }}
         </p>
         <FormField :label="t('Registros de Warlay')" for="app-log-level" :hint="t('Lo que registra esta aplicación.')">
           <select
@@ -114,7 +121,11 @@ onMounted(() => {
       <section class="log-settings__card">
         <h3><Trash2 /> {{ t("Limpieza automática") }}</h3>
         <p class="log-settings__muted">
-          {{ t("Los registros más viejos se borran solos al abrir la aplicación y cada hora mientras esté abierta. El archivo que se está escribiendo nunca se borra.") }}
+          {{
+            t(
+              "Los registros más viejos se borran solos al abrir la aplicación y cada hora mientras esté abierta. El archivo que se está escribiendo nunca se borra.",
+            )
+          }}
         </p>
         <FormField :label="t('Borrar registros con más de')" for="log-retention">
           <select
@@ -124,22 +135,25 @@ onMounted(() => {
             :value="settings.logRetentionDays"
             @change="setRetention(Number(($event.target as HTMLSelectElement).value))"
           >
-            <option v-for="d in RETENTION_DAYS" :key="d" :value="d">{{ d === 1 ? t("1 día") : t("{n} días", { n: d }) }}</option>
+            <option v-for="d in RETENTION_DAYS" :key="d" :value="d">
+              {{ d === 1 ? t("1 día") : t("{n} días", { n: d }) }}
+            </option>
           </select>
         </FormField>
         <p class="log-settings__usage" data-testid="log-usage">
           <template v-if="usage">
-            {{ t("Ahora ocupan") }} <strong>{{ formatBytes(usage.bytes) }}</strong> {{ t("en {n} archivo(s).", { n: usage.files }) }}
+            {{ t("Ahora ocupan") }} <strong>{{ formatBytes(usage.bytes) }}</strong>
+            {{ t("en {n} archivo(s).", { n: usage.files }) }}
           </template>
           <template v-else>{{ t("No se pudo leer el tamaño de los registros.") }}</template>
         </p>
         <div class="log-settings__actions">
-          <WButton variant="secondary" :loading="busy" data-testid="clean-now" @click="cleanNow(false)"
-            >{{ t("Limpiar ahora") }}</WButton
-          >
-          <WButton variant="secondary" :loading="busy" data-testid="clean-all" @click="cleanNow(true)"
-            >{{ t("Borrar todos los inactivos") }}</WButton
-          >
+          <WButton variant="secondary" :loading="busy" data-testid="clean-now" @click="cleanNow(false)">{{
+            t("Limpiar ahora")
+          }}</WButton>
+          <WButton variant="secondary" :loading="busy" data-testid="clean-all" @click="cleanNow(true)">{{
+            t("Borrar todos los inactivos")
+          }}</WButton>
         </div>
       </section>
     </template>
