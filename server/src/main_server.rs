@@ -43,8 +43,8 @@ pub fn load(path: &Path) -> Result<MainConfigFile> {
 
 /// Environment overrides, handy for containers: `WARLAY_DATABASE_URL`,
 /// `WARLAY_REDIS_URL`, `WARLAY_HELPER_SECRET`, `WARLAY_CLIENT_IP_HEADER` and
-/// `WARLAY_WEB_BASE_URL`, `WARLAY_GOOGLE_CLIENT_ID` and
-/// `WARLAY_GOOGLE_CLIENT_SECRET`.
+/// `WARLAY_WEB_BASE_URL`, `WARLAY_METRICS_TOKEN`, `WARLAY_GOOGLE_CLIENT_ID`
+/// and `WARLAY_GOOGLE_CLIENT_SECRET`.
 pub fn apply_env(config: &mut MainConfigFile) {
     if let Ok(v) = std::env::var("WARLAY_DATABASE_URL") {
         config.main.database_url = v;
@@ -60,6 +60,9 @@ pub fn apply_env(config: &mut MainConfigFile) {
     }
     if let Ok(v) = std::env::var("WARLAY_WEB_BASE_URL") {
         config.main.web_base_url = v;
+    }
+    if let Ok(v) = std::env::var("WARLAY_METRICS_TOKEN") {
+        config.main.metrics_token = v;
     }
     if let Ok(v) = std::env::var("WARLAY_GOOGLE_CLIENT_ID") {
         config.main.google_client_id = v;
