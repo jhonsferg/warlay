@@ -48,7 +48,10 @@ async function end(session: SessionView) {
 async function endOthers() {
   const accepted = await dialogs.confirm({
     title: t("Cerrar las demás sesiones"),
-    message: others.value.length === 1 ? t("Se cerrará la sesión en 1 dispositivo.") : t("Se cerrará la sesión en {n} dispositivos.", { n: others.value.length }),
+    message:
+      others.value.length === 1
+        ? t("Se cerrará la sesión en 1 dispositivo.")
+        : t("Se cerrará la sesión en {n} dispositivos.", { n: others.value.length }),
     bullets: [t("Tendrán que iniciar sesión de nuevo."), t("Esta sesión sigue abierta.")],
     confirmLabel: t("Cerrar las demás"),
     tone: "danger",
@@ -71,7 +74,11 @@ async function endOthers() {
   <section class="sessions" data-testid="sessions-card">
     <h3><MonitorSmartphone /> {{ t("Sesiones activas") }}</h3>
     <p class="sessions__muted">
-      {{ t("Los dispositivos donde tu cuenta tiene la sesión abierta. Si no reconoces alguno, ciérralo y cambia tu contraseña.") }}
+      {{
+        t(
+          "Los dispositivos donde tu cuenta tiene la sesión abierta. Si no reconoces alguno, ciérralo y cambia tu contraseña.",
+        )
+      }}
     </p>
     <p v-if="!loaded" class="sessions__muted">{{ t("Cargando…") }}</p>
     <ul v-else class="sessions__list">
@@ -80,7 +87,9 @@ async function endOthers() {
         <div class="sessions__info">
           <strong>{{ deviceName(s.userAgent) }}</strong>
           <span v-if="s.current" class="sessions__badge">{{ t("Esta sesión") }}</span>
-          <small>{{ t('{method} · activa {ago}', { method: methodLabel(s.method), ago: agoText(s.lastUsedAt, now) }) }}</small>
+          <small>{{
+            t("{method} · activa {ago}", { method: methodLabel(s.method), ago: agoText(s.lastUsedAt, now) })
+          }}</small>
         </div>
         <WButton v-if="!s.current" size="sm" variant="secondary" :loading="busy === s.id" @click="end(s)">
           {{ t("Cerrar") }}
