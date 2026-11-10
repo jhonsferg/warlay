@@ -40,6 +40,9 @@ pub async fn search(
     let rows = sqlx::query_as::<_, SummaryRow>(&format!(
         "SELECT {SUMMARY_COLUMNS} FROM users u
          WHERE u.id <> $1 AND (u.username ILIKE $2 OR u.display_name ILIKE $2)
+           AND NOT EXISTS (SELECT 1 FROM user_blocks b
+                           WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)
+                              OR (b.blocker_id = u.id AND b.blocked_id = $1))
          ORDER BY u.username LIMIT 20"
     ))
     .bind(auth.user_id)
@@ -65,6 +68,10 @@ pub async fn profile(State(state): State<AppState>, auth: AuthUser, Path(id): Pa
     let user = load_user(&state, id)
         .await?
         .ok_or_else(|| ApiError::not_found("usuario no encontrado"))?;
+    // Someone who blocked the caller is not there for them.
+    if super::blocks::has_blocked(&state, id, auth.user_id).await? {
+        return Err(ApiError::not_found("usuario no encontrado"));
+    }
     let is_friend = are_friends(&state, auth.user_id, id).await?;
     let mut with = with_presence(&state, vec![user.summary()]).await?;
     Ok(Json(Profile {
