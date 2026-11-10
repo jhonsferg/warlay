@@ -8,6 +8,7 @@ import { useToasts } from "../../stores/toasts";
 import WButton from "../atoms/WButton.vue";
 import FormField from "../molecules/FormField.vue";
 import WModal from "./WModal.vue";
+import { t } from "../../services/i18n";
 
 /** Reports the player in `dialogs.report`; opened with `dialogs.openReport(user, messageId?)`. */
 const dialogs = useDialogs();
@@ -34,10 +35,10 @@ async function send() {
       details: details.value.trim() || undefined,
       messageId: target.messageId,
     });
-    toasts.success("Reporte enviado", "Gracias: lo revisará quien administra el servidor.");
+    toasts.success(t("Reporte enviado"), t("Gracias: lo revisará quien administra el servidor."));
     close();
   } catch (e) {
-    toasts.error("No se pudo enviar el reporte", errorMessage(e));
+    toasts.error(t("No se pudo enviar el reporte"), errorMessage(e));
   } finally {
     sending.value = false;
   }
@@ -47,36 +48,35 @@ async function send() {
 <template>
   <WModal
     v-if="dialogs.report"
-    :title="`Reportar a ${dialogs.report.user.displayName}`"
+    :title="t('Reportar a {name}', { name: dialogs.report.user.displayName })"
     :subtitle="`@${dialogs.report.user.username}`"
     @close="close"
   >
     <form class="report" data-testid="report-dialog" @submit.prevent="send">
-      <FormField label="Motivo" for="report-reason">
+      <FormField :label="t('Motivo')" for="report-reason">
         <select id="report-reason" v-model="reason" class="report__select" data-testid="report-reason">
-          <option value="" disabled>Elige un motivo</option>
-          <option v-for="r in REPORT_REASONS" :key="r.id" :value="r.id">{{ r.label }}</option>
+          <option value="" disabled>{{ t("Elige un motivo") }}</option>
+          <option v-for="r in REPORT_REASONS" :key="r.id" :value="r.id">{{ t(r.label) }}</option>
         </select>
       </FormField>
-      <FormField label="Detalles (opcional)" for="report-details" :hint="`${details.length} / ${REPORT_DETAILS_MAX}`">
+      <FormField :label="t('Detalles (opcional)')" for="report-details" :hint="`${details.length} / ${REPORT_DETAILS_MAX}`">
         <textarea
           id="report-details"
           v-model="details"
           class="report__text"
           rows="4"
           :maxlength="REPORT_DETAILS_MAX"
-          placeholder="Qué pasó, y dónde (sala, comunidad o chat)."
+          :placeholder="t('Qué pasó, y dónde (sala, comunidad o chat).')"
         />
       </FormField>
       <p class="report__note">
-        El reporte llega a quien administra el servidor. No se avisa a la otra persona. Para dejar de ver sus mensajes,
-        bloquéala.
+        {{ t("El reporte llega a quien administra el servidor. No se avisa a la otra persona. Para dejar de ver sus mensajes, bloquéala.") }}
       </p>
     </form>
     <template #footer>
-      <WButton variant="ghost" @click="close">Cancelar</WButton>
+      <WButton variant="ghost" @click="close">{{ t("Cancelar") }}</WButton>
       <WButton :disabled="!canSendReport(reason, details)" :loading="sending" data-testid="report-send" @click="send">
-        Enviar reporte
+        {{ t("Enviar reporte") }}
       </WButton>
     </template>
   </WModal>
