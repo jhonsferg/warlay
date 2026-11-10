@@ -1,92 +1,1 @@
-import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { test } from "node:test";
-import { EN } from "../i18n/en.ts";
-import { fill, initialLocale, locale, setLocale, t, tx } from "./i18n.ts";
-
-/** Every source file of the client, tests and the dictionary aside. */
-function sources(dir = "src"): string[] {
-  const files: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) files.push(...sources(path));
-    else if (/\.(vue|ts)$/.test(name) && !name.endsWith(".test.ts")) files.push(path);
-  }
-  return files.filter(
-    (f) => !f.replaceAll("\\", "/").endsWith("i18n/en.ts") && !f.replaceAll("\\", "/").endsWith("services/i18n.ts"),
-  );
-}
-
-/** The Spanish texts written as t("...") or tx("..."), as the program sees them. */
-function usedKeys(): Map<string, string> {
-  const pattern = /\b(?:t|tx)\(\s*(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)')/g;
-  const used = new Map<string, string>();
-  for (const file of sources()) {
-    const text = readFileSync(file, "utf8");
-    for (const m of text.matchAll(pattern)) {
-      const raw = m[1] ?? m[2];
-      const quote = m[1] !== undefined ? '"' : "'";
-      const key = raw
-        .replaceAll("\\\\", "\0")
-        .replaceAll(`\\${quote}`, quote)
-        .replaceAll("\\n", "\n")
-        .replaceAll("\0", "\\");
-      if (!used.has(key)) used.set(key, file);
-    }
-  }
-  return used;
-}
-
-const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
-
-test("every Spanish text the app shows has its English", () => {
-  const missing = [...usedKeys()].filter(([key]) => !(key in EN)).map(([key, file]) => `${file}: ${key}`);
-  assert.deepEqual(missing, [], "add these to src/i18n/en.ts");
-});
-
-test("the dictionary has nothing the app no longer uses", () => {
-  const used = usedKeys();
-  const stale = Object.keys(EN).filter((key) => !used.has(key));
-  assert.deepEqual(stale, [], "remove these from src/i18n/en.ts");
-});
-
-test("a translation keeps the placeholders of its original, and none is empty", () => {
-  for (const [key, english] of Object.entries(EN)) {
-    assert.deepEqual(placeholders(english), placeholders(key), key);
-    assert.ok(english.trim().length > 0, key);
-  }
-});
-
-test("Spanish is shown as written and English comes from the dictionary", () => {
-  setLocale("es");
-  assert.equal(t("Contraseña"), "Contraseña");
-  assert.equal(t("Te uniste a {name}", { name: "Orcos" }), "Te uniste a Orcos");
-  setLocale("en");
-  assert.equal(t("Contraseña"), "Password");
-  assert.equal(t("Te uniste a {name}", { name: "Orcs" }), "You joined Orcs");
-  // A text without a translation falls back to the Spanish, never to nothing.
-  assert.equal(t("un texto que no está en el diccionario"), "un texto que no está en el diccionario");
-  assert.equal(locale.value, "en");
-  setLocale("es");
-});
-
-test("tx marks a text for the dictionary without changing it", () => {
-  assert.equal(tx("Contraseña"), "Contraseña");
-});
-
-test("placeholders are filled, and an unknown one is left visible", () => {
-  assert.equal(fill("{a} y {b}", { a: 1, b: "dos" }), "1 y dos");
-  assert.equal(fill("{a} y {b}", { a: 1 }), "1 y {b}");
-  assert.equal(fill("sin marcas"), "sin marcas");
-});
-
-test("the language comes from the saved choice, then the system, then Spanish", () => {
-  assert.equal(initialLocale("en", ["es-PE"]), "en");
-  assert.equal(initialLocale("es", ["en-US"]), "es");
-  assert.equal(initialLocale(null, ["en-US", "es"]), "en");
-  assert.equal(initialLocale(null, ["fr-FR", "es-PE"]), "es");
-  assert.equal(initialLocale(null, ["fr-FR"]), "es");
-  assert.equal(initialLocale(null, []), "es");
-  assert.equal(initialLocale("zz", ["en"]), "en", "a stale saved value is ignored");
-});
+import assert from "node:assert/strict";import { readdirSync, readFileSync, statSync } from "node:fs";import { join } from "node:path";import { test } from "node:test";import { EN } from "../i18n/en.ts";import { EN_SERVER } from "../i18n/enServer.ts";import { fill, initialLocale, locale, setLocale, t, tServer, tx } from "./i18n.ts";/** Every source file of the client, tests and the dictionary aside. */function sources(dir = "src"): string[] {  const files: string[] = [];  for (const name of readdirSync(dir)) {    const path = join(dir, name);    if (statSync(path).isDirectory()) files.push(...sources(path));    else if (/\.(vue|ts)$/.test(name) && !name.endsWith(".test.ts")) files.push(path);  }  return files.filter(    (f) => !f.replaceAll("\\", "/").endsWith("i18n/en.ts") && !f.replaceAll("\\", "/").endsWith("services/i18n.ts"),  );}/** The Spanish texts written as t("...") or tx("..."), as the program sees them. */function usedKeys(): Map<string, string> {  const pattern = /\b(?:t|tx)\(\s*(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)')/g;  const used = new Map<string, string>();  for (const file of sources()) {    const text = readFileSync(file, "utf8");    for (const m of text.matchAll(pattern)) {      const raw = m[1] ?? m[2];      const quote = m[1] !== undefined ? '"' : "'";      const key = raw        .replaceAll("\\\\", "\0")        .replaceAll(`\\${quote}`, quote)        .replaceAll("\\n", "\n")        .replaceAll("\0", "\\");      if (!used.has(key)) used.set(key, file);    }  }  return used;}const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();test("every Spanish text the app shows has its English", () => {  const missing = [...usedKeys()].filter(([key]) => !(key in EN)).map(([key, file]) => `${file}: ${key}`);  assert.deepEqual(missing, [], "add these to src/i18n/en.ts");});test("the dictionary has nothing the app no longer uses", () => {  const used = usedKeys();  const stale = Object.keys(EN).filter((key) => !used.has(key));  assert.deepEqual(stale, [], "remove these from src/i18n/en.ts");});test("a translation keeps the placeholders of its original, and none is empty", () => {  for (const [key, english] of Object.entries(EN)) {    assert.deepEqual(placeholders(english), placeholders(key), key);    assert.ok(english.trim().length > 0, key);  }});test("Spanish is shown as written and English comes from the dictionary", () => {  setLocale("es");  assert.equal(t("Contraseña"), "Contraseña");  assert.equal(t("Te uniste a {name}", { name: "Orcos" }), "Te uniste a Orcos");  setLocale("en");  assert.equal(t("Contraseña"), "Password");  assert.equal(t("Te uniste a {name}", { name: "Orcs" }), "You joined Orcs");  // A text without a translation falls back to the Spanish, never to nothing.  assert.equal(t("un texto que no está en el diccionario"), "un texto que no está en el diccionario");  assert.equal(locale.value, "en");  setLocale("es");});test("tx marks a text for the dictionary without changing it", () => {  assert.equal(tx("Contraseña"), "Contraseña");});test("placeholders are filled, and an unknown one is left visible", () => {  assert.equal(fill("{a} y {b}", { a: 1, b: "dos" }), "1 y dos");  assert.equal(fill("{a} y {b}", { a: 1 }), "1 y {b}");  assert.equal(fill("sin marcas"), "sin marcas");});test("the language comes from the saved choice, then the system, then Spanish", () => {  assert.equal(initialLocale("en", ["es-PE"]), "en");  assert.equal(initialLocale("es", ["en-US"]), "es");  assert.equal(initialLocale(null, ["en-US", "es"]), "en");  assert.equal(initialLocale(null, ["fr-FR", "es-PE"]), "es");  assert.equal(initialLocale(null, ["fr-FR"]), "es");  assert.equal(initialLocale(null, []), "es");  assert.equal(initialLocale("zz", ["en"]), "en", "a stale saved value is ignored");});/** The messages the server's source puts in its API errors (internal ones, in English, aside). */function serverMessages(): Set<string> {  const found = new Set<string>();  const walk = (dir: string) => {    for (const name of readdirSync(dir)) {      const path = join(dir, name);      if (statSync(path).isDirectory()) walk(path);      else if (name.endsWith(".rs")) collect(readFileSync(path, "utf8"));    }  };  const collect = (source: string) => {    for (const call of source.matchAll(/ApiError::(?:bad_request|conflict|forbidden|not_found|new|unauthorized)\(/g)) {      let depth = 1;      let i = call.index! + call[0].length;      const start = i;      while (i < source.length && depth > 0) {        const c = source[i];        if (c === '"') {          i++;          while (source[i] !== '"') i += source[i] === "\\" ? 2 : 1;        } else if (c === "(") depth++;        else if (c === ")") depth--;        i++;      }      for (const lit of source.slice(start, i - 1).matchAll(/"((?:[^"\\]|\\.)*)"/g)) {        if (lit[1].includes(" ")) found.add(lit[1].replaceAll('\\"', '"').replaceAll("\\\\", "\\"));      }    }  };  walk(join("..", "crates", "social", "src"));  return found;}test("every message the server can send has its English, and none is left over", () => {  const messages = serverMessages();  assert.ok(messages.size > 50, "the server's messages were found");  assert.deepEqual(    [...messages].filter((m) => !(m in EN_SERVER)),    [],    "add these to src/i18n/enServer.ts",  );  assert.deepEqual(    Object.keys(EN_SERVER).filter((m) => !messages.has(m)),    [],    "remove these from src/i18n/enServer.ts",  );  for (const [spanish, english] of Object.entries(EN_SERVER)) assert.ok(english.trim().length > 0, spanish);});test("a server message is shown in English only when English is chosen", () => {  setLocale("es");  assert.equal(tServer("usuario o contraseña incorrectos"), "usuario o contraseña incorrectos");  setLocale("en");  assert.equal(tServer("usuario o contraseña incorrectos"), "wrong username or password");  assert.equal(tServer("un mensaje que no conocemos"), "un mensaje que no conocemos");  setLocale("es");});
