@@ -87,6 +87,12 @@ pub async fn regenerate(
     let user = load_user(&state, auth.user_id)
         .await?
         .ok_or_else(ApiError::unauthorized)?;
+    if !user.password_set {
+        return Err(ApiError::bad_request(
+            "password_not_set",
+            "primero crea una contraseña para tu cuenta",
+        ));
+    }
     if !verify_password(&req.password, Some(&user.password_hash)).await? {
         return Err(ApiError::bad_request(
             "invalid_credentials",
@@ -139,7 +145,7 @@ pub async fn recover(
     .await?;
     let user_id = user_id.ok_or_else(invalid)?;
 
-    sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
+    sqlx::query("UPDATE users SET password_hash = $1, password_set = TRUE WHERE id = $2")
         .bind(hash_password(&req.new_password).await?)
         .bind(user_id)
         .execute(&mut *tx)
