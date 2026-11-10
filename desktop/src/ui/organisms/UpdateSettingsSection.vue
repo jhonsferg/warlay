@@ -6,6 +6,7 @@ import { renderMarkdown } from "../../services/markdown";
 import { formatBytes, formatLastCheck, percent } from "../../services/updates";
 import { useUpdates } from "../../stores/updates";
 import WButton from "../atoms/WButton.vue";
+import { localeTag, t } from "../../services/i18n";
 
 const updates = useUpdates();
 const view = computed(() => updates.state);
@@ -17,7 +18,7 @@ const busy = computed(() => ["checking", "downloading", "installing"].includes(p
 
 const publishedOn = computed(() => {
   const at = status.value?.publishedAt;
-  return at ? new Date(at).toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" }) : "";
+  return at ? new Date(at).toLocaleDateString(localeTag(), { day: "numeric", month: "long", year: "numeric" }) : "";
 });
 
 // "Hace 5 min" must keep up while the page stays open.
@@ -38,11 +39,11 @@ onUnmounted(() => {
 <template>
   <div class="updates">
     <p v-if="!isDesktop" class="updates__muted" data-testid="updates-desktop-only">
-      Las actualizaciones se gestionan desde la aplicación de escritorio.
+      {{ t("Las actualizaciones se gestionan desde la aplicación de escritorio.") }}
     </p>
 
-    <section v-else class="updates__card" :data-phase="phase" aria-label="Actualización">
-      <p class="updates__eyebrow">Actualización</p>
+    <section v-else class="updates__card" :data-phase="phase" :aria-label="t('Actualización')">
+      <p class="updates__eyebrow">{{ t("Actualización") }}</p>
       <header class="updates__head">
         <span class="updates__icon" :class="`updates__icon--${phase}`">
           <RefreshCw v-if="phase === 'checking' || phase === 'idle'" :class="{ spin: phase === 'checking' }" />
@@ -52,21 +53,21 @@ onUnmounted(() => {
         </span>
         <div class="updates__title">
           <h3 v-if="phase === 'checking' || phase === 'idle'" data-testid="update-title">
-            Buscando actualizaciones...
+            {{ t("Buscando actualizaciones...") }}
           </h3>
-          <h3 v-else-if="phase === 'uptodate'" data-testid="update-title">Warlay está al día</h3>
+          <h3 v-else-if="phase === 'uptodate'" data-testid="update-title">{{ t("Warlay está al día") }}</h3>
           <h3 v-else-if="phase === 'downloading'" data-testid="update-title">
-            Descargando la versión {{ status?.latest }}
+            {{ t("Descargando la versión {version}", { version: status?.latest ?? "" }) }}
           </h3>
-          <h3 v-else-if="phase === 'installing'" data-testid="update-title">Instalando y reiniciando...</h3>
+          <h3 v-else-if="phase === 'installing'" data-testid="update-title">{{ t("Instalando y reiniciando...") }}</h3>
           <h3 v-else-if="phase === 'available'" data-testid="update-title">
-            Hay una nueva versión: {{ status?.latest }}
+            {{ t("Hay una nueva versión: {version}", { version: status?.latest ?? "" }) }}
           </h3>
-          <h3 v-else data-testid="update-title">No se pudo buscar actualizaciones</h3>
+          <h3 v-else data-testid="update-title">{{ t("No se pudo buscar actualizaciones") }}</h3>
           <p class="updates__muted">
-            Versión instalada <strong data-testid="current-version">{{ status?.current ?? "—" }}</strong>
+            {{ t("Versión instalada") }} <strong data-testid="current-version">{{ status?.current ?? "—" }}</strong>
             <template v-if="status && phase !== 'available' && phase !== 'downloading' && phase !== 'installing'">
-              · última publicada {{ status.latest }}
+              {{ t("· última publicada {version}", { version: status.latest }) }}
             </template>
           </p>
         </div>
@@ -80,7 +81,7 @@ onUnmounted(() => {
         <div
           class="updates__bar"
           role="progressbar"
-          aria-label="Descarga de la actualización"
+          :aria-label="t('Descarga de la actualización')"
           :aria-valuenow="pct ?? undefined"
           aria-valuemin="0"
           aria-valuemax="100"
@@ -91,21 +92,33 @@ onUnmounted(() => {
           />
         </div>
         <p class="updates__muted">
-          <template v-if="phase === 'installing'">Verificada. Warlay se cerrará y volverá a abrirse solo.</template>
+          <template v-if="phase === 'installing'">{{
+            t("Verificada. Warlay se cerrará y volverá a abrirse solo.")
+          }}</template>
           <template v-else>
-            {{ pct ?? 0 }}% · {{ formatBytes(view.progress?.receivedBytes ?? 0) }} de
-            {{ formatBytes(view.progress?.totalBytes ?? 0) }}
+            {{
+              t("{pct}% · {done} de {total}", {
+                pct: pct ?? 0,
+                done: formatBytes(view.progress?.receivedBytes ?? 0),
+                total: formatBytes(view.progress?.totalBytes ?? 0),
+              })
+            }}
           </template>
         </p>
       </div>
 
       <template v-if="phase === 'available' && status">
-        <p class="updates__muted">Publicada el {{ publishedOn }} · {{ formatBytes(status.sizeBytes) }}</p>
+        <p class="updates__muted">
+          {{ t("Publicada el {date} · {size}", { date: publishedOn, size: formatBytes(status.sizeBytes) }) }}
+        </p>
         <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapes all raw HTML -->
         <div v-if="notesHtml" class="updates__notes" data-testid="update-notes" v-html="notesHtml" />
         <p v-if="!status.canSelfUpdate" class="updates__hint" data-testid="update-manual">
-          Esta copia no se instaló con el instalador (es portátil), así que no puede actualizarse sola. Descarga la
-          nueva versión desde GitHub.
+          {{
+            t(
+              "Esta copia no se instaló con el instalador (es portátil), así que no puede actualizarse sola. Descarga la nueva versión desde GitHub.",
+            )
+          }}
         </p>
       </template>
 
@@ -121,7 +134,7 @@ onUnmounted(() => {
           data-testid="update-install"
           @click="updates.install()"
         >
-          <template #icon><Download /></template>Actualizar y reiniciar
+          <template #icon><Download /></template>{{ t("Actualizar y reiniciar") }}
         </WButton>
         <WButton
           v-else-if="phase === 'available' && status"
@@ -129,7 +142,7 @@ onUnmounted(() => {
           data-testid="update-open-page"
           @click="native.openReleasePage(status.pageUrl)"
         >
-          <template #icon><ExternalLink /></template>Abrir la página de descarga
+          <template #icon><ExternalLink /></template>{{ t("Abrir la página de descarga") }}
         </WButton>
         <WButton
           variant="secondary"
@@ -138,11 +151,11 @@ onUnmounted(() => {
           data-testid="update-check"
           @click="updates.check()"
         >
-          <template #icon><RefreshCw /></template>Buscar actualizaciones
+          <template #icon><RefreshCw /></template>{{ t("Buscar actualizaciones") }}
         </WButton>
       </div>
 
-      <p class="updates__muted" data-testid="last-check">Última comprobación: {{ lastCheck }}</p>
+      <p class="updates__muted" data-testid="last-check">{{ t("Última comprobación: {when}", { when: lastCheck }) }}</p>
     </section>
   </div>
 </template>
