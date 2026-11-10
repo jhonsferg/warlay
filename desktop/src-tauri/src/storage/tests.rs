@@ -10,11 +10,11 @@ struct TempStore {
 impl TempStore {
     fn new() -> Self {
         let dir = std::env::temp_dir().join(format!("warlay-store-test-{}", Uuid::new_v4()));
-        let store = ClientStore::open(&dir.join("nested").join("warlay.db")).expect("open store");
+        let store = ClientStore::open(&dir.join("nested").join("settings.json")).expect("open store");
         Self { dir, store }
     }
     fn db_path(&self) -> std::path::PathBuf {
-        self.dir.join("nested").join("warlay.db")
+        self.dir.join("nested").join("settings.json")
     }
 }
 
@@ -94,15 +94,7 @@ fn microphone_consent_starts_off_and_is_remembered_without_touching_other_settin
 #[test]
 fn corrupt_stored_settings_fall_back_to_defaults() {
     let t = TempStore::new();
-    t.store
-        .conn
-        .lock()
-        .unwrap()
-        .execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_settings', 'not json')",
-            [],
-        )
-        .unwrap();
+    t.store.kv.set("app_settings", "not json").unwrap();
     let settings = t.store.get_settings().unwrap();
     assert_eq!(settings.console_log_level, "info");
 }
@@ -134,4 +126,29 @@ fn the_running_version_survives_reopening_the_database() {
     t.store.note_running_version("0.10.0", 1_000).unwrap();
     let reopened = ClientStore::open(&t.db_path()).unwrap();
     assert_eq!(reopened.note_running_version("0.10.0", 7_000).unwrap(), 1_000);
+}
+
+#[test]
+fn the_database_of_earlier_versions_is_imported_on_the_first_run() {
+    let dir = std::env::temp_dir().join(format!("warlay-store-migrate-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // A real SQLite database as the previous version wrote it.
+    std::fs::copy(
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../crates/storage/tests/fixtures/client.sqlite3"
+        ),
+        dir.join("warlay.db"),
+    )
+    .unwrap();
+
+    let store = ClientStore::open(&dir.join("settings.json")).unwrap();
+    assert_eq!(store.client_id().to_string(), "0f8fad5b-d9cb-469f-a165-70867728950e");
+    let settings = store.get_settings().unwrap();
+    assert_eq!(settings.display_name, "Arthas");
+    assert_eq!(settings.slots_total, 4);
+    assert!(settings.game_executable_path.ends_with("Frozen Throne.exe"));
+    assert_eq!(store.note_running_version("0.10.0", 9_999).unwrap(), 1_700_000_000);
+    assert!(dir.join("warlay.db.migrated").exists() && !dir.join("warlay.db").exists());
+    let _ = std::fs::remove_dir_all(&dir);
 }
