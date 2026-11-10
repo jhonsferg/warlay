@@ -59,7 +59,11 @@ async function send() {
           <option v-for="r in REPORT_REASONS" :key="r.id" :value="r.id">{{ t(r.label) }}</option>
         </select>
       </FormField>
-      <FormField :label="t('Detalles (opcional)')" for="report-details" :hint="`${details.length} / ${REPORT_DETAILS_MAX}`">
+      <FormField
+        :label="t('Detalles (opcional)')"
+        for="report-details"
+        :hint="`${details.length} / ${REPORT_DETAILS_MAX}`"
+      >
         <textarea
           id="report-details"
           v-model="details"
@@ -70,7 +74,11 @@ async function send() {
         />
       </FormField>
       <p class="report__note">
-        {{ t("El reporte llega a quien administra el servidor. No se avisa a la otra persona. Para dejar de ver sus mensajes, bloquéala.") }}
+        {{
+          t(
+            "El reporte llega a quien administra el servidor. No se avisa a la otra persona. Para dejar de ver sus mensajes, bloquéala.",
+          )
+        }}
       </p>
     </form>
     <template #footer>
