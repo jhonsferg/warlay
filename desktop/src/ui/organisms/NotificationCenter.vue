@@ -10,6 +10,7 @@ import { useToasts } from "../../stores/toasts";
 import WAvatar from "../atoms/WAvatar.vue";
 import WButton from "../atoms/WButton.vue";
 import WIconButton from "../atoms/WIconButton.vue";
+import { t } from "../../services/i18n";
 
 const notifications = useNotifications();
 const social = useSocial();
@@ -27,15 +28,15 @@ function describe(n: AppNotification): string {
   const p = n.payload as Record<string, { displayName?: string } & Record<string, unknown>>;
   switch (n.kind) {
     case "friend_request":
-      return `${p.from?.displayName ?? "Alguien"} quiere ser tu amigo`;
+      return t("{name} quiere ser tu amigo", { name: p.from?.displayName ?? t("Alguien") });
     case "friend_accepted":
-      return `${p.user?.displayName ?? "Tu amigo"} aceptó tu solicitud`;
+      return t("{name} aceptó tu solicitud", { name: p.user?.displayName ?? t("Tu amigo") });
     case "room_invite":
-      return `${(p.inviter as { displayName?: string })?.displayName ?? "Alguien"} te invitó a la sala ${String(p.targetName ?? "")}`;
+      return t("{name} te invitó a la sala {room}", { name: (p.inviter as { displayName?: string })?.displayName ?? t("Alguien"), room: String(p.targetName ?? "") });
     case "community_invite":
-      return `${(p.inviter as { displayName?: string })?.displayName ?? "Alguien"} te invitó a ${String(p.targetName ?? "una comunidad")}`;
+      return t("{name} te invitó a {target}", { name: (p.inviter as { displayName?: string })?.displayName ?? t("Alguien"), target: String(p.targetName ?? t("una comunidad")) });
     default:
-      return "Nueva notificación";
+      return t("Nueva notificación");
   }
 }
 
@@ -47,7 +48,7 @@ async function clearAll() {
   try {
     await notifications.clearAll();
   } catch (error) {
-    toasts.error("No se pudieron limpiar las notificaciones", errorMessage(error));
+    toasts.error(t("No se pudieron limpiar las notificaciones"), errorMessage(error));
   }
 }
 
@@ -55,7 +56,7 @@ async function removeOne(id: string) {
   try {
     await notifications.remove(id);
   } catch (error) {
-    toasts.error("No se pudo quitar la notificación", errorMessage(error));
+    toasts.error(t("No se pudo quitar la notificación"), errorMessage(error));
   }
 }
 
@@ -70,32 +71,32 @@ const ago = (iso: string) => {
 
 <template>
   <div class="notif">
-    <WIconButton label="Notificaciones" :badge="badge" :active="open" data-testid="notifications-button" @click="toggle"
+    <WIconButton :label="t('Notificaciones')" :badge="badge" :active="open" data-testid="notifications-button" @click="toggle"
       ><Bell
     /></WIconButton>
     <div v-if="open" class="notif__backdrop" @click="open = false" />
-    <section v-if="open" class="notif__panel" aria-label="Notificaciones">
+    <section v-if="open" class="notif__panel" :aria-label="t('Notificaciones')">
       <header class="notif__head">
-        <h3>Actividad</h3>
+        <h3>{{ t("Actividad") }}</h3>
         <WButton
           variant="ghost"
           size="sm"
           data-testid="notifications-clear"
           :disabled="notifications.items.length === 0"
           @click="clearAll"
-          ><template #icon><Trash2 /></template>Limpiar</WButton
+          ><template #icon><Trash2 /></template>{{ t("Limpiar") }}</WButton
         >
       </header>
 
       <div v-if="notifications.invites.length || social.incoming.length" class="notif__group">
-        <p class="notif__eyebrow">Pendientes</p>
+        <p class="notif__eyebrow">{{ t("Pendientes") }}</p>
         <div v-for="r in social.incoming" :key="r.id" class="notif__item notif__item--action">
           <WAvatar :name="r.from.displayName" :color="r.from.avatarColor" size="sm" />
           <p>
-            <strong>{{ r.from.displayName }}</strong> quiere ser tu amigo
+            <strong>{{ r.from.displayName }}</strong> {{ t("quiere ser tu amigo") }}
           </p>
-          <WIconButton label="Aceptar" size="sm" @click="social.accept(r.id)"><Check /></WIconButton>
-          <WIconButton label="Rechazar" size="sm" tone="danger" @click="social.decline(r.id)"><X /></WIconButton>
+          <WIconButton :label="t('Aceptar')" size="sm" @click="social.accept(r.id)"><Check /></WIconButton>
+          <WIconButton :label="t('Rechazar')" size="sm" tone="danger" @click="social.decline(r.id)"><X /></WIconButton>
         </div>
         <div
           v-for="i in notifications.invites"
@@ -106,18 +107,18 @@ const ago = (iso: string) => {
           <WAvatar :name="i.inviter.displayName" :color="i.inviter.avatarColor" size="sm" />
           <p>
             <strong>{{ i.inviter.displayName }}</strong>
-            te invita {{ i.kind === "room" ? "a la sala" : "a la comunidad" }} <strong>{{ i.targetName }}</strong>
+            {{ i.kind === "room" ? t("te invita a la sala") : t("te invita a la comunidad") }} <strong>{{ i.targetName }}</strong>
           </p>
-          <WButton size="sm" @click="accept(i)">Aceptar</WButton>
-          <WIconButton label="Rechazar" size="sm" tone="danger" @click="notifications.declineInvite(i.id)"
+          <WButton size="sm" @click="accept(i)">{{ t("Aceptar") }}</WButton>
+          <WIconButton :label="t('Rechazar')" size="sm" tone="danger" @click="notifications.declineInvite(i.id)"
             ><X
           /></WIconButton>
         </div>
       </div>
 
       <div class="notif__group">
-        <p class="notif__eyebrow">Recientes</p>
-        <p v-if="notifications.items.length === 0" class="notif__empty">Todo tranquilo por aquí.</p>
+        <p class="notif__eyebrow">{{ t("Recientes") }}</p>
+        <p v-if="notifications.items.length === 0" class="notif__empty">{{ t("Todo tranquilo por aquí.") }}</p>
         <div
           v-for="n in notifications.items.slice(0, 20)"
           :key="n.id"
@@ -129,7 +130,7 @@ const ago = (iso: string) => {
           <time>{{ ago(n.createdAt) }}</time>
           <WIconButton
             class="notif__remove"
-            label="Quitar notificación"
+            :label="t('Quitar notificación')"
             size="sm"
             data-testid="notification-remove"
             @click="removeOne(n.id)"
