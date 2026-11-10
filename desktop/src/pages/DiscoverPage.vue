@@ -14,6 +14,7 @@ import EmptyState from "../ui/molecules/EmptyState.vue";
 import SectionHeader from "../ui/molecules/SectionHeader.vue";
 import HomeSidebar from "../ui/organisms/HomeSidebar.vue";
 import AppShell from "../ui/templates/AppShell.vue";
+import { t } from "../services/i18n";
 
 const communities = useCommunities();
 const dialogs = useDialogs();
@@ -33,10 +34,10 @@ async function join(c: CommunitySummary) {
   joining.value = c.id;
   try {
     await communities.join(c.id);
-    toasts.success(`Te uniste a ${c.name}`);
+    toasts.success(t("Te uniste a {name}", { name: c.name }));
     void router.push(`/c/${c.id}`);
   } catch (e) {
-    toasts.error("No se pudo unir", errorMessage(e));
+    toasts.error(t("No se pudo unir"), errorMessage(e));
   } finally {
     joining.value = null;
   }
@@ -44,30 +45,30 @@ async function join(c: CommunitySummary) {
 </script>
 
 <template>
-  <AppShell title="Explorar comunidades" subtitle="Clanes, ligas y grupos de juego">
+  <AppShell :title="t('Explorar comunidades')" :subtitle="t('Clanes, ligas y grupos de juego')">
     <template #sidebar><HomeSidebar /></template>
     <template #title-icon><Compass :size="20" /></template>
     <template #actions>
       <WButton size="sm" @click="dialogs.createCommunity = true"
-        ><template #icon><Plus /></template>Crear comunidad</WButton
+        ><template #icon><Plus /></template>{{ t("Crear comunidad") }}</WButton
       >
     </template>
 
     <section class="discover__hero">
-      <h2>Encuentra tu gente</h2>
-      <p>Únete a comunidades públicas para chatear, organizar partidas y conocer jugadores.</p>
+      <h2>{{ t("Encuentra tu gente") }}</h2>
+      <p>{{ t("Únete a comunidades públicas para chatear, organizar partidas y conocer jugadores.") }}</p>
       <WInput
         v-model="query"
         size="lg"
-        placeholder="Buscar comunidades..."
-        aria-label="Buscar comunidades"
+        :placeholder="t('Buscar comunidades...')"
+        :aria-label="t('Buscar comunidades')"
         class="discover__search"
       >
         <template #icon><Search /></template>
       </WInput>
     </section>
 
-    <SectionHeader :title="query ? 'Resultados' : 'Populares'" :count="communities.discovered.length" />
+    <SectionHeader :title="query ? t('Resultados') : t('Populares')" :count="communities.discovered.length" />
     <div v-if="communities.discovered.length" class="discover__grid">
       <CommunityTile
         v-for="c in communities.discovered"
@@ -78,10 +79,10 @@ async function join(c: CommunitySummary) {
         @open="router.push(`/c/${$event.id}`)"
       />
     </div>
-    <EmptyState v-else title="No encontramos comunidades" text="Crea la primera y reúne a tus amigos.">
+    <EmptyState v-else :title="t('No encontramos comunidades')" :text="t('Crea la primera y reúne a tus amigos.')">
       <template #icon><Compass /></template>
       <WButton @click="dialogs.createCommunity = true"
-        ><template #icon><Plus /></template>Crear comunidad</WButton
+        ><template #icon><Plus /></template>{{ t("Crear comunidad") }}</WButton
       >
     </EmptyState>
   </AppShell>
