@@ -39,7 +39,7 @@ pub use error::ApiError;
 pub use state::AppState;
 
 use routes::{
-    auth as auth_routes, chat as chat_routes, communities, friends, invites, keys, notifications,
+    auth as auth_routes, blocks, chat as chat_routes, communities, friends, invites, keys, notifications,
     recovery as recovery_routes, rooms, totp as totp_routes, users,
 };
 
@@ -124,6 +124,9 @@ pub fn router(state: AppState) -> Router {
         .route("/users/{id}/e2e-key", get(keys::get))
         .route("/users/search", get(users::search))
         .route("/users/{id}", get(users::profile))
+        .route("/blocks", get(blocks::list))
+        .route("/blocks/{id}", put(blocks::block).delete(blocks::unblock))
+        .route("/reports", post(blocks::report))
         .route("/friends", get(friends::list))
         .route("/friends/{id}", delete(friends::remove))
         .route("/friends/requests", get(friends::requests).post(friends::send_request))
