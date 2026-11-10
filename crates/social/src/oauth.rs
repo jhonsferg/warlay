@@ -716,6 +716,9 @@ struct CodeRecord {
 pub struct ExchangeRequest {
     code: String,
     verifier: String,
+    /// For accounts with an authenticator app: the app asks for it when the
+    /// first try comes back `totp_required`, and tries again with the same code.
+    totp_code: Option<String>,
 }
 
 pub async fn exchange(
@@ -731,12 +734,17 @@ pub async fn exchange(
     if !is_url_safe(&req.code, 1, 128) || !(43..=128).contains(&req.verifier.len()) {
         return Err(invalid());
     }
-    // Read once: a wrong verifier burns the code.
-    let record: CodeRecord = take(&state, &code_key(&req.code)).await?.ok_or_else(invalid)?;
+    // A wrong verifier burns the code; a missing second step does not, so the
+    // app can ask for it and try again with the same code.
+    let record: CodeRecord = peek(&state, &code_key(&req.code)).await?.ok_or_else(invalid)?;
     let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(req.verifier.as_bytes()));
     if !constant_time_eq::constant_time_eq(challenge.as_bytes(), record.challenge.as_bytes()) {
+        drop_key(&state, &code_key(&req.code)).await?;
         return Err(invalid());
     }
+    crate::routes::totp::require(&state, record.user_id, req.totp_code.as_deref()).await?;
+    // Spent here, so two requests cannot both get a session from one code.
+    let record: CodeRecord = take(&state, &code_key(&req.code)).await?.ok_or_else(invalid)?;
     let user = load_user(&state, record.user_id).await?.ok_or_else(invalid)?;
     Ok(Json(start_session(&state, user, &headers).await?))
 }
