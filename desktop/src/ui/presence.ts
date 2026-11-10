@@ -1,15 +1,16 @@
 import type { PresenceStatus } from "../services/types";
+import { t } from "../services/i18n";
 
 export function presenceLabel(status: PresenceStatus): string {
   switch (status) {
     case "online":
-      return "En línea";
+      return t("En línea");
     case "in_room":
-      return "En una sala";
+      return t("En una sala");
     case "in_game":
-      return "En partida";
+      return t("En partida");
     default:
-      return "Desconectado";
+      return t("Desconectado");
   }
 }
 
