@@ -98,3 +98,7 @@ desktop.ini
 # Python virtual environments (uv)
 .venv/
 venv/
+
+# OAuth client secrets downloaded from Google Cloud
+client_secret*.json
+*.apps.googleusercontent.com.json
