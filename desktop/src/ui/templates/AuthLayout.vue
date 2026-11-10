@@ -14,7 +14,11 @@ import { t } from "../../services/i18n";
         <WLogo :size="56" wordmark />
         <h1>{{ t("Tu LAN, sin fronteras.") }}</h1>
         <p>
-          {{ t("Juega Warcraft III en red local con tus amigos estén donde estén. Conexión directa entre jugadores, sin VPN ni puertos.") }}
+          {{
+            t(
+              "Juega Warcraft III en red local con tus amigos estén donde estén. Conexión directa entre jugadores, sin VPN ni puertos.",
+            )
+          }}
         </p>
         <ul>
           <li><Radio /> {{ t("Conexión P2P directa: menos latencia para todos") }}</li>
