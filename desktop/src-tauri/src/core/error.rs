@@ -12,7 +12,7 @@ pub enum AppError {
     Transport(#[from] warlay::transport::TransportError),
 
     #[error(transparent)]
-    Sqlite(#[from] rusqlite::Error),
+    Storage(#[from] warlay::storage::StorageError),
     #[error(transparent)]
     Launcher(#[from] crate::launcher::LauncherError),
     #[error(transparent)]
