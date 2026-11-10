@@ -2014,3 +2014,219 @@ async fn google_sign_in_also_asks_for_the_second_step() {
         "the code was spent"
     );
 }
+
+#[tokio::test]
+async fn blocking_ends_the_friendship_and_keeps_the_other_player_out() {
+    let Some(s) = start().await else { return };
+    let ana = s.register("ana").await;
+    let beto = s.register("beto").await;
+    let carla = s.register("carla").await;
+    s.befriend(&ana, &beto).await;
+    // Carla has a pending friend request to Ana and a pending community invitation from her.
+    s.ok(
+        "POST",
+        "/friends/requests",
+        &carla,
+        Some(json!({ "username": ana.username })),
+    )
+    .await;
+    let community = s
+        .ok(
+            "POST",
+            "/communities",
+            &ana,
+            Some(json!({ "name": unique("Club"), "isPublic": false })),
+        )
+        .await;
+    let community_id = community["id"].as_str().unwrap().to_string();
+    s.ok(
+        "POST",
+        &format!("/communities/{community_id}/invites"),
+        &ana,
+        Some(json!({ "userId": carla.id })),
+    )
+    .await;
+    assert_eq!(s.ok("GET", "/invites", &carla, None).await.as_array().unwrap().len(), 1);
+
+    // Beto is told his friend is gone, nothing more.
+    let mut ws_beto = s.socket(&beto).await;
+    let (status, body) = s
+        .call("PUT", &format!("/blocks/{}", beto.id), Some(&ana.token), None)
+        .await;
+    assert_eq!(status, 200, "{body}");
+    wait_for(&mut ws_beto, "friendRemoved").await;
+    assert!(s.ok("GET", "/friends", &ana, None).await.as_array().unwrap().is_empty());
+    assert!(s
+        .ok("GET", "/friends", &beto, None)
+        .await
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    // Neither can find the other, and Beto cannot see Ana's profile.
+    let server = &s;
+    let search = |from: &User, q: String| {
+        let path = format!("/users/search?q={q}");
+        let token = from.token.clone();
+        async move { server.call("GET", &path, Some(&token), None).await.1 }
+    };
+    assert!(search(&ana, beto.username.clone()).await.as_array().unwrap().is_empty());
+    assert!(search(&beto, ana.username.clone()).await.as_array().unwrap().is_empty());
+    assert_eq!(
+        s.call("GET", &format!("/users/{}", ana.id), Some(&beto.token), None)
+            .await
+            .0,
+        404
+    );
+    assert_eq!(
+        s.call("GET", &format!("/users/{}", beto.id), Some(&ana.token), None)
+            .await
+            .0,
+        200
+    );
+
+    // Beto's request looks like it went to nobody; Ana's own tells her to unblock.
+    let (status, body) = s
+        .call(
+            "POST",
+            "/friends/requests",
+            Some(&beto.token),
+            Some(json!({ "username": ana.username })),
+        )
+        .await;
+    assert_eq!(status, 404, "{body}");
+    let (status, body) = s
+        .call(
+            "POST",
+            "/friends/requests",
+            Some(&ana.token),
+            Some(json!({ "username": beto.username })),
+        )
+        .await;
+    assert_eq!((status, body["error"].as_str()), (409, Some("blocked_by_you")));
+    // Nor can they invite each other anywhere.
+    let (status, _) = s
+        .call(
+            "POST",
+            &format!("/communities/{community_id}/invites"),
+            Some(&ana.token),
+            Some(json!({ "userId": beto.id })),
+        )
+        .await;
+    assert_eq!(status, 403);
+
+    // Blocking Carla removes her pending request and invitation too.
+    s.ok("PUT", &format!("/blocks/{}", carla.id), &ana, None).await;
+    assert!(s.ok("GET", "/friends/requests", &ana, None).await["incoming"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(s
+        .ok("GET", "/invites", &carla, None)
+        .await
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    // The list, then unblocking makes them findable and askable again.
+    let blocked = s.ok("GET", "/blocks", &ana, None).await;
+    let names: Vec<&str> = blocked
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["username"].as_str().unwrap())
+        .collect();
+    assert_eq!(names.len(), 2);
+    assert!(names.contains(&beto.username.as_str()) && names.contains(&carla.username.as_str()));
+    s.ok("DELETE", &format!("/blocks/{}", beto.id), &ana, None).await;
+    assert_eq!(s.ok("GET", "/blocks", &ana, None).await.as_array().unwrap().len(), 1);
+    assert!(!search(&beto, ana.username.clone()).await.as_array().unwrap().is_empty());
+    let (status, _) = s
+        .call(
+            "POST",
+            "/friends/requests",
+            Some(&beto.token),
+            Some(json!({ "username": ana.username })),
+        )
+        .await;
+    assert_eq!(status, 200);
+
+    // Not yourself, not someone who does not exist; blocking twice is fine.
+    assert_eq!(
+        s.call("PUT", &format!("/blocks/{}", ana.id), Some(&ana.token), None)
+            .await
+            .0,
+        400
+    );
+    assert_eq!(
+        s.call("PUT", &format!("/blocks/{}", Uuid::new_v4()), Some(&ana.token), None)
+            .await
+            .0,
+        404
+    );
+    assert_eq!(
+        s.call("PUT", &format!("/blocks/{}", carla.id), Some(&ana.token), None)
+            .await
+            .0,
+        200
+    );
+}
+
+#[tokio::test]
+async fn reports_are_validated_stored_once_a_day_and_rate_limited() {
+    let Some(s) = start().await else { return };
+    let reporter = s.register("denuncia").await;
+    let reported = s.register("molesto").await;
+    let report = |reason: &str, details: Option<String>| {
+        let mut body = json!({ "userId": reported.id, "reason": reason });
+        if let Some(details) = details {
+            body["details"] = json!(details);
+        }
+        s.call("POST", "/reports", Some(&reporter.token), Some(body))
+    };
+    let count = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM user_reports WHERE reporter_id = $1 AND reported_id = $2")
+            .bind(reporter.id)
+            .bind(reported.id)
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap()
+    };
+
+    assert_eq!(report("no-such-reason", None).await.0, 400);
+    assert_eq!(report("spam", Some("x".repeat(501))).await.0, 400);
+    assert_eq!(count().await, 0);
+    assert_eq!(report("harassment", Some("insultos en la sala".into())).await.0, 200);
+    assert_eq!(count().await, 1);
+    // The same player again within a day is accepted and not stored twice.
+    assert_eq!(report("harassment", None).await.0, 200);
+    assert_eq!(count().await, 1);
+    let (status, _) = s
+        .call(
+            "POST",
+            "/reports",
+            Some(&reporter.token),
+            Some(json!({ "userId": reporter.id, "reason": "spam" })),
+        )
+        .await;
+    assert_eq!(status, 400, "not yourself");
+    let (status, _) = s
+        .call(
+            "POST",
+            "/reports",
+            Some(&reporter.token),
+            Some(json!({ "userId": Uuid::new_v4(), "reason": "spam" })),
+        )
+        .await;
+    assert_eq!(status, 404);
+
+    // Ten an hour at most.
+    let mut limited = false;
+    for _ in 0..12 {
+        if report("spam", None).await.0 == 429 {
+            limited = true;
+            break;
+        }
+    }
+    assert!(limited, "reports are rate limited");
+}
