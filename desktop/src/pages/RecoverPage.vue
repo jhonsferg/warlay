@@ -55,7 +55,9 @@ async function submit() {
       </header>
       <p>
         {{ t("Cerramos todas las sesiones abiertas de tu cuenta. Inicia sesión con tu contraseña nueva.") }}
-        <template v-if="remaining <= 2">{{ t('{left}: genera un juego nuevo en Ajustes cuando entres.', { left }) }}</template>
+        <template v-if="remaining <= 2">{{
+          t("{left}: genera un juego nuevo en Ajustes cuando entres.", { left })
+        }}</template>
       </p>
       <RouterLink to="/login" class="auth-form__switch"
         ><WButton size="lg" block>{{ t("Ir a iniciar sesión") }}</WButton></RouterLink
@@ -67,7 +69,9 @@ async function submit() {
         <h2>{{ t("Contraseña nueva") }}</h2>
       </header>
       <p class="auth-form__hint">
-        {{ t("Usa uno de los códigos de recuperación que guardaste al crear tu cuenta. Cada código sirve una sola vez.") }}
+        {{
+          t("Usa uno de los códigos de recuperación que guardaste al crear tu cuenta. Cada código sirve una sola vez.")
+        }}
       </p>
       <FormField :label="t('Usuario o correo')" for="recover-login">
         <WInput id="recover-login" v-model="login" size="lg" autocomplete="username" :placeholder="t('thrall')">
@@ -84,7 +88,11 @@ async function submit() {
           <template #icon><KeyRound /></template>
         </WInput>
       </FormField>
-      <FormField :label="t('Repite la contraseña')" for="recover-repeat" :error="mismatch ? t('No coinciden') : undefined">
+      <FormField
+        :label="t('Repite la contraseña')"
+        for="recover-repeat"
+        :error="mismatch ? t('No coinciden') : undefined"
+      >
         <WInput
           id="recover-repeat"
           v-model="repeat"
@@ -98,7 +106,9 @@ async function submit() {
       </FormField>
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
       <WButton type="submit" size="lg" block :loading="busy" :disabled="!valid">{{ t("Cambiar contraseña") }}</WButton>
-      <p class="auth-form__switch"><RouterLink to="/login">{{ t("Volver a iniciar sesión") }}</RouterLink></p>
+      <p class="auth-form__switch">
+        <RouterLink to="/login">{{ t("Volver a iniciar sesión") }}</RouterLink>
+      </p>
     </form>
   </AuthLayout>
 </template>
