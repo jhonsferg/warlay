@@ -1,3 +1,4 @@
+import { t } from "../services/i18n";
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { native } from "../services/native";
@@ -48,11 +49,11 @@ export async function announceUpdateOnStart(goToUpdates: () => unknown): Promise
   // The player may have signed out while the check ran: notices are for a session.
   if (useSession().status !== "signedIn") return;
   useToasts().action(
-    `Hay una nueva versión: ${status.latest}`,
-    "Para poder actualizarla haz clic aquí.",
+    t("Hay una nueva versión: {version}", { version: status.latest }),
+    t("Para poder actualizarla haz clic aquí."),
     [
-      { label: "Ir a actualizaciones", variant: "success", run: goToUpdates },
-      { label: "Lo haré después", variant: "secondary", run: () => {} },
+      { label: t("Ir a actualizaciones"), variant: "success", run: goToUpdates },
+      { label: t("Lo haré después"), variant: "secondary", run: () => {} },
     ],
     30000,
   );
