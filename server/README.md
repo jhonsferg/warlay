@@ -185,6 +185,7 @@ docker run -d --name warlay-helper-1 --restart unless-stopped \
 | `WARLAY_HELPER_SECRET`          | main, helper | `main.helper_secret`, `helper.helper_secret`                          |
 | `WARLAY_CLIENT_IP_HEADER`       | main         | `main.client_ip_header` (e.g. `x-real-ip` behind nginx)               |
 | `WARLAY_WEB_BASE_URL`           | main         | `main.web_base_url` (public address of the website)                   |
+| `WARLAY_METRICS_TOKEN`          | main         | `main.metrics_token` (turns on `GET /metrics`)                        |
 | `WARLAY_GOOGLE_CLIENT_ID`       | main         | `main.google_client_id` (turns on Google sign-in with the secret)     |
 | `WARLAY_GOOGLE_CLIENT_SECRET`   | main         | `main.google_client_secret`                                           |
 | `WARLAY_HELPER_NAME`            | helper       | `helper.name` (keep it stable: the helper's identity derives from it) |
@@ -227,6 +228,32 @@ for example `https://warlay.example.com`: it goes into canonical links and the
 sitemap. Point a second host name at the same upstream and expose only these
 paths on it: `/`, `/privacy`, `/terms`, `/robots.txt`, `/sitemap.xml`,
 `/favicon.svg` and `/assets/`, plus `/auth/` if you turn on Google sign-in.
+
+### Metrics
+
+`GET /metrics` serves Prometheus metrics. It is off (404) until `main.metrics_token`
+(`WARLAY_METRICS_TOKEN`) is set; then a scrape must send it as
+`Authorization: Bearer <token>`. Do not publish it: scrape the server's own port
+(for example `127.0.0.1:8080`) from the monitoring host, or keep it out of the
+reverse proxy's public routes.
+
+| Metric                                                                                                  | Kind      | What                                                  |
+| ------------------------------------------------------------------------------------------------------- | --------- | ----------------------------------------------------- |
+| `warlay_http_requests_total{method,route,status}`                                                       | counter   | Requests, by route template (`/api/v1/rooms/{id}`)    |
+| `warlay_http_request_duration_seconds{method,route}`                                                    | histogram | Time to answer, 5 ms to 10 s                          |
+| `warlay_realtime_connections`                                                                           | gauge     | Realtime sockets open on this instance                |
+| `warlay_db_pool_connections`, `warlay_db_pool_idle_connections`                                         | gauge     | PostgreSQL pool                                       |
+| `warlay_users`, `warlay_sessions_active`, `warlay_communities`                                          | gauge     | Accounts, open sessions, communities                  |
+| `warlay_users_with_totp`, `warlay_google_identities`                                                    | gauge     | Accounts with two-step verification, linked to Google |
+| `warlay_reports_open`                                                                                   | gauge     | Player reports waiting for review                     |
+| `warlay_rooms{status}`                                                                                  | gauge     | Rooms by status                                       |
+| `warlay_helper_active_rooms`, `warlay_helper_relay_channels`, `warlay_helper_clients` `{helper,region}` | gauge     | Load of each live helper                              |
+| `warlay_build_info{version}`, `warlay_uptime_seconds`                                                   | gauge     | The running build                                     |
+
+The figures that come from the database are read at scrape time and kept for ten
+seconds, so a frequent scraper does not load PostgreSQL. Each main-server
+instance reports its own request and socket counts; the database figures are the
+same on all of them.
 
 ### Google sign-in
 
