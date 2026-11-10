@@ -50,6 +50,9 @@ pub struct MainSettings {
     /// Google's endpoints; only tests point these elsewhere.
     pub google_auth_url: String,
     pub google_token_url: String,
+    /// Token the metrics scraper sends as `Authorization: Bearer`. Empty (the
+    /// default) turns `GET /metrics` off.
+    pub metrics_token: String,
 }
 
 impl Default for MainSettings {
@@ -73,6 +76,7 @@ impl Default for MainSettings {
             google_client_secret: String::new(),
             google_auth_url: "https://accounts.google.com/o/oauth2/v2/auth".into(),
             google_token_url: "https://oauth2.googleapis.com/token".into(),
+            metrics_token: String::new(),
         }
     }
 }
