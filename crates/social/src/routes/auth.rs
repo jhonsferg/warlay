@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::auth::{
     ensure_hashing_capacity, hash_password, issue_access_token, random_token, rate_limit, revoke_access_token,
-    token_hash, verify_password, AuthUser, ClientIp,
+    revoke_user_access_tokens, token_hash, verify_password, AuthUser, ClientIp,
 };
 use crate::error::{ApiError, ApiResult};
 use crate::models::{load_user, pick_color, Me, UserRow};
@@ -66,7 +66,9 @@ pub struct UpdateMeRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangePasswordRequest {
-    pub current_password: String,
+    /// Required to change a password, not to set the first one on an account
+    /// that was created with Google.
+    pub current_password: Option<String>,
     pub new_password: String,
 }
 
@@ -124,7 +126,7 @@ fn user_agent(headers: &HeaderMap) -> String {
 }
 
 /// Creates a session row and the token pair for it.
-async fn start_session(state: &AppState, user: UserRow, headers: &HeaderMap) -> ApiResult<AuthResponse> {
+pub(crate) async fn start_session(state: &AppState, user: UserRow, headers: &HeaderMap) -> ApiResult<AuthResponse> {
     let session_id = Uuid::new_v4();
     let refresh_token = random_token();
     let expires_at = Utc::now() + Duration::days(state.settings.refresh_token_ttl_days);
@@ -220,7 +222,7 @@ pub async fn login(
     }
     rate_limit(&state, &format!("login:{login}"), 10, 300).await?;
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username::text AS username, email::text AS email, password_hash, display_name, avatar_color, bio, created_at
+        "SELECT id, username::text AS username, email::text AS email, password_hash, password_set, display_name, avatar_color, bio, created_at
          FROM users WHERE username = $1 OR email = $1",
     )
     .bind(&login)
@@ -237,7 +239,8 @@ pub async fn login(
     // Hashes even for unknown accounts, so the response time doesn't tell
     // them apart either.
     let matches = verify_password(&req.password, user.as_ref().map(|u| u.password_hash.as_str())).await?;
-    let user = user.filter(|_| matches).ok_or_else(invalid)?;
+    // An account born with Google has no password yet: nothing can match.
+    let user = user.filter(|u| matches && u.password_set).ok_or_else(invalid)?;
     Ok(Json(start_session(&state, user, &headers).await?))
 }
 
@@ -340,14 +343,17 @@ pub async fn change_password(
     let user = load_user(&state, auth.user_id)
         .await?
         .ok_or_else(ApiError::unauthorized)?;
-    if !verify_password(&req.current_password, Some(&user.password_hash)).await? {
-        return Err(ApiError::bad_request(
-            "invalid_credentials",
-            "la contraseña actual no es correcta",
-        ));
+    if user.password_set {
+        let current = req.current_password.as_deref().unwrap_or_default();
+        if !verify_password(current, Some(&user.password_hash)).await? {
+            return Err(ApiError::bad_request(
+                "invalid_credentials",
+                "la contraseña actual no es correcta",
+            ));
+        }
     }
     validate_password(&req.new_password)?;
-    sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
+    sqlx::query("UPDATE users SET password_hash = $1, password_set = TRUE WHERE id = $2")
         .bind(hash_password(&req.new_password).await?)
         .bind(auth.user_id)
         .execute(&state.db)
@@ -358,6 +364,55 @@ pub async fn change_password(
         .bind(auth.session_id)
         .execute(&state.db)
         .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteAccountRequest {
+    /// Asked only of accounts that have one (not of those born with Google).
+    pub password: Option<String>,
+    /// The account's username, typed to confirm.
+    pub confirm: String,
+}
+
+/// Deletes the account and everything that hangs from it: friendships,
+/// messages, memberships, notifications, keys, sessions and its Google link.
+/// A room the player hosts is closed first, so nobody is left in a room with no
+/// host; communities they own go with them.
+pub async fn delete_me(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<DeleteAccountRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    ensure_hashing_capacity()?;
+    rate_limit(&state, &format!("delete-account:{}", auth.user_id), 5, 3600).await?;
+    let user = load_user(&state, auth.user_id)
+        .await?
+        .ok_or_else(ApiError::unauthorized)?;
+    if req.confirm.trim().to_lowercase() != user.username.to_lowercase() {
+        return Err(ApiError::bad_request(
+            "confirmation_mismatch",
+            "escribe tu nombre de usuario para confirmar",
+        ));
+    }
+    if user.password_set {
+        let password = req.password.as_deref().unwrap_or_default();
+        if !verify_password(password, Some(&user.password_hash)).await? {
+            return Err(ApiError::bad_request(
+                "invalid_credentials",
+                "la contraseña no es correcta",
+            ));
+        }
+    }
+    super::rooms::leave_current_room(&state, user.id).await?;
+    revoke_user_access_tokens(&state, user.id).await?;
+    crate::chat::invalidate_user(&state, user.id).await;
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
+    tracing::info!(user = %user.id, "account deleted by its owner");
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
