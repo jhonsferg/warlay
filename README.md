@@ -17,7 +17,6 @@ No third-party VPN, no port forwarding on the players' side. Free and open sourc
 [![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev)
 [![Pinia](https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=black)](https://pinia.vuejs.org)
 [![Sass](https://img.shields.io/badge/Sass-CC6699?style=for-the-badge&logo=sass&logoColor=white)](https://sass-lang.com)
-[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/features/actions)
 
@@ -238,7 +237,7 @@ flowchart LR
     crates --> social["social<br/>main server: accounts, friends,<br/>communities, rooms, chat, notifications"]
     crates --> core["core<br/>UDP relay, UDP rendezvous,<br/>legacy TCP tunnel hub"]
     crates --> matchmaking["matchmaking<br/>legacy hub: rooms, sessions"]
-    crates --> storage["storage<br/>SQLite (legacy hub identity)"]
+    crates --> storage["storage<br/>JSON files, pure Rust<br/>(legacy hub identity)"]
     crates --> config["config<br/>TOML settings"]
     crates --> engine["engine<br/>client networking: P2P mesh,<br/>relay client, LAN capture and replay"]
     crates --> facade["warlay<br/>facade re-exporting the crates<br/>as warlay::*, feature-gated"]
@@ -264,11 +263,11 @@ desktop backend (`desktop/src-tauri/src/runtime`) and runs inside `warlay.exe`.
 | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | desktop client (Windows)   | Workload **Desktop development with C++** (MSVC compiler and Windows SDK). |
 | [Node.js](https://nodejs.org) 20 LTS or newer                                           | desktop client             | Ships with `npm`.                                                          |
 | [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)            | running the desktop client | Preinstalled on Windows 10 and 11.                                         |
-| C toolchain (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS)     | server on Linux/macOS      | Compiles the bundled SQLite and the `ring` crypto library.                 |
+| C toolchain (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS)     | server on Linux/macOS      | Compiles the `ring` crypto library.                                        |
 | [Docker](https://docs.docker.com/engine/install/)                                       | container image            | Optional.                                                                  |
 
 Nothing else is required: NSIS (the installer builder) is downloaded by the
-Tauri CLI on first use, SQLite is compiled in, and the Opus voice codec is
+Tauri CLI on first use, and the Opus voice codec is
 linked statically from prebuilt libraries.
 
 ```sh
