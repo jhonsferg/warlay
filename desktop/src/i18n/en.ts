@@ -432,6 +432,23 @@ export const EN: Record<string, string> = {
   Comunidad: "Community",
   "Invitar amigos": "Invite friends",
   "Salir de la comunidad": "Leave community",
+  "Informe copiado": "Report copied",
+  "No se pudo copiar": "Could not copy",
+  "Se abrió GitHub": "GitHub opened",
+  "Revisa el texto y envíalo si quieres.": "Review the text and submit it if you want.",
+  "No se pudo abrir el navegador": "Could not open the browser",
+  "Warlay se cerró de forma inesperada": "Warlay closed unexpectedly",
+  "La última vez algo falló. El informe se guardó solo en este equipo: no se envió a nadie. Si quieres, ayúdanos a arreglarlo enviándolo.":
+    "Something went wrong last time. The report was saved only on this computer: it was not sent to anyone. If you want, help us fix it by sending it.",
+  "Hay {n} informes más.": "There are {n} more reports.",
+  "Se abre una incidencia en GitHub con el informe ya escrito, para que la revises antes de enviarla. El informe no incluye tu nombre de usuario de Windows, tus contraseñas ni tus mensajes.":
+    "A GitHub issue opens with the report already written, so you can review it before submitting. The report does not include your Windows user name, your passwords or your messages.",
+  "Ahora no": "Not now",
+  Descartar: "Discard",
+  "Ocultar detalles": "Hide details",
+  "Ver detalles": "Show details",
+  Copiar: "Copy",
+  "Reportar en GitHub": "Report on GitHub",
   "Un lugar para tu clan: chat, salas y miembros.": "A place for your clan: chat, rooms and members.",
   "Nueva comunidad": "New community",
   Nombre: "Name",
@@ -527,7 +544,6 @@ export const EN: Record<string, string> = {
     "Audio goes straight to the players in your room, without passing through any server.",
   "Puedes silenciarte o salir de la voz cuando quieras, también con el atajo global.":
     "You can mute yourself or leave voice whenever you want, also with the global shortcut.",
-  "Ahora no": "Not now",
   "Permitir micrófono": "Allow microphone",
   "Windows bloquea el micrófono": "Windows is blocking the microphone",
   "Ya diste permiso a Warlay, pero el sistema no lo deja pasar.":
