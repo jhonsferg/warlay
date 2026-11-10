@@ -18,6 +18,17 @@ export interface LogUsage {
   removed: number;
 }
 
+/** A crash report an earlier run left on this machine. */
+export interface CrashSummary {
+  id: string;
+  /** Unix milliseconds. */
+  createdAt: number;
+  /** `panic` (the program) or `ui` (the interface). */
+  kind: string;
+  /** The first line of the message. */
+  title: string;
+}
+
 export interface GameSettings {
   gameExecutablePath: string;
   gameArgs: string;
@@ -94,6 +105,15 @@ export const native = {
   googleSignIn: (webUrl: string, lang: string) =>
     invoke<{ code: string; verifier: string } | undefined>("google_sign_in", { webUrl, lang }),
   googleSignInCancel: () => invoke<void>("google_sign_in_cancel"),
+
+  /** Crash reports stay on this machine until the player sends or discards them (desktop only). */
+  listCrashReports: async () => (await invoke<CrashSummary[] | undefined>("list_crash_reports")) ?? [],
+  readCrashReport: (id: string) => invoke<string | null | undefined>("read_crash_report", { id }),
+  deleteCrashReport: (id: string) => invoke<boolean>("delete_crash_report", { id }),
+  /** Opens a new GitHub issue with the report filled in, to review and submit. */
+  reportCrashOnGitHub: (id: string) => invoke<void>("report_crash_on_github", { id }),
+  /** Keeps an error the interface did not handle, for the next run to offer. */
+  recordUiError: (message: string, stack: string) => invoke<boolean>("record_ui_error", { message, stack }),
 
   /** Version, build and dates of this installation (desktop only). */
   appInfo: () => invoke<AppInfo | undefined>("get_app_info"),
