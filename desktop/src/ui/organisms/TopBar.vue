@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useRooms } from "../../stores/rooms";
 import WIconButton from "../atoms/WIconButton.vue";
 import NotificationCenter from "./NotificationCenter.vue";
+import { t } from "../../services/i18n";
 
 defineProps<{ title: string; subtitle?: string; activityOpen: boolean }>();
 defineEmits<{ toggleActivity: [] }>();
@@ -33,7 +34,7 @@ const router = useRouter();
         <span class="top-bar__room-count">{{ rooms.current.members.length }}/{{ rooms.current.maxPlayers }}</span>
       </button>
       <NotificationCenter />
-      <WIconButton label="Mostrar amigos" :active="activityOpen" @click="$emit('toggleActivity')"
+      <WIconButton :label="t('Mostrar amigos')" :active="activityOpen" @click="$emit('toggleActivity')"
         ><PanelRight
       /></WIconButton>
     </div>
