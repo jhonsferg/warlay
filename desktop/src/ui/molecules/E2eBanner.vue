@@ -2,6 +2,7 @@
 import { Lock, ShieldAlert, ShieldOff } from "@lucide/vue";
 import type { ConversationSecurity } from "../../stores/e2e";
 import WButton from "../atoms/WButton.vue";
+import { t } from "../../services/i18n";
 
 defineProps<{
   security: Exclude<ConversationSecurity, "off">;
@@ -16,27 +17,27 @@ const emit = defineEmits<{ trust: [] }>();
     <template v-if="security === 'encrypted'">
       <Lock :size="14" />
       <span>
-        Cifrado de extremo a extremo: solo tú y tu amigo pueden leer estos mensajes.
-        <span v-if="code" class="e2e-banner__code" title="Compara este código con tu amigo (en persona o por llamada)">
-          Código de seguridad <code>{{ code }}</code>
+        {{ t("Cifrado de extremo a extremo: solo tú y tu amigo pueden leer estos mensajes.") }}
+        <span v-if="code" class="e2e-banner__code" :title="t('Compara este código con tu amigo (en persona o por llamada)')">
+          {{ t("Código de seguridad") }} <code>{{ code }}</code>
         </span>
       </span>
     </template>
     <template v-else-if="security === 'plain'">
       <ShieldOff :size="14" />
-      <span>Esta conversación no está cifrada: tu amigo aún no activó el cifrado de extremo a extremo.</span>
+      <span>{{ t("Esta conversación no está cifrada: tu amigo aún no activó el cifrado de extremo a extremo.") }}</span>
     </template>
     <template v-else>
       <ShieldAlert :size="14" />
       <span>
-        La clave de seguridad de tu amigo cambió (¿nuevo dispositivo?).
+        {{ t("La clave de seguridad de tu amigo cambió (¿nuevo dispositivo?).") }}
         <span v-if="code" class="e2e-banner__code"
-          >Código nuevo <code>{{ code }}</code></span
+          >{{ t("Código nuevo") }} <code>{{ code }}</code></span
         >
-        Compruébalo con tu amigo antes de confiar.
+        {{ t("Compruébalo con tu amigo antes de confiar.") }}
       </span>
       <WButton size="sm" variant="secondary" data-testid="trust-key" @click="emit('trust')"
-        >Confiar en la nueva clave</WButton
+        >{{ t("Confiar en la nueva clave") }}</WButton
       >
     </template>
   </div>
