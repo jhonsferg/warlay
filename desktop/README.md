@@ -21,6 +21,13 @@ executable does everything.
 
 - **Accounts, friends and communities** - sign up, add friends, see who is
   online or in a room, and join communities, all in real time.
+- **Crash reports** - if the app panics or the interface hits an error nobody
+  handled, a small report (version, system, message, backtrace; the Windows user
+  name and profile folder removed) is written to
+  `%APPDATA%\com.warlay.lanlauncher\crashes\`. Nothing is sent: the next time
+  the app opens and the player is signed in, a dialog offers to open it as a
+  prefilled GitHub issue (to review before submitting), copy it or discard it.
+  The newest 20 are kept.
 - **Spanish and English** - the app opens in the system's language (Spanish if
   it is neither) and Settings > Cuenta > Idioma changes it on the spot. Texts
   are written in Spanish inside `t("...")` and English lives in a dictionary
