@@ -152,7 +152,11 @@ const inviteToCommunity = (userId: string) => communitiesApi.invite(id.value, us
             @open="router.push(`/room/${room.id}`)"
           />
         </div>
-        <EmptyState v-else :title="t('No hay salas activas')" :text="t('Crea una sala solo para los miembros de esta comunidad.')">
+        <EmptyState
+          v-else
+          :title="t('No hay salas activas')"
+          :text="t('Crea una sala solo para los miembros de esta comunidad.')"
+        >
           <template #icon><Swords /></template>
           <WButton v-if="community.myRole" @click="dialogs.openCreateRoom(id)"
             ><template #icon><Plus /></template>{{ t("Crear sala") }}</WButton
