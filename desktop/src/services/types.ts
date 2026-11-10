@@ -25,6 +25,15 @@ export interface Me extends UserSummary {
   email: string;
   bio: string;
   createdAt: string;
+  /** False for an account created with Google that has not set a password. */
+  passwordSet: boolean;
+}
+
+/** The sign-in methods besides the password that the server offers. */
+export interface AuthProviders {
+  google: boolean;
+  /** The website opened in the browser to sign in. */
+  webUrl: string;
 }
 
 export interface Profile extends UserWithPresence {
