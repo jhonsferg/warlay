@@ -34,9 +34,15 @@ async function unblock(id: string, name: string) {
   <section class="blocked" data-testid="blocked-card">
     <h3><Ban /> {{ t("Usuarios bloqueados") }}</h3>
     <p class="blocked__muted">
-      {{ t("Una persona bloqueada no puede enviarte solicitudes, invitaciones ni mensajes, y no ves sus mensajes en salas y comunidades. No se le avisa.") }}
+      {{
+        t(
+          "Una persona bloqueada no puede enviarte solicitudes, invitaciones ni mensajes, y no ves sus mensajes en salas y comunidades. No se le avisa.",
+        )
+      }}
     </p>
-    <p v-if="!blocks.list.length" class="blocked__muted" data-testid="blocked-empty">{{ t("No has bloqueado a nadie.") }}</p>
+    <p v-if="!blocks.list.length" class="blocked__muted" data-testid="blocked-empty">
+      {{ t("No has bloqueado a nadie.") }}
+    </p>
     <ul v-else class="blocked__list">
       <li v-for="b in blocks.list" :key="b.id" data-testid="blocked-row">
         <WAvatar :name="b.displayName" :color="b.avatarColor" size="sm" />
