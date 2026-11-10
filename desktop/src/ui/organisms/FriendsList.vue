@@ -40,7 +40,12 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
 <template>
   <section class="friends-list" :aria-label="t('Lista de amigos')">
     <div class="friends-list__search">
-      <WInput v-model="query" :placeholder="t('Buscar amigos')" data-testid="friends-search" :aria-label="t('Buscar amigos')">
+      <WInput
+        v-model="query"
+        :placeholder="t('Buscar amigos')"
+        data-testid="friends-search"
+        :aria-label="t('Buscar amigos')"
+      >
         <template #icon><Search /></template>
       </WInput>
     </div>
@@ -52,12 +57,14 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
         data-testid="friend-requests"
       >
         <p class="friends-list__eyebrow">
-          {{
-            t('Solicitudes de amistad — {n}', { n: social.incoming.length + social.outgoing.length })
-          }}
+          {{ t("Solicitudes de amistad — {n}", { n: social.incoming.length + social.outgoing.length }) }}
         </p>
         <div v-for="r in social.incoming" :key="r.id" class="friends-list__request" :data-request="r.from.username">
-          <UserChip :user="r.from" :subtitle="t('@{username} quiere ser tu amigo', { username: r.from.username })" size="sm" />
+          <UserChip
+            :user="r.from"
+            :subtitle="t('@{username} quiere ser tu amigo', { username: r.from.username })"
+            size="sm"
+          />
           <WButton size="sm" variant="success" @click="answer(() => social.accept(r.id), t('No se pudo aceptar'))"
             ><template #icon><Check /></template>{{ t("Aceptar") }}</WButton
           >
@@ -70,14 +77,18 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
           /></WIconButton>
         </div>
         <div v-for="r in social.outgoing" :key="r.id" class="friends-list__request">
-          <UserChip :user="r.to" :subtitle="t('@{username} · esperando respuesta', { username: r.to.username })" size="sm" />
-          <WButton size="sm" variant="ghost" @click="answer(() => social.decline(r.id), t('No se pudo cancelar'))"
-            >{{ t("Cancelar") }}</WButton
-          >
+          <UserChip
+            :user="r.to"
+            :subtitle="t('@{username} · esperando respuesta', { username: r.to.username })"
+            size="sm"
+          />
+          <WButton size="sm" variant="ghost" @click="answer(() => social.decline(r.id), t('No se pudo cancelar'))">{{
+            t("Cancelar")
+          }}</WButton>
         </div>
       </section>
 
-      <p class="friends-list__eyebrow">{{ t('Todos los amigos — {n}', { n: social.friends.length }) }}</p>
+      <p class="friends-list__eyebrow">{{ t("Todos los amigos — {n}", { n: social.friends.length }) }}</p>
 
       <EmptyState
         v-if="social.friends.length === 0"
@@ -90,7 +101,7 @@ async function answer(fn: () => Promise<unknown>, failure: string) {
         >
       </EmptyState>
       <p v-else-if="shown.length === 0" class="friends-list__none" data-testid="friends-no-match">
-        {{ t('Ningún amigo coincide con «{query}».', { query }) }}
+        {{ t("Ningún amigo coincide con «{query}».", { query }) }}
       </p>
 
       <button
