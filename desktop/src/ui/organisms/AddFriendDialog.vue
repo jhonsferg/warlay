@@ -9,6 +9,7 @@ import WButton from "../atoms/WButton.vue";
 import WInput from "../atoms/WInput.vue";
 import UserChip from "../molecules/UserChip.vue";
 import WModal from "./WModal.vue";
+import { t } from "../../services/i18n";
 
 const emit = defineEmits<{ close: [] }>();
 const social = useSocial();
@@ -34,30 +35,30 @@ async function add(user: UserWithPresence) {
     const status = await social.sendRequest(user.username);
     sent.value.add(user.id);
     toasts.success(
-      status === "accepted" ? `Ahora eres amigo de ${user.displayName}` : "Solicitud enviada",
+      status === "accepted" ? t("Ahora eres amigo de {name}", { name: user.displayName }) : t("Solicitud enviada"),
       `@${user.username}`,
     );
   } catch (e) {
-    toasts.error("No se pudo enviar la solicitud", errorMessage(e));
+    toasts.error(t("No se pudo enviar la solicitud"), errorMessage(e));
   }
 }
 </script>
 
 <template>
-  <WModal title="Agregar amigo" subtitle="Busca por nombre de usuario." @close="emit('close')">
-    <WInput v-model="query" placeholder="Buscar jugadores..." size="lg" aria-label="Buscar jugadores">
+  <WModal :title="t('Agregar amigo')" :subtitle="t('Busca por nombre de usuario.')" @close="emit('close')">
+    <WInput v-model="query" :placeholder="t('Buscar jugadores...')" size="lg" :aria-label="t('Buscar jugadores')">
       <template #icon><Search /></template>
     </WInput>
     <div class="add-friend__results">
       <p v-if="query.trim().length >= 2 && results.length === 0" class="add-friend__empty">
-        Sin resultados para “{{ query }}”.
+        {{ t('Sin resultados para “{query}”.', { query }) }}
       </p>
       <div v-for="u in results" :key="u.id" class="add-friend__row" :data-result="u.username">
         <UserChip :user="u" :subtitle="`@${u.username}`" />
-        <WButton v-if="isFriend(u.id)" size="sm" variant="ghost" disabled>Amigos</WButton>
-        <WButton v-else-if="isPending(u.id)" size="sm" variant="secondary" disabled>Pendiente</WButton>
+        <WButton v-if="isFriend(u.id)" size="sm" variant="ghost" disabled>{{ t("Amigos") }}</WButton>
+        <WButton v-else-if="isPending(u.id)" size="sm" variant="secondary" disabled>{{ t("Pendiente") }}</WButton>
         <WButton v-else size="sm" @click="add(u)"
-          ><template #icon><UserPlus /></template>Agregar</WButton
+          ><template #icon><UserPlus /></template>{{ t("Agregar") }}</WButton
         >
       </div>
     </div>
