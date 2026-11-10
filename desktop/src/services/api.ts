@@ -21,6 +21,7 @@ import type {
   RoomSession,
   RoomView,
   Tokens,
+  TotpSetup,
   UnreadSummary,
   UserWithPresence,
 } from "./types";
@@ -28,7 +29,9 @@ import type {
 export const auth = {
   register: (body: { username: string; email: string; password: string; displayName?: string }) =>
     api<AuthResponse>("POST", "/auth/register", body),
-  login: (login: string, password: string) => api<AuthResponse>("POST", "/auth/login", { login, password }),
+  /** `totpCode` is the second step, for accounts that have it (rejected with `totp_required` without it). */
+  login: (login: string, password: string, totpCode?: string) =>
+    api<AuthResponse>("POST", "/auth/login", { login, password, totpCode }),
   logout: () => api<void>("POST", "/auth/logout"),
   me: () => api<Me>("GET", "/me"),
   updateMe: (body: { displayName?: string; bio?: string; avatarColor?: string }) => api<Me>("PATCH", "/me", body),
@@ -39,8 +42,13 @@ export const auth = {
   deleteAccount: (confirm: string, password?: string) => api<void>("DELETE", "/me", { confirm, password }),
   providers: () => api<AuthProviders>("GET", "/auth/providers"),
   /** Trades the one-time code the browser returned for a session. */
-  googleExchange: (code: string, verifier: string) =>
-    api<AuthResponse>("POST", "/auth/google/exchange", { code, verifier }),
+  googleExchange: (code: string, verifier: string, totpCode?: string) =>
+    api<AuthResponse>("POST", "/auth/google/exchange", { code, verifier, totpCode }),
+  /** Authenticator app: a secret to add (not active yet), then a code to turn it on. */
+  totpSetup: (password?: string) => api<TotpSetup>("POST", "/me/totp/setup", { password }),
+  totpEnable: (code: string) => api<{ enabled: boolean }>("POST", "/me/totp/enable", { code }),
+  totpDisable: (code: string, password?: string) =>
+    api<{ enabled: boolean }>("POST", "/me/totp/disable", { code, password }),
   /** Sets a new password with a recovery code; every session is closed. */
   recover: (login: string, code: string, newPassword: string) =>
     api<RecoveryStatus>("POST", "/auth/recover", { login, code, newPassword }),
