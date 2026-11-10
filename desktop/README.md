@@ -74,7 +74,7 @@ flowchart LR
     backend --> commands["src/commands/<br/>Tauri command handlers, the only<br/>layer touching AppHandle and State"]
     backend --> runtime["src/runtime/<br/>the network runtime: room sessions,<br/>LAN, voice, state, status watcher"]
     backend --> updater["src/updater/<br/>GitHub releases, download,<br/>checksum, silent install"]
-    backend --> clientStorage["src/storage/<br/>SQLite: client identity,<br/>settings, installed version"]
+    backend --> clientStorage["src/storage/<br/>settings.json: client identity,<br/>settings, installed version"]
     backend --> network["src/network/<br/>lan-mesh discovery<br/>and relay client"]
     backend --> launcher["src/launcher/<br/>starts and tracks<br/>the game process"]
     backend --> audio["src/desktop_audio/<br/>WASAPI capture and Opus<br/>encoding of desktop audio"]

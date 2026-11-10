@@ -34,7 +34,7 @@ fn client_db_path() -> std::path::PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     std::path::Path::new(&appdata)
         .join("com.warlay.lanlauncher")
-        .join("warlay.db")
+        .join("settings.json")
 }
 
 /// `std::fs::File`'s `Write::flush` is a documented no-op on every
