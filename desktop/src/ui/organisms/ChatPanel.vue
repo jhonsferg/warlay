@@ -4,6 +4,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { errorMessage } from "../../services/http";
 import type { ChannelKind, ChatMessage } from "../../services/types";
 import { channelKey, useChat } from "../../stores/chat";
+import { useBlocks } from "../../stores/blocks";
+import { useDialogs } from "../../stores/dialogs";
 import { useE2e } from "../../stores/e2e";
 import { useSession } from "../../stores/session";
 import { useToasts } from "../../stores/toasts";
@@ -20,6 +22,8 @@ const chat = useChat();
 const e2e = useE2e();
 const session = useSession();
 const toasts = useToasts();
+const blocks = useBlocks();
+const dialogs = useDialogs();
 const draft = ref("");
 const sending = ref(false);
 const loading = ref(true);
@@ -30,7 +34,11 @@ const emojiOpen = ref(false);
 
 const key = computed(() => channelKey(props.kind, props.targetId));
 const security = computed(() => (props.kind === "dm" ? e2e.securityOf(props.targetId) : "off"));
-const messages = computed(() => chat.channel(key.value).messages);
+const messages = computed(() => {
+  const all = chat.channel(key.value).messages;
+  // Rooms and communities are shared: a blocked player's messages are not shown.
+  return props.kind === "dm" ? all : all.filter((m) => !blocks.isBlocked(m.sender.id));
+});
 
 // Group consecutive messages by the same sender within 5 minutes.
 const rows = computed(() =>
@@ -84,6 +92,27 @@ async function remove(message: ChatMessage) {
     await chat.remove(message);
   } catch (error) {
     toasts.error("No se pudo borrar el mensaje", errorMessage(error));
+  }
+}
+
+function reportMessage(message: ChatMessage) {
+  dialogs.openReport(message.sender, message.id);
+}
+
+async function blockSender(message: ChatMessage) {
+  const accepted = await dialogs.confirm({
+    title: `Bloquear a ${message.sender.displayName}`,
+    message: "No verás sus mensajes y no podrá enviarte solicitudes, invitaciones ni mensajes.",
+    bullets: ["No se le avisa.", "Puedes desbloquearlo en Ajustes, en Seguridad."],
+    confirmLabel: "Bloquear",
+    tone: "danger",
+  });
+  if (!accepted) return;
+  try {
+    await blocks.block(message.sender.id);
+    toasts.success("Usuario bloqueado", message.sender.displayName);
+  } catch (error) {
+    toasts.error("No se pudo bloquear", errorMessage(error));
   }
 }
 
@@ -146,7 +175,10 @@ onUnmounted(() => {
         :grouped="row.grouped"
         :mine="row.mine"
         :status="row.status"
+        :moderable="kind !== 'dm'"
         @delete="remove"
+        @report="reportMessage"
+        @block="blockSender"
       />
     </div>
     <form ref="composer" class="chat-panel__composer" @submit.prevent="send">
