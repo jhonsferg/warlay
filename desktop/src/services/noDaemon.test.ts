@@ -82,7 +82,7 @@ test("the old agent module, crate and files are gone", () => {
 test("the settings screens have no network or agent tab of their own", () => {
   const settings = readFileSync(join(root, "desktop/src/pages/SettingsPage.vue"), "utf8");
   assert.doesNotMatch(settings, /Red y agente|Registros'|Actualizaciones'/);
-  assert.match(settings, /id: 'advanced', label: 'Avanzado'/);
+  assert.match(settings, /id: 'advanced', label: t\('Avanzado'\)/);
 });
 
 test("every command the UI invokes is registered by the backend, and none of the old hub ones are", () => {
