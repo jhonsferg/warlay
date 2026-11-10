@@ -9,6 +9,7 @@ import WInput from "../ui/atoms/WInput.vue";
 import FormField from "../ui/molecules/FormField.vue";
 import GoogleSignIn from "../ui/organisms/GoogleSignIn.vue";
 import AuthLayout from "../ui/templates/AuthLayout.vue";
+import { t } from "../services/i18n";
 
 const session = useSession();
 const router = useRouter();
@@ -48,15 +49,15 @@ async function submit() {
   <AuthLayout>
     <form class="auth-form" @submit.prevent="submit">
       <header>
-        <p class="auth-form__eyebrow">Bienvenido de vuelta</p>
-        <h2>Iniciar sesión</h2>
+        <p class="auth-form__eyebrow">{{ t("Bienvenido de vuelta") }}</p>
+        <h2>{{ t("Iniciar sesión") }}</h2>
       </header>
-      <FormField label="Usuario o correo" for="login">
-        <WInput id="login" v-model="login" size="lg" autocomplete="username" placeholder="thrall o thrall@horda.gg">
+      <FormField :label="t('Usuario o correo')" for="login">
+        <WInput id="login" v-model="login" size="lg" autocomplete="username" :placeholder="t('thrall o thrall@horda.gg')">
           <template #icon><User /></template>
         </WInput>
       </FormField>
-      <FormField label="Contraseña" for="password">
+      <FormField :label="t('Contraseña')" for="password">
         <WInput
           id="password"
           v-model="password"
@@ -70,9 +71,9 @@ async function submit() {
       </FormField>
       <FormField
         v-if="needTotp"
-        label="Código de verificación"
+        :label="t('Código de verificación')"
         for="totp"
-        hint="El de tu aplicación de autenticación, o un código de recuperación."
+        :hint="t('El de tu aplicación de autenticación, o un código de recuperación.')"
       >
         <WInput id="totp" v-model="totpCode" size="lg" autocomplete="one-time-code" placeholder="123456">
           <template #icon><ShieldCheck /></template>
@@ -85,11 +86,11 @@ async function submit() {
         block
         :loading="busy"
         :disabled="!login.trim() || !password || (needTotp && !totpCode.trim())"
-        >Entrar</WButton
+        >{{ t("Entrar") }}</WButton
       >
       <GoogleSignIn @signed-in="signedInWithGoogle" />
-      <p class="auth-form__switch"><RouterLink to="/recover">¿Olvidaste tu contraseña?</RouterLink></p>
-      <p class="auth-form__switch">¿No tienes cuenta? <RouterLink to="/register">Crear una</RouterLink></p>
+      <p class="auth-form__switch"><RouterLink to="/recover">{{ t("¿Olvidaste tu contraseña?") }}</RouterLink></p>
+      <p class="auth-form__switch">{{ t("¿No tienes cuenta?") }} <RouterLink to="/register">{{ t("Crear una") }}</RouterLink></p>
     </form>
   </AuthLayout>
 </template>
