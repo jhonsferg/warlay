@@ -1798,3 +1798,219 @@ async fn deleting_an_account_removes_it_and_what_hung_from_it() {
         .await;
     assert_eq!(status, 200);
 }
+
+/// The 6-digit code for `step` (RFC 6238, SHA-1), computed independently of
+/// the server's own implementation.
+fn totp_code(secret: &[u8], step: u64) -> String {
+    use hmac::{Hmac, Mac};
+    let mut mac = <Hmac<sha1::Sha1> as Mac>::new_from_slice(secret).unwrap();
+    mac.update(&step.to_be_bytes());
+    let hash = mac.finalize().into_bytes();
+    let offset = (hash[19] & 0x0f) as usize;
+    let binary = u32::from_be_bytes([
+        hash[offset] & 0x7f,
+        hash[offset + 1],
+        hash[offset + 2],
+        hash[offset + 3],
+    ]);
+    format!("{:06}", binary % 1_000_000)
+}
+
+fn base32_decode(text: &str) -> Vec<u8> {
+    const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let (mut buffer, mut bits, mut out) = (0_u32, 0_u32, Vec::new());
+    for c in text.chars() {
+        buffer = (buffer << 5) | ALPHABET.find(c).expect("base32 letter") as u32;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    out
+}
+
+fn current_step() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        / 30
+}
+
+#[tokio::test]
+async fn an_authenticator_app_adds_a_second_step_to_password_sign_in() {
+    let Some(s) = start().await else { return };
+    let username = unique("dos");
+    let email = format!("{username}@test.dev");
+    let (status, registered) = s
+        .call(
+            "POST",
+            "/auth/register",
+            None,
+            Some(json!({ "username": username, "email": email, "password": "supersecret" })),
+        )
+        .await;
+    assert_eq!(status, 200, "{registered}");
+    let token = registered["tokens"]["accessToken"].as_str().unwrap().to_string();
+    let recovery: Vec<String> = registered["recoveryCodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap().to_string())
+        .collect();
+    let call = |method: &'static str, path: &'static str, body: Value| s.call(method, path, Some(&token), Some(body));
+    let login = |code: Option<String>| {
+        let mut body = json!({ "login": email, "password": "supersecret" });
+        if let Some(code) = code {
+            body["totpCode"] = json!(code);
+        }
+        s.call("POST", "/auth/login", None, Some(body))
+    };
+
+    // Off by default: sign-in is as before.
+    assert_eq!(s.call("GET", "/me/totp", Some(&token), None).await.1["enabled"], false);
+    assert_eq!(login(None).await.0, 200);
+
+    // Setting up needs the password; the secret does nothing until confirmed.
+    assert_eq!(
+        call("POST", "/me/totp/setup", json!({ "password": "wrong-password" }))
+            .await
+            .0,
+        400
+    );
+    let (status, setup) = call("POST", "/me/totp/setup", json!({ "password": "supersecret" })).await;
+    assert_eq!(status, 200, "{setup}");
+    let secret = base32_decode(setup["secret"].as_str().unwrap());
+    assert_eq!(secret.len(), 20);
+    let uri = setup["otpauthUri"].as_str().unwrap();
+    assert!(uri.starts_with("otpauth://totp/Warlay:") && uri.contains(&setup["secret"].as_str().unwrap().to_string()));
+    assert_eq!(login(None).await.0, 200, "not active before it is confirmed");
+    assert_eq!(
+        call("POST", "/me/totp/enable", json!({ "code": "000000" })).await.0,
+        403
+    );
+    let step = current_step();
+    let (status, enabled) = call("POST", "/me/totp/enable", json!({ "code": totp_code(&secret, step) })).await;
+    assert_eq!((status, &enabled["enabled"]), (200, &json!(true)), "{enabled}");
+    assert_eq!(s.call("GET", "/me", Some(&token), None).await.1["totpEnabled"], true);
+    assert_eq!(
+        call("POST", "/me/totp/setup", json!({ "password": "supersecret" }))
+            .await
+            .0,
+        409
+    );
+
+    // Now the password alone is not enough.
+    let (status, body) = login(None).await;
+    assert_eq!((status, body["error"].as_str()), (403, Some("totp_required")));
+    let (status, body) = login(Some("000000".into())).await;
+    assert_eq!((status, body["error"].as_str()), (403, Some("invalid_totp")));
+    // The code that turned it on is spent; the next 30 seconds' one works, once.
+    assert_eq!(login(Some(totp_code(&secret, step))).await.0, 403);
+    let next = totp_code(&secret, step + 1);
+    let (status, body) = login(Some(next.clone())).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["user"]["totpEnabled"], true);
+    assert_eq!(login(Some(next)).await.0, 403, "a code works once");
+    // A recovery code stands in for the app, once.
+    assert_eq!(login(Some(recovery[0].clone())).await.0, 200);
+    assert_eq!(login(Some(recovery[0].clone())).await.0, 403);
+
+    // Turning it off needs the password and a code.
+    assert_eq!(
+        call(
+            "POST",
+            "/me/totp/disable",
+            json!({ "password": "wrong-password", "code": recovery[1] })
+        )
+        .await
+        .0,
+        400
+    );
+    assert_eq!(
+        call(
+            "POST",
+            "/me/totp/disable",
+            json!({ "password": "supersecret", "code": "000000" })
+        )
+        .await
+        .0,
+        403
+    );
+    let (status, off) = call(
+        "POST",
+        "/me/totp/disable",
+        json!({ "password": "supersecret", "code": recovery[1] }),
+    )
+    .await;
+    assert_eq!((status, &off["enabled"]), (200, &json!(false)), "{off}");
+    assert_eq!(login(None).await.0, 200);
+}
+
+#[tokio::test]
+async fn google_sign_in_also_asks_for_the_second_step() {
+    let google = fake_google().await;
+    let Some(s) = start_with(|settings| {
+        settings.google_client_id = "test-client".into();
+        settings.google_client_secret = "test-secret".into();
+        settings.google_token_url = format!("{google}/token");
+    })
+    .await
+    else {
+        return;
+    };
+    let browser = Browser::new(&s);
+    let sub = unique("g");
+    let identity = format!("{sub}|{sub}@gmail.test|true|Con Dos Pasos");
+
+    let (verifier, challenge) = pkce();
+    let code = param(&loopback(&browser.sign_in(&challenge, &identity).await), "code").unwrap();
+    let (_, session) = s
+        .call(
+            "POST",
+            "/auth/google/exchange",
+            None,
+            Some(json!({ "code": code, "verifier": verifier })),
+        )
+        .await;
+    let token = session["tokens"]["accessToken"].as_str().unwrap().to_string();
+
+    // A Google-only account has no password to ask for.
+    let (status, setup) = s.call("POST", "/me/totp/setup", Some(&token), Some(json!({}))).await;
+    assert_eq!(status, 200, "{setup}");
+    let secret = base32_decode(setup["secret"].as_str().unwrap());
+    let step = current_step();
+    let (status, _) = s
+        .call(
+            "POST",
+            "/me/totp/enable",
+            Some(&token),
+            Some(json!({ "code": totp_code(&secret, step) })),
+        )
+        .await;
+    assert_eq!(status, 200);
+
+    // Without the code the exchange says what is missing and keeps the code,
+    // a wrong one is refused, the right one gets in.
+    let (verifier, challenge) = pkce();
+    let code = param(&loopback(&browser.sign_in(&challenge, &identity).await), "code").unwrap();
+    let exchange = |totp: Option<String>| {
+        let mut body = json!({ "code": code, "verifier": verifier });
+        if let Some(totp) = totp {
+            body["totpCode"] = json!(totp);
+        }
+        s.call("POST", "/auth/google/exchange", None, Some(body))
+    };
+    let (status, body) = exchange(None).await;
+    assert_eq!((status, body["error"].as_str()), (403, Some("totp_required")));
+    let (status, body) = exchange(Some("000000".into())).await;
+    assert_eq!((status, body["error"].as_str()), (403, Some("invalid_totp")));
+    let (status, body) = exchange(Some(totp_code(&secret, step + 1))).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        exchange(Some(totp_code(&secret, step + 2))).await.0,
+        400,
+        "the code was spent"
+    );
+}
