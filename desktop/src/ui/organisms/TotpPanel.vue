@@ -47,7 +47,10 @@ async function confirm() {
     setup.value = null;
     qr.value = "";
     code.value = "";
-    toasts.success(t("Verificación en dos pasos activada"), t("Al iniciar sesión te pediremos un código de tu aplicación."));
+    toasts.success(
+      t("Verificación en dos pasos activada"),
+      t("Al iniciar sesión te pediremos un código de tu aplicación."),
+    );
   } catch (e) {
     toasts.error(t("El código no es correcto"), errorMessage(e));
   } finally {
@@ -83,7 +86,11 @@ function cancel() {
 
     <template v-if="setup">
       <p class="totp__muted">
-        {{ t("Escanea el código con tu aplicación de autenticación (Google Authenticator, Authy, 2FAS, Aegis...) o escribe la clave a mano. Después escribe el código de 6 dígitos que muestre.") }}
+        {{
+          t(
+            "Escanea el código con tu aplicación de autenticación (Google Authenticator, Authy, 2FAS, Aegis...) o escribe la clave a mano. Después escribe el código de 6 dígitos que muestre.",
+          )
+        }}
       </p>
       <div class="totp__setup">
         <img :src="qr" :alt="t('Código QR para tu aplicación de autenticación')" width="192" height="192" />
@@ -102,7 +109,12 @@ function cancel() {
 
     <template v-else-if="enabled">
       <p class="totp__muted">
-        {{ t("Está") }} <strong>{{ t("activada") }}</strong>{{ t(": al iniciar sesión, además de la contraseña o Google, se pide un código de tu aplicación. Si pierdes el teléfono, un código de recuperación sirve en su lugar (una vez).") }}
+        {{ t("Está") }} <strong>{{ t("activada") }}</strong
+        >{{
+          t(
+            ": al iniciar sesión, además de la contraseña o Google, se pide un código de tu aplicación. Si pierdes el teléfono, un código de recuperación sirve en su lugar (una vez).",
+          )
+        }}
       </p>
       <FormField v-if="hasPassword" :label="t('Tu contraseña')" for="totp-off-password">
         <WInput id="totp-off-password" v-model="password" type="password" autocomplete="current-password" />
@@ -125,7 +137,11 @@ function cancel() {
 
     <template v-else>
       <p class="totp__muted">
-        {{ t("Protege tu cuenta con un código que cambia cada 30 segundos y que solo muestra tu teléfono. Sirve también para quien entra con Google.") }}
+        {{
+          t(
+            "Protege tu cuenta con un código que cambia cada 30 segundos y que solo muestra tu teléfono. Sirve también para quien entra con Google.",
+          )
+        }}
       </p>
       <FormField v-if="hasPassword" :label="t('Tu contraseña')" for="totp-on-password">
         <WInput id="totp-on-password" v-model="password" type="password" autocomplete="current-password" />
