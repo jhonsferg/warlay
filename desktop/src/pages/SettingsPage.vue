@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { FolderOpen, Gamepad2, KeyRound, LogOut, Palette, Settings, ShieldCheck, User } from "@lucide/vue";
+import { FolderOpen, Gamepad2, KeyRound, LogOut, Palette, Settings, ShieldCheck, Trash2, User } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { auth } from "../services/api";
-import { errorMessage } from "../services/http";
+import { errorMessage, setTokens } from "../services/http";
 import { isDesktop, native } from "../services/native";
 import { AVATAR_COLORS } from "../ui/palette";
 import { useDialogs } from "../stores/dialogs";
@@ -47,6 +47,8 @@ const bio = ref(session.me?.bio ?? "");
 const color = ref(session.me?.avatarColor ?? AVATAR_COLORS[0]);
 const savingProfile = ref(false);
 
+/** False for an account created with Google that has no password yet. */
+const hasPassword = computed(() => session.me?.passwordSet !== false);
 const currentPassword = ref("");
 const newPassword = ref("");
 const savingPassword = ref(false);
@@ -73,6 +75,35 @@ async function saveProfile() {
     toasts.error("No se pudo guardar", errorMessage(e));
   } finally {
     savingProfile.value = false;
+  }
+}
+
+const deleteConfirm = ref("");
+const deletePassword = ref("");
+const deletingAccount = ref(false);
+
+async function deleteAccount() {
+  const accepted = await dialogs.confirm({
+    title: "Eliminar cuenta",
+    message: "Esto no se puede deshacer.",
+    bullets: [
+      "Se borran tu perfil, tus amigos, tus mensajes y tus notificaciones.",
+      "Se cierran la sala que alojes y las comunidades que hayas creado.",
+      "Tu nombre de usuario y tu correo quedarán libres.",
+    ],
+    confirmLabel: "Eliminar mi cuenta",
+    tone: "danger",
+  });
+  if (!accepted) return;
+  deletingAccount.value = true;
+  try {
+    await auth.deleteAccount(deleteConfirm.value.trim(), hasPassword.value ? deletePassword.value : undefined);
+    setTokens(null);
+    void router.push("/login");
+  } catch (e) {
+    toasts.error("No se pudo eliminar la cuenta", errorMessage(e));
+  } finally {
+    deletingAccount.value = false;
   }
 }
 
@@ -114,10 +145,13 @@ async function generateCodes() {
 async function changePassword() {
   savingPassword.value = true;
   try {
-    await auth.changePassword(currentPassword.value, newPassword.value);
+    const first = !hasPassword.value;
+    await auth.changePassword(first ? undefined : currentPassword.value, newPassword.value);
     currentPassword.value = "";
     newPassword.value = "";
-    toasts.success("Contraseña actualizada", "Las demás sesiones deberán iniciar sesión de nuevo.");
+    if (session.me) session.me = { ...session.me, passwordSet: true };
+    if (first) toasts.success("Contraseña creada", "Ahora también puedes entrar con tu usuario y contraseña.");
+    else toasts.success("Contraseña actualizada", "Las demás sesiones deberán iniciar sesión de nuevo.");
   } catch (e) {
     toasts.error("No se pudo cambiar la contraseña", errorMessage(e));
   } finally {
@@ -198,8 +232,11 @@ onMounted(() => {
       </section>
 
       <section class="settings__card">
-        <h3><KeyRound /> Contraseña</h3>
-        <FormField label="Contraseña actual" for="current-password">
+        <h3><KeyRound /> {{ hasPassword ? "Contraseña" : "Crear una contraseña" }}</h3>
+        <p v-if="!hasPassword" class="settings__muted">
+          Tu cuenta entra con Google. Si creas una contraseña, también podrás entrar con tu usuario y esa contraseña.
+        </p>
+        <FormField v-if="hasPassword" label="Contraseña actual" for="current-password">
           <WInput id="current-password" v-model="currentPassword" type="password" autocomplete="current-password" />
         </FormField>
         <FormField label="Nueva contraseña" for="new-password-settings" hint="Al menos 8 caracteres.">
@@ -208,11 +245,11 @@ onMounted(() => {
         <div class="settings__actions">
           <WButton
             variant="secondary"
-            :disabled="!currentPassword || newPassword.length < 8"
+            :disabled="(hasPassword && !currentPassword) || newPassword.length < 8"
             :loading="savingPassword"
             @click="changePassword"
           >
-            Cambiar contraseña
+            {{ hasPassword ? "Cambiar contraseña" : "Crear contraseña" }}
           </WButton>
         </div>
       </section>
@@ -224,10 +261,18 @@ onMounted(() => {
           <strong>{{ recoveryRemaining }}</strong> sin usar.
         </p>
         <RecoveryCodesPanel v-if="newCodes.length" :username="session.me?.username ?? ''" :codes="newCodes" />
-        <FormField label="Tu contraseña" for="recovery-password" hint="Los códigos nuevos reemplazan a los anteriores.">
+        <p v-if="!hasPassword" class="settings__muted">
+          Crea primero una contraseña para poder generar códigos nuevos.
+        </p>
+        <FormField
+          v-if="hasPassword"
+          label="Tu contraseña"
+          for="recovery-password"
+          hint="Los códigos nuevos reemplazan a los anteriores."
+        >
           <WInput id="recovery-password" v-model="recoveryPassword" type="password" autocomplete="current-password" />
         </FormField>
-        <div class="settings__actions">
+        <div v-if="hasPassword" class="settings__actions">
           <WButton variant="secondary" :disabled="!recoveryPassword" :loading="generatingCodes" @click="generateCodes">
             Generar códigos nuevos
           </WButton>
@@ -242,6 +287,32 @@ onMounted(() => {
         <div class="settings__actions">
           <WButton variant="danger" data-testid="logout" @click="logout">
             <template #icon><LogOut /></template>Cerrar sesión
+          </WButton>
+        </div>
+      </section>
+
+      <section class="settings__card" data-testid="delete-account-card">
+        <h3><Trash2 /> Eliminar cuenta</h3>
+        <p class="settings__muted">
+          Borra tu cuenta y sus datos de forma permanente. Para confirmar, escribe tu nombre de usuario
+          <strong>{{ session.me?.username }}</strong
+          >{{ hasPassword ? " y tu contraseña" : "" }}.
+        </p>
+        <FormField label="Tu nombre de usuario" for="delete-confirm">
+          <WInput id="delete-confirm" v-model="deleteConfirm" autocomplete="off" />
+        </FormField>
+        <FormField v-if="hasPassword" label="Tu contraseña" for="delete-password">
+          <WInput id="delete-password" v-model="deletePassword" type="password" autocomplete="current-password" />
+        </FormField>
+        <div class="settings__actions">
+          <WButton
+            variant="danger"
+            data-testid="delete-account"
+            :disabled="!deleteConfirm.trim() || (hasPassword && !deletePassword)"
+            :loading="deletingAccount"
+            @click="deleteAccount"
+          >
+            <template #icon><Trash2 /></template>Eliminar mi cuenta
           </WButton>
         </div>
       </section>
